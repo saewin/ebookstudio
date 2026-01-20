@@ -2,7 +2,7 @@
 
 import { Save, Sparkles, Send, RefreshCcw, Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { fetchChapterDetails, chatWithGhostwriter } from '@/lib/actions'
 import ReactMarkdown from 'react-markdown'
 
@@ -11,7 +11,7 @@ interface ChatMessage {
     content: string
 }
 
-export default function WritingPage() {
+function WritingContent() {
     const searchParams = useSearchParams()
     const chapterId = searchParams.get('id')
 
@@ -203,5 +203,13 @@ export default function WritingPage() {
                 </div>
             </div>
         </div>
+    )
+}
+
+export default function WritingPage() {
+    return (
+        <Suspense fallback={<div className="p-12 text-center text-slate-400">Loading editor...</div>}>
+            <WritingContent />
+        </Suspense>
     )
 }
