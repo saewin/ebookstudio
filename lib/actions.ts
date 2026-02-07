@@ -2,7 +2,7 @@
 
 import { Client } from '@notionhq/client'
 import { revalidatePath } from 'next/cache'
-import { getChapters } from '@/lib/notion'
+import { getChapters, notionQuery } from '@/lib/notion'
 
 const notion = new Client({
     auth: process.env.NOTION_API_KEY,
@@ -11,11 +11,26 @@ const notion = new Client({
 const SERIES_DB_ID = '2e9e19eb-e8da-807f-9fbd-ec5224452851';
 const CHAPTERS_DB_ID = process.env.NOTION_DATABASE_ID;
 
+// function bulkCreateChapters at line 14
 export async function bulkCreateChapters(projectId: string, chapterTitles: string[]) {
     if (!CHAPTERS_DB_ID) return { success: false, error: "Chapters DB ID not configured" };
     if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
+        // Safety Check: Check if chapters already exist to avoid duplicates (e.g. from N8N race condition)
+        // We do a quick query.
+        // Safety Check: Check if chapters already exist to avoid duplicates
+        // We do a quick query using notionQuery helper
+        const existingChapters = await notionQuery(CHAPTERS_DB_ID, {
+            property: 'Wang-Aksorn Series',
+            relation: { contains: projectId }
+        });
+
+        if (existingChapters.results.length > 0) {
+            console.warn(`Chapters already exist for project ${projectId}. Skipping bulk creation to prevent duplicates.`);
+            return { success: false, error: "Chapters already exist" };
+        }
+
         console.log(`Bulk creating ${chapterTitles.length} chapters for project ${projectId}...`);
 
         // Create all chapters in parallel
@@ -71,8 +86,6 @@ export async function createBriefing(projectName: string, persona: string, tone:
                     title: [{ text: { content: projectName } }],
                 },
                 "Theme/Topic": {
-                    // Truncate to 2000 chars explicitly if needed, though Notion might handle splitting on its own
-                    // but safer to keep critical info concise.
                     rich_text: [{ text: { content: fullDescription.substring(0, 2000) } }],
                 },
                 "Target audience": {
@@ -82,7 +95,7 @@ export async function createBriefing(projectName: string, persona: string, tone:
                     select: { name: tone }
                 },
                 "Status": {
-                    select: { name: "Idea" } // Default status
+                    select: { name: "Idea" }
                 }
             },
         })
@@ -91,12 +104,10 @@ export async function createBriefing(projectName: string, persona: string, tone:
         if (extraInfo?.draftStructure) {
             const lines = extraInfo.draftStructure.split('\n')
                 .map((l: string) => l.trim())
-                .filter((l: string) => l.length > 0 && !l.startsWith('===')); // Basic filter
+                .filter((l: string) => l.length > 0 && !l.startsWith('==='))
+                .map((l: string) => l.replace(/^[-*•\d\.]+\s+/, '').replace(/^[-*•]\s*/, '')); // Clean leading bullets
 
             if (lines.length > 0) {
-                // Call bulkCreateChapters internally
-                // We need to import it or define it before, but since it's in the same file, we can call it.
-                // However, bulkCreateChapters is async and exported.
                 await bulkCreateChapters(response.id, lines);
             }
         }
@@ -410,7 +421,7 @@ export async function fetchChapterDetails(chapterId: string) {
     }
 }
 
-import { notionQuery } from './notion';
+
 
 export async function fetchAllProjectChapters(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" };
