@@ -111,6 +111,7 @@ export default function ExportClient({ projects }: { projects: Project[] }) {
                                     </>
                                 ) : (
                                     <>Preview & Print Book</>
+                                    /* <FileDown className="ml-2" /> */
                                 )}
                             </button>
                         </div>

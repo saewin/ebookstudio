@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, Sarabun } from 'next/font/google'
 import './globals.css'
 import Link from 'next/link'
-import { LayoutDashboard, FileText, ListOrdered, PenTool, Image as ImageIcon, Settings, User, LogOut, BookUp } from 'lucide-react'
+import { LayoutDashboard, FileText, ListOrdered, PenTool, Image as ImageIcon, Settings, User, LogOut, BookUp, GraduationCap } from 'lucide-react'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const sarabun = Sarabun({
@@ -47,6 +47,7 @@ export default function RootLayout({
                 <NavLink href="/writing" icon={PenTool} label="โต๊ะเขียนงาน" />
                 <NavLink href="/gallery" icon={ImageIcon} label="แกลเลอรี่ภาพ" />
                 <NavLink href="/export" icon={BookUp} label="โรงงานประกอบเล่ม" />
+                <NavLink href="/course-builder" icon={GraduationCap} label="สร้างบทเรียน" />
               </div>
             </div>
 
