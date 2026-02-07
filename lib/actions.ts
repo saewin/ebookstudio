@@ -58,6 +58,48 @@ export async function deleteProject(projectId: string) {
     }
 }
 
+export async function deleteChapter(chapterId: string) {
+    if (!chapterId) return { success: false, error: "No Chapter ID" }
+    try {
+        await notion.pages.update({ page_id: chapterId, archived: true })
+        revalidatePath('/structure')
+        return { success: true }
+    } catch (error) {
+        console.error("Delete Chapter Error:", error);
+        return { success: false, error }
+    }
+}
+
+export async function renameChapter(chapterId: string, newTitle: string) {
+    if (!chapterId) return { success: false, error: "No Chapter ID" }
+    try {
+        await notion.pages.update({
+            page_id: chapterId,
+            properties: { "Chapter Title": { title: [{ text: { content: newTitle } }] } }
+        })
+        revalidatePath('/structure')
+        return { success: true }
+    } catch (error) {
+        console.error("Rename Chapter Error:", error);
+        return { success: false, error }
+    }
+}
+
+export async function renameProject(projectId: string, newTitle: string) {
+    if (!projectId) return { success: false, error: "No Project ID" }
+    try {
+        await notion.pages.update({
+            page_id: projectId,
+            properties: { "Book Title": { title: [{ text: { content: newTitle } }] } }
+        })
+        revalidatePath('/structure')
+        return { success: true }
+    } catch (error) {
+        console.error("Rename Project Error:", error);
+        return { success: false, error }
+    }
+}
+
 export async function triggerExport(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" }
 

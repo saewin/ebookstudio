@@ -1,7 +1,7 @@
 'use client'
 
-import { MoveVertical, FileText, Send, Eye } from 'lucide-react'
-import { triggerGhostwriter, updateChapterTitle, updateChapterNumber } from '@/lib/actions'
+import { MoveVertical, FileText, Send, Eye, Trash2 } from 'lucide-react'
+import { triggerGhostwriter, updateChapterTitle, updateChapterNumber, deleteChapter } from '@/lib/actions'
 import { useState } from 'react'
 
 export default function ChapterRow({ chapter, statusStyles }: { chapter: any, statusStyles: any }) {
@@ -10,6 +10,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
     const [isEditingNo, setIsEditingNo] = useState(false)
     const [title, setTitle] = useState(chapter.title)
     const [chapterNo, setChapterNo] = useState(chapter.chapterNo)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     async function handleGenerate() {
         if (!confirm(`ต้องการส่งบทนี้ให้ AI เขียนเนื้อหาใช่ไหม? "${title}"`)) return
@@ -24,6 +25,18 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
         } else {
             alert('เกิดข้อผิดพลาด: ' + result.error)
         }
+    }
+
+    async function handleDelete() {
+        if (!confirm(`ยืนยันลบบทที่ ${chapter.chapterNo}: "${title}" ?\n(ข้อมูลจะถูก Archive ใน Notion)`)) return
+
+        setIsDeleting(true)
+        const result = await deleteChapter(chapter.id)
+        if (!result.success) {
+            alert('ลบไม่สำเร็จ: ' + result.error)
+            setIsDeleting(false)
+        }
+        // If success, router.refresh happens in action, UI will update automatically or on re-render
     }
 
     async function handleSaveTitle() {
@@ -140,6 +153,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                             : 'bg-white border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 shadow-sm'}
                     `}
+                    title="ให้ AI ช่วยเขียนบทนี้"
                 >
                     {loading ? (
                         'Sending...'
@@ -149,6 +163,14 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                             <span>เขียนบทนี้</span>
                         </>
                     )}
+                </button>
+
+                <button
+                    onClick={handleDelete}
+                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                    title="ลบบทนี้ (Delete Chapter)"
+                >
+                    <Trash2 size={16} />
                 </button>
             </div>
         </div>
