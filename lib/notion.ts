@@ -82,7 +82,7 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
                 id: page.id,
                 title: props['Chapter Title']?.title[0]?.plain_text || 'Untitled',
                 chapterNo: chapterNo,
-                status: props['Status']?.status?.name || 'Draft',
+                status: props['Status']?.select?.name || 'Draft',
                 hasContent: hasContent,
                 content: 'Content hidden for list view'
             }
@@ -118,7 +118,7 @@ export async function getProjects(): Promise<Project[]> {
             return {
                 id: page.id,
                 title: props['Book Title']?.title[0]?.plain_text || 'Untitled Project',
-                status: props['Status']?.status?.name || 'Planning',
+                status: props['Status']?.select?.name || 'Planning',
                 theme: props['Theme/Topic']?.rich_text[0]?.plain_text || '',
                 audience: props['Target audience']?.rich_text[0]?.plain_text || ''
             }
