@@ -2,6 +2,7 @@
 
 import { Client } from '@notionhq/client'
 import { revalidatePath } from 'next/cache'
+import { getChapters } from '@/lib/notion'
 
 const notion = new Client({
     auth: process.env.NOTION_API_KEY,
@@ -46,10 +47,25 @@ export async function deleteProject(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" }
 
     try {
+        console.log(`Deleting Project ${projectId} and its chapters...`);
+
+        // 1. Fetch all chapters associated with this project
+        const chapters = await getChapters(projectId);
+
+        // 2. Archive all chapters (Cascade Delete)
+        if (chapters.length > 0) {
+            console.log(`Archiving ${chapters.length} chapters...`);
+            await Promise.all(chapters.map(chapter =>
+                notion.pages.update({ page_id: chapter.id, archived: true })
+            ));
+        }
+
+        // 3. Archive the project itself
         await notion.pages.update({
             page_id: projectId,
             archived: true,
         });
+
         revalidatePath('/structure');
         return { success: true };
     } catch (error) {
@@ -468,5 +484,75 @@ ${chapterContent.substring(0, 5000)}
     } catch (error) {
         console.error("Chat Error:", error);
         return { success: false, error: "Failed to get response" };
+    }
+}
+
+export async function generateBriefingSuggestions(topic: string, targetAudience: string, tone: string) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) return { success: false, error: "OpenRouter API Key not configured" };
+
+    try {
+        const prompt = `
+Context: You are an expert book editor and strategist helping a user plan a non-fiction book (E-book).
+Task: Based on the "Working Title/Topic" and "Target Reader" provided, generate high-quality strategic content for the book briefing.
+Language: Thai (ภาษาไทย) ONLY.
+
+Input:
+- Working Title/Topic: "${topic}"
+- Target Reader: "${targetAudience}"
+- Desired Tone: "${tone}"
+
+Output: Provide a JSON object with the following fields:
+1. "painPoints": (String) 3-5 key problems the reader is facing (bullet points).
+2. "transformation": (String) How the reader's life/business will change after reading.
+3. "coreMessage": (String) The one single message/takeaway of the book.
+4. "antiGoals": (String) What this book is NOT about (to avoid scope creep).
+5. "roleOfBook": (String) The role of this book in the author's business (e.g., Lead Magnet, Authority Builder).
+6. "draftStructure": (String) A rough list of 5-10 chapter titles.
+
+Make the content compelling, professional, and marketable.
+Return ONLY the JSON object, no markdown formatting.
+`;
+
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ebook-creator.studio',
+                'X-Title': 'Ebook Creator Studio'
+            },
+            body: JSON.stringify({
+                model: 'google/gemini-2.0-flash-001',
+                messages: [
+                    { role: 'user', content: prompt }
+                ],
+                max_tokens: 2000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`OpenRouter API Error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || "{}";
+
+        let jsonStr = content.trim();
+        // Remove markdown code blocks if present
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '');
+        } else if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '');
+        }
+
+        const suggestions = JSON.parse(jsonStr);
+
+        return { success: true, data: suggestions };
+
+    } catch (error) {
+        console.error("Generate Briefing Error:", error);
+        return { success: false, error: "Failed to generate suggestions" };
     }
 }
