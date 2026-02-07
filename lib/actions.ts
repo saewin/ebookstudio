@@ -247,10 +247,32 @@ export async function triggerExport(projectId: string) {
 }
 
 export async function createChapter(projectId: string, title: string, chapterNo: number) {
-    if (!CHAPTERS_DB_ID || !projectId) return { success: false, error: "Missing Config" };
+    if (!CHAPTERS_DB_ID) return { success: false, error: "Missing Notion Config" };
+    if (!projectId) return { success: false, error: "Missing Project ID (Series Linkage)" };
 
     try {
+        // 1. DUPLICATE CHECK: Ensure this chapter number doesn't already exist for this project
+        const existing = await notionQuery(CHAPTERS_DB_ID, {
+            and: [
+                {
+                    property: 'Wang-Aksorn Series',
+                    relation: { contains: projectId }
+                },
+                {
+                    property: 'Chapter No.',
+                    number: { equals: chapterNo }
+                }
+            ]
+        });
+
+        if (existing.results.length > 0) {
+            console.warn(`Chapter ${chapterNo} already exists for project ${projectId}. Skipping creation.`);
+            return { success: false, error: `Chapter ${chapterNo} already exists.` };
+        }
+
         console.log(`Creating Chapter "${title}" for Project ${projectId}`);
+
+        // 2. SERIES LINKAGE: Create with explicit relation
         await notion.pages.create({
             parent: { database_id: CHAPTERS_DB_ID },
             properties: {
@@ -265,7 +287,7 @@ export async function createChapter(projectId: string, title: string, chapterNo:
                 },
                 "Wang-Aksorn Series": {
                     relation: [
-                        { id: projectId }
+                        { id: projectId } // Explicitly linking to the Series
                     ]
                 }
             },
