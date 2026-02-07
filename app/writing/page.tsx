@@ -3,7 +3,7 @@
 import { Save, Sparkles, Send, RefreshCcw, Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
-import { fetchChapterDetails, chatWithGhostwriter } from '@/lib/actions'
+import { fetchChapterDetails, chatWithGhostwriter, updateChapterContent } from '@/lib/actions'
 import ReactMarkdown from 'react-markdown'
 
 interface ChatMessage {
@@ -18,6 +18,19 @@ function WritingContent() {
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<{ title: string, content: string, chapterNo: number } | null>(null)
     const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
+
+    async function handleSave() {
+        if (!chapterId || !data) return
+        setSaving(true)
+        const result = await updateChapterContent(chapterId, data.content)
+        if (result.success) {
+            // Optional: Success toast
+        } else {
+            alert('Failed to save: ' + result.error)
+        }
+        setSaving(false)
+    }
 
     // Chat states
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -115,23 +128,30 @@ function WritingContent() {
                         <h1 className="text-2xl font-serif font-bold text-slate-800">{data?.title}</h1>
                     </div>
                     <div className="flex gap-2">
-                        <span className="text-xs text-slate-400 flex items-center">Auto-saved from Notion</span>
-                        <button className="text-slate-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-slate-50">
-                            <Save size={18} />
+                        <span className="text-xs text-slate-400 flex items-center">
+                            {saving ? 'Saving...' : 'Auto-saved from Notion'}
+                        </span>
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="text-slate-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-slate-50 disabled:opacity-50"
+                        >
+                            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                         </button>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-sm border border-slate-100 flex-1 p-12 overflow-y-auto min-h-[500px]">
-                    <article className="prose prose-slate prose-lg max-w-none font-serif leading-loose whitespace-pre-wrap">
-                        {data?.content ? (
-                            <div dangerouslySetInnerHTML={{ __html: data.content }} />
-                        ) : (
-                            <p className="text-slate-400 italic text-center py-10">
-                                ยังไม่มีเนื้อหา... กดปุ่ม "เขียนบทนี้" ในหน้า Structure เพื่อให้ AI เริ่มเขียน
-                            </p>
-                        )}
-                    </article>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-100 flex-1 flex flex-col overflow-hidden min-h-[500px]">
+                    {loading ? (
+                        <div className="flex-1 flex items-center justify-center text-slate-400">Loading content...</div>
+                    ) : (
+                        <textarea
+                            className="w-full h-full p-12 resize-none focus:outline-none focus:ring-0 font-serif text-lg leading-loose text-slate-700"
+                            value={data?.content || ''}
+                            onChange={(e) => setData(prev => prev ? { ...prev, content: e.target.value } : null)}
+                            placeholder="เริ่มเขียนเนื้อหาที่นี่..."
+                        />
+                    )}
                 </div>
             </div>
 
