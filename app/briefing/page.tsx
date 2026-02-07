@@ -60,19 +60,23 @@ export default function BriefingPage() {
         setLoading(true)
 
         // Combine detailed fields into a structure that fits the Notion schema or logic
-        // For now, we pass the main fields to createBriefing. 
-        // We might need to update createBriefing to accept more fields later, 
-        // or pack them into the 'Goal' or 'Description' field if Notion schema is limited.
-        // Assuming createBriefing(projectName, persona, tone, goal)
-        // We will pass 'coreMessage' or 'roleOfBook' as goal for now, or concatenate key info.
+        const mainGoal = `Role: ${formData.roleOfBook}\nCore Message: ${formData.coreMessage}`
 
-        const combinedGoal = `Role: ${formData.roleOfBook}\nCore Message: ${formData.coreMessage}\nPain Points: ${formData.painPoints}`
+        const extraInfo = {
+            painPoints: formData.painPoints,
+            transformation: formData.transformation,
+            coreMessage: formData.coreMessage,
+            antiGoals: formData.antiGoals,
+            roleOfBook: formData.roleOfBook,
+            draftStructure: formData.draftStructure
+        }
 
         const result = await createBriefing(
             formData.projectName,
             formData.persona,
             formData.tone,
-            combinedGoal
+            mainGoal,
+            extraInfo
         )
 
         setLoading(false)

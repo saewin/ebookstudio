@@ -4,6 +4,7 @@ import ChapterList from './ChapterList'
 import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
 import GenerateStructureButton from './GenerateStructureButton'
+import BulkAddChapter from './BulkAddChapter'
 import { revalidatePath } from 'next/cache'
 
 // Mapping Notion Status (English) -> UI Status (Thai)
@@ -72,6 +73,7 @@ export default async function StructurePage(props: PageProps) {
                             Sync ข้อมูล
                         </button>
                     </form>
+                    <BulkAddChapter projectId={activeProjectId} />
                     <GenerateStructureButton projectId={activeProjectId} />
                 </div>
             </div>

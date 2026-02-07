@@ -11,10 +11,59 @@ const notion = new Client({
 const SERIES_DB_ID = '2e9e19eb-e8da-807f-9fbd-ec5224452851';
 const CHAPTERS_DB_ID = process.env.NOTION_DATABASE_ID;
 
-export async function createBriefing(projectName: string, persona: string, tone: string, goal: string) {
+export async function bulkCreateChapters(projectId: string, chapterTitles: string[]) {
+    if (!CHAPTERS_DB_ID) return { success: false, error: "Chapters DB ID not configured" };
+    if (!projectId) return { success: false, error: "No Project ID provided" };
+
+    try {
+        console.log(`Bulk creating ${chapterTitles.length} chapters for project ${projectId}...`);
+
+        // Create all chapters in parallel
+        await Promise.all(chapterTitles.map((title, index) =>
+            notion.pages.create({
+                parent: { database_id: CHAPTERS_DB_ID },
+                properties: {
+                    "Chapter Title": {
+                        title: [{ text: { content: title } }],
+                    },
+                    "Chapter No.": {
+                        number: index + 1,
+                    },
+                    "Status": {
+                        select: { name: "Idea" }
+                    },
+                    "Wang-Aksorn Series": {
+                        relation: [{ id: projectId }]
+                    }
+                },
+            })
+        ));
+
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error) {
+        console.error("Bulk Create Error:", error);
+        return { success: false, error };
+    }
+}
+
+export async function createBriefing(projectName: string, persona: string, tone: string, goal: string, extraInfo?: any) {
     if (!SERIES_DB_ID) throw new Error("Series DB ID not configured");
 
     try {
+        let fullDescription = goal;
+
+        // Append extra structured data if provided
+        if (extraInfo) {
+            fullDescription += `\n\n=== Strategic Context ===\n`;
+            if (extraInfo.painPoints) fullDescription += `Pain Points:\n${extraInfo.painPoints}\n\n`;
+            if (extraInfo.transformation) fullDescription += `Transformation:\n${extraInfo.transformation}\n\n`;
+            if (extraInfo.coreMessage) fullDescription += `Core Message: ${extraInfo.coreMessage}\n\n`;
+            if (extraInfo.antiGoals) fullDescription += `Anti-Goals: ${extraInfo.antiGoals}\n\n`;
+            if (extraInfo.roleOfBook) fullDescription += `Role: ${extraInfo.roleOfBook}\n\n`;
+            if (extraInfo.draftStructure) fullDescription += `=== Draft Structure ===\n${extraInfo.draftStructure}\n`;
+        }
+
         const response = await notion.pages.create({
             parent: { database_id: SERIES_DB_ID },
             properties: {
@@ -22,7 +71,9 @@ export async function createBriefing(projectName: string, persona: string, tone:
                     title: [{ text: { content: projectName } }],
                 },
                 "Theme/Topic": {
-                    rich_text: [{ text: { content: goal } }], // Mapping 'Goal' to Theme for now, or add description
+                    // Truncate to 2000 chars explicitly if needed, though Notion might handle splitting on its own
+                    // but safer to keep critical info concise.
+                    rich_text: [{ text: { content: fullDescription.substring(0, 2000) } }],
                 },
                 "Target audience": {
                     rich_text: [{ text: { content: persona } }],
@@ -35,6 +86,21 @@ export async function createBriefing(projectName: string, persona: string, tone:
                 }
             },
         })
+
+        // If Draft Structure exists, create chapters immediately!
+        if (extraInfo?.draftStructure) {
+            const lines = extraInfo.draftStructure.split('\n')
+                .map((l: string) => l.trim())
+                .filter((l: string) => l.length > 0 && !l.startsWith('===')); // Basic filter
+
+            if (lines.length > 0) {
+                // Call bulkCreateChapters internally
+                // We need to import it or define it before, but since it's in the same file, we can call it.
+                // However, bulkCreateChapters is async and exported.
+                await bulkCreateChapters(response.id, lines);
+            }
+        }
+
         revalidatePath('/briefing')
         return { success: true, id: response.id }
     } catch (error) {
