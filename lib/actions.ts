@@ -257,7 +257,7 @@ export async function createChapter(projectId: string, title: string, chapterNo:
                     number: chapterNo,
                 },
                 "Status": {
-                    status: { name: "Drafting" } // or "To Do"
+                    select: { name: "Drafting" }
                 },
                 "Wang-Aksorn Series": {
                     relation: [
@@ -285,7 +285,7 @@ export async function triggerGhostwriter(chapterId: string) {
             page_id: chapterId,
             properties: {
                 "Status": {
-                    status: { name: "Drafting" }
+                    select: { name: "Drafting" }
                 }
             }
         });
