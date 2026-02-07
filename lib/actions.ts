@@ -44,9 +44,7 @@ export async function bulkCreateChapters(projectId: string, chapterTitles: strin
                     "Chapter No.": {
                         number: index + 1,
                     },
-                    "Status": {
-                        select: { name: "Idea" }
-                    },
+
                     "Wang-Aksorn Series": {
                         relation: [{ id: projectId }]
                     }
