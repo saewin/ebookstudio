@@ -45,7 +45,7 @@ export async function bulkCreateChapters(projectId: string, chapterTitles: strin
                         number: index + 1,
                     },
                     "Status": {
-                        status: { name: "Idea" }
+                        select: { name: "Idea" }
                     },
                     "Wang-Aksorn Series": {
                         relation: [{ id: projectId }]
@@ -95,7 +95,7 @@ export async function createBriefing(projectName: string, persona: string, tone:
                     select: { name: tone }
                 },
                 "Status": {
-                    status: { name: "Idea" }
+                    select: { name: "Idea" }
                 }
             },
         })
@@ -232,7 +232,7 @@ export async function triggerExport(projectId: string) {
             page_id: projectId,
             properties: {
                 "Status": {
-                    status: { name: "Publish" }
+                    select: { name: "Publish" }
                 }
             }
         });
@@ -362,7 +362,7 @@ export async function triggerAgentA(projectId: string) {
             page_id: projectId,
             properties: {
                 "Status": {
-                    status: { name: "Generating Content" }
+                    select: { name: "Generating Content" }
                 }
             }
         });
