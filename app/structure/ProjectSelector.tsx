@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Book, ChevronDown, Trash2, Loader2 } from 'lucide-react'
