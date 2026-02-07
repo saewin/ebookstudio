@@ -3,7 +3,6 @@ import { getChapters, getProjects } from '@/lib/notion'
 import ChapterList from './ChapterList'
 import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
-import GenerateStructureButton from './GenerateStructureButton'
 import BulkAddChapter from './BulkAddChapter'
 import { revalidatePath } from 'next/cache'
 
@@ -75,7 +74,6 @@ export default async function StructurePage(props: PageProps) {
                             </button>
                         </form>
                         <BulkAddChapter projectId={activeProjectId} />
-                        <GenerateStructureButton projectId={activeProjectId} />
                     </div>
                 </div>
 
