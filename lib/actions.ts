@@ -106,7 +106,11 @@ export async function createBriefing(projectName: string, persona: string, tone:
                 .map((l: string) => l.replace(/^[-*•\d\.]+\s+/, '').replace(/^[-*•]\s*/, '')); // Clean leading bullets
 
             if (lines.length > 0) {
-                await bulkCreateChapters(response.id, lines);
+                console.log(`[createBriefing] Auto-creating ${lines.length} chapters for new project ${response.id}`);
+                const bulkResult = await bulkCreateChapters(response.id, lines);
+                if (!bulkResult.success) {
+                    console.warn(`[createBriefing] Chapters skipped (likely already exist): ${bulkResult.error}`);
+                }
             }
         }
 
