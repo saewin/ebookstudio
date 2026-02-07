@@ -98,7 +98,7 @@ export default async function StructurePage(props: PageProps) {
                                 </p>
                             </div>
                         ) : (
-                            <ChapterList initialChapters={chapters} statusStyles={statusStyles} />
+                            <ChapterList initialChapters={chapters} statusStyles={statusStyles} projectId={activeProjectId} />
                         )}
                     </div>
                     {/* Custom Chapter Button Area */}

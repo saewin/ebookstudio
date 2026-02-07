@@ -657,3 +657,30 @@ Return ONLY the JSON object, no markdown formatting.
         return { success: false, error: "Failed to generate suggestions" };
     }
 }
+
+export async function refreshChapters(projectId: string) {
+    if (!projectId) return { success: false, error: "No Project ID provided" };
+
+    try {
+        const rawChapters = await getChapters(projectId);
+
+        // Mapping Notion Status (English) -> UI Status (Thai) - Same as in page.tsx
+        const statusMapping: Record<string, string> = {
+            "Approved": "อนุมัติแล้ว",
+            "Reviewing": "รอตรวจทาน",
+            "Drafting": "กำลังเขียน",
+            "To Do": "รอดำเนินการ",
+            "Done": "เสร็จสิ้น"
+        };
+
+        const chapters = rawChapters.map((c: any) => ({
+            ...c,
+            statusDisplay: statusMapping[c.status] || c.status
+        }));
+
+        return { success: true, data: chapters };
+    } catch (error) {
+        console.error("Refresh Chapters Error:", error);
+        return { success: false, error };
+    }
+}

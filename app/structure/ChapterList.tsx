@@ -1,19 +1,47 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { reorderChapters } from '@/lib/actions'
+import { reorderChapters, refreshChapters } from '@/lib/actions'
 import ChapterRow from './ChapterRow'
 import { Loader2, Save } from 'lucide-react'
 
 interface ChapterListProps {
     initialChapters: any[]
     statusStyles: any
+    projectId: string
 }
 
-export default function ChapterList({ initialChapters, statusStyles }: ChapterListProps) {
+export default function ChapterList({ initialChapters, statusStyles, projectId }: ChapterListProps) {
     const [chapters, setChapters] = useState(initialChapters)
     const [saving, setSaving] = useState(false)
     const [isDirty, setIsDirty] = useState(false) // True if order changed
+
+    // Auto-Polling for Status Updates (e.g. waiting for Ghostwriter)
+    useEffect(() => {
+        // Only verify validity if there are chapters in "Writing" (Drafting) mode
+        const hasActiveWriting = chapters.some(c => c.status === 'Drafting' || c.statusDisplay === 'กำลังเขียน');
+
+        if (!hasActiveWriting || !projectId) return;
+
+        console.log("Auto-polling for chapter updates...");
+
+        const interval = setInterval(async () => {
+            const result = await refreshChapters(projectId);
+            if (result.success && result.data) {
+                // If user is actively dragging/reordering (isDirty), DO NOT update the list to avoid jank
+                if (!isDirty) {
+                    setChapters(prev => {
+                        // Simple check: compare length first, then stringify
+                        // Ideally we should compare IDs and Status only, but this is simple enough for small lists
+                        const isDifferent = JSON.stringify(prev) !== JSON.stringify(result.data);
+                        return isDifferent ? result.data : prev;
+                    });
+                }
+            }
+        }, 5000); // Check every 5 seconds
+
+        return () => clearInterval(interval);
+    }, [chapters, isDirty, projectId]);
 
     useEffect(() => {
         setChapters(initialChapters)
