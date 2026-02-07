@@ -58,6 +58,37 @@ export async function deleteProject(projectId: string) {
     }
 }
 
+// function reorderChapters implementation
+
+export async function reorderChapters(orderedIds: string[]) {
+    if (!orderedIds || orderedIds.length === 0) return { success: false, error: "No IDs provided" }
+
+    try {
+        // We need to update each chapter's "Chapter No." based on its index + 1
+        // Notion API has rate limits (3 requests per second on average), so we should be careful.
+        // We can use Promise.all but with a small delay or concurrency limit if list is long.
+        // For < 20 chapters, Promise.all is probably fine.
+
+        const updates = orderedIds.map((id, index) => {
+            return notion.pages.update({
+                page_id: id,
+                properties: {
+                    "Chapter No.": {
+                        number: index + 1
+                    }
+                }
+            })
+        })
+
+        await Promise.all(updates)
+        revalidatePath('/structure')
+        return { success: true }
+    } catch (error) {
+        console.error("Reorder Chapters Error:", error);
+        return { success: false, error }
+    }
+}
+
 export async function deleteChapter(chapterId: string) {
     if (!chapterId) return { success: false, error: "No Chapter ID" }
     try {

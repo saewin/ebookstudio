@@ -1,6 +1,6 @@
 import { RefreshCcw } from 'lucide-react'
 import { getChapters, getProjects } from '@/lib/notion'
-import ChapterRow from './ChapterRow'
+import ChapterList from './ChapterList'
 import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
 import GenerateStructureButton from './GenerateStructureButton'
@@ -97,9 +97,7 @@ export default async function StructurePage(props: PageProps) {
                             </p>
                         </div>
                     ) : (
-                        chapters.map((chapter) => (
-                            <ChapterRow key={chapter.id} chapter={chapter} statusStyles={statusStyles} />
-                        ))
+                        <ChapterList initialChapters={chapters} statusStyles={statusStyles} />
                     )}
                 </div>
                 {/* Custom Chapter Button Area */}
