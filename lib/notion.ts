@@ -44,6 +44,7 @@ export type Chapter = {
     chapterNo: number
     status: string
     content: string
+    hasContent?: boolean
 }
 
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
@@ -75,11 +76,14 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
             // Handle Rollup or direct values safely
             const chapterNo = props['Chapter No.']?.number || 0
 
+            const hasContent = (props['Content(HTML)']?.rich_text?.length || 0) > 0
+
             return {
                 id: page.id,
                 title: props['Chapter Title']?.title[0]?.plain_text || 'Untitled',
                 chapterNo: chapterNo,
                 status: props['Status']?.status?.name || 'Draft',
+                hasContent: hasContent,
                 content: 'Content hidden for list view'
             }
         })

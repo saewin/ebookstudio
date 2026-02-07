@@ -121,13 +121,15 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
             </div>
 
             <div className="flex items-center gap-2">
-                <a
-                    href={`/writing?id=${chapter.id}`}
-                    className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded transition-colors"
-                    title="อ่านเนื้อหา (View Content)"
-                >
-                    <Eye size={18} />
-                </a>
+                {chapter.hasContent && (
+                    <a
+                        href={`/writing?id=${chapter.id}`}
+                        className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded transition-colors"
+                        title="อ่านเนื้อหา (View Content)"
+                    >
+                        <Eye size={18} />
+                    </a>
+                )}
 
                 <button
                     onClick={handleGenerate}
