@@ -45,7 +45,7 @@ export async function bulkCreateChapters(projectId: string, chapterTitles: strin
                         number: index + 1,
                     },
                     "Status": {
-                        select: { name: "Idea" }
+                        status: { name: "Idea" }
                     },
                     "Wang-Aksorn Series": {
                         relation: [{ id: projectId }]
@@ -95,7 +95,7 @@ export async function createBriefing(projectName: string, persona: string, tone:
                     select: { name: tone }
                 },
                 "Status": {
-                    select: { name: "Idea" }
+                    status: { name: "Idea" }
                 }
             },
         })
@@ -232,7 +232,7 @@ export async function triggerExport(projectId: string) {
             page_id: projectId,
             properties: {
                 "Status": {
-                    select: { name: "Publish" }
+                    status: { name: "Publish" }
                 }
             }
         });
@@ -259,7 +259,7 @@ export async function createChapter(projectId: string, title: string, chapterNo:
                     number: chapterNo,
                 },
                 "Status": {
-                    select: { name: "Drafting" } // or "To Do"
+                    status: { name: "Drafting" } // or "To Do"
                 },
                 "Wang-Aksorn Series": {
                     relation: [
@@ -287,7 +287,7 @@ export async function triggerGhostwriter(chapterId: string) {
             page_id: chapterId,
             properties: {
                 "Status": {
-                    select: { name: "Drafting" }
+                    status: { name: "Drafting" }
                 }
             }
         });
@@ -362,7 +362,7 @@ export async function triggerAgentA(projectId: string) {
             page_id: projectId,
             properties: {
                 "Status": {
-                    select: { name: "Generating Content" }
+                    status: { name: "Generating Content" }
                 }
             }
         });
