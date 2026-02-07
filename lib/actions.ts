@@ -337,15 +337,11 @@ ${chapterContent.substring(0, 5000)}
 ---
 
 คำสั่งพิเศษ:
-ถ้าผู้ใช้สั่งให้ "แก้" "เขียนเพิ่ม" "ปรับปรุง" หรือ "เปลี่ยน" เนื้อหาในบท:
-1. ให้คุณเขียนเนื้อหา *ใหม่ทั้งหมด* หรือ *เฉพาะส่วนที่แก้* (แล้วแต่ความเหมาะสม)
-2. ห้ามตอบแค่ว่า "ได้ครับ" แต่ต้องส่งเนื้อหาที่แก้แล้วมาด้วย
-3. ถ้าจะอัพเดทเนื้อหาจริง ให้ครอบเนื้อหาใหม่ด้วย tag นี้:
-<UPDATE_CONTENT>
-...เนื้อหา HTML ที่แก้แล้ว...
-</UPDATE_CONTENT>
-
-(ให้ส่งมาเฉพาะ HTML content ไม่เอา markdown backticks)
+ถ้าผู้ใช้สั่งให้ "แก้" "เขียนเพิ่ม" "ปรับปรุง" หรือ "เปลี่ยน" เนื้อหา:
+1. ให้เสนอเนื้อหาใหม่เฉพาะส่วนที่ต้องแก้
+2. ไม่ต้องส่งเนื้อหาทั้งบทมา (เพื่อประหยัด Token)
+3. ให้ผู้ใช้ Copy ไปวางเอง
+4. ถ้าเป็นโค้ด HTML ให้ใส่ Code Block เพื่อให้ Copy ง่ายๆ
 `;
 
         const messages = [
@@ -377,20 +373,7 @@ ${chapterContent.substring(0, 5000)}
         }
 
         const data = await response.json();
-        let reply = data.choices?.[0]?.message?.content || "ไม่สามารถสร้างคำตอบได้";
-
-        // Check for Update Tags
-        const updateMatch = reply.match(/<UPDATE_CONTENT>([\s\S]*?)<\/UPDATE_CONTENT>/);
-        if (updateMatch && chapterId) {
-            const newContent = updateMatch[1].trim();
-            console.log(`Auto-updating content for Chapter ${chapterId}`);
-
-            // Call update function
-            await updateChapterContent(chapterId, newContent);
-
-            // Remove tags from reply to show user
-            reply = reply.replace(/<UPDATE_CONTENT>[\s\S]*?<\/UPDATE_CONTENT>/, "\n\n✅ *อัพเดทเนื้อหาเรียบร้อยแล้วครับ!*");
-        }
+        const reply = data.choices?.[0]?.message?.content || "ไม่สามารถสร้างคำตอบได้";
 
         return { success: true, reply };
     } catch (error) {
