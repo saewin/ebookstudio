@@ -42,6 +42,22 @@ export async function createBriefing(projectName: string, persona: string, tone:
     }
 }
 
+export async function deleteProject(projectId: string) {
+    if (!projectId) return { success: false, error: "No Project ID provided" }
+
+    try {
+        await notion.pages.update({
+            page_id: projectId,
+            archived: true,
+        });
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error) {
+        console.error("Delete Project Error:", error);
+        return { success: false, error };
+    }
+}
+
 export async function triggerExport(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" }
 
