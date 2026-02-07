@@ -2,13 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Book, ChevronDown, Trash2, Loader2 } from 'lucide-react'
+import { Book, ChevronDown, Trash2, Edit2, Loader2 } from 'lucide-react'
 import { Project } from '@/lib/notion'
-import { deleteProject } from '@/lib/actions'
+import { deleteProject, renameProject } from '@/lib/actions'
 
 export default function ProjectSelector({ projects, activeProjectId }: { projects: Project[], activeProjectId: string }) {
     const router = useRouter()
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isRenaming, setIsRenaming] = useState(false)
 
     // Find active project to display label
     const activeProject = projects.find(p => p.id === activeProjectId) || projects[0]
@@ -20,6 +21,24 @@ export default function ProjectSelector({ projects, activeProjectId }: { project
         } else {
             router.push('/structure')
         }
+    }
+
+    const handleRename = async () => {
+        if (!activeProjectId) return
+        const newTitle = prompt("เปลี่ยนชื่อหนังสือ (Rename Project):", activeProject?.title)
+
+        if (!newTitle || newTitle === activeProject?.title) return
+
+        setIsRenaming(true)
+        const result = await renameProject(activeProjectId, newTitle)
+        if (result && result.success) {
+            // Force refresh to update list
+            router.refresh()
+            // Optional: You might need to reload window if router.refresh() doesn't update the select options immediately in some cases
+        } else {
+            alert('ไม่สามารถเปลี่ยนชื่อได้: ' + result.error)
+        }
+        setIsRenaming(false)
     }
 
     const handleDelete = async () => {
@@ -63,14 +82,25 @@ export default function ProjectSelector({ projects, activeProjectId }: { project
                 </div>
 
                 {activeProjectId && (
-                    <button
-                        onClick={handleDelete}
-                        disabled={isDeleting}
-                        className="flex-none flex items-center justify-center w-12 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg border border-red-200 transition-colors"
-                        title="ลบโครงการ (Delete Project)"
-                    >
-                        {isDeleting ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
-                    </button>
+                    <>
+                        <button
+                            onClick={handleRename}
+                            disabled={isRenaming}
+                            className="flex-none flex items-center justify-center w-12 bg-sky-50 hover:bg-sky-100 text-sky-600 rounded-lg border border-sky-200 transition-colors"
+                            title="แก้ไขชื่อ (Rename Project)"
+                        >
+                            {isRenaming ? <Loader2 size={20} className="animate-spin" /> : <Edit2 size={20} />}
+                        </button>
+
+                        <button
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                            className="flex-none flex items-center justify-center w-12 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg border border-red-200 transition-colors"
+                            title="ลบโครงการ (Delete Project)"
+                        >
+                            {isDeleting ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
+                        </button>
+                    </>
                 )}
             </div>
 
