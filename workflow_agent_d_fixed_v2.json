@@ -1,0 +1,174 @@
+{
+    "id": "9WjuVZUjrpv7bxIL",
+    "name": "Agent D: The Book Binder (Google Docs Export) - FIXED v2",
+    "active": true,
+    "nodes": [
+        {
+            "parameters": {
+                "userId": "e9cb3b06-1eff-4ebd-9e8b-bc0d1e63ef3e",
+                "folderId": {
+                    "__rl": true,
+                    "value": "root",
+                    "mode": "list",
+                    "cachedResultName": "/ (Root folder)"
+                },
+                "name": "={{ $json.fileName.replace('.html', '') }}",
+                "driveId": {
+                    "__rl": true,
+                    "value": "My Drive",
+                    "mode": "list",
+                    "cachedResultName": "My Drive",
+                    "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+                },
+                "options": {
+                    "propertiesUi": {
+                        "propertyValues": [
+                            {
+                                "key": "mimeType",
+                                "value": "application/vnd.google-apps.document"
+                            }
+                        ]
+                    }
+                }
+            },
+            "type": "n8n-nodes-base.googleDrive",
+            "typeVersion": 3,
+            "position": [
+                880,
+                -32
+            ],
+            "id": "e9cb3b06-1eff-4ebd-9e8b-bc0d1e63ef3e",
+            "name": "Create Google Doc",
+            "credentials": {
+                "googleDriveOAuth2Api": {
+                    "id": "U8ZFGaiZrAxmC7d4",
+                    "name": "gDrivezone2"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "path": "book-binder-unused-164",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                1104,
+                0
+            ],
+            "id": "ab891a36-1e74-496f-affb-fcda9b1c8b2b",
+            "name": "Respond to Webhook",
+            "webhookId": "book-binder-unused-164"
+        },
+        {
+            "parameters": {
+                "jsCode": "// --- ส่วนที่แก้: ตรวจสอบรูปแบบข้อมูลอัตโนมัติ ---\nlet results = [];\nconst firstItem = $input.first().json;\n\nif (firstItem.results && Array.isArray(firstItem.results)) {\n    results = firstItem.results; \n} else {\n    results = $input.all().map(item => item.json);\n}\n// ------------------------------------------------\n\nif (!results || results.length === 0) {\n  throw new Error(\"ไม่พบข้อมูลบทเรียน (Chapter Not Found)\");\n}\n\n// เรียงลำดับบท\nresults.sort((a, b) => {\n  let numA = a.properties['Chapter No.']?.number;\n  let numB = b.properties['Chapter No.']?.number;\n  if (numA == null) numA = 999;\n  if (numB == null) numB = 999;\n  return numA - numB;\n});\n\n// Styles (MEB Standard: Sarabun, 16pt, Indent 2.5cm)\nconst style = `\n  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');\n  @page { size: A5; margin: 2cm; }\n  \n  body { \n    font-family: 'Sarabun', sans-serif; \n    font-size: 16pt; /* MEB Standard: 16pt */\n    line-height: 1.6; \n    color: #333; \n  }\n  \n  h1 { \n    font-size: 24pt; /* MEB: 20pt+ */\n    font-weight: bold; \n    text-align: center; \n    margin-bottom: 30px; \n    page-break-before: always; /* Force Page Break Here */\n  }\n\n  h1.first-header {\n    page-break-before: auto; /* Except the very first header */\n  }\n  \n  h2 { font-size: 20pt; margin-top: 20px; font-weight: bold; }\n  \n  p { \n    margin-bottom: 1em; \n    text-align: justify; /* MEB: Justify */\n    text-indent: 2.5cm; /* MEB: Indent 2.5cm */\n  }\n  \n  img { display: block; margin: 20px auto 30px auto; max-width: 100%; }\n  \n  .toc-link { \n    text-decoration: none; \n    color: #000; \n    display: block; \n    margin-bottom: 10px; \n    border-bottom: 1px dotted #ccc; \n    padding-bottom: 5px; \n    text-indent: 0; /* TOC No indent */\n  }\n  \n  .cover { \n    text-align: center; \n    margin-top: 40%; \n    page-break-after: always;\n  }\n  .cover h1 { page-break-before: auto; }\n`;\n\n// สร้างหน้าปกและสารบัญ\nlet fullHtml = `\n<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><style>${style}</style></head><body>\n\n<div class=\"cover\">\n  <h1 style=\"font-size: 36pt;\">My Ebook Draft</h1>\n  <h2 style=\"color: #666;\">Exported by Agent D</h2>\n</div>\n\n<h1 class=\"first-header\">สารบัญ (Table of Contents)</h1>\n<ul>\n`;\n\n// Process Data & Build TOC\nconst chaptersData = results.map((chap, index) => {\n    const props = chap.properties || {};\n    \n    // Clean Title: ลบคำว่า \"บทที่ X\" หรือ \"Chapter X\" ที่ติดมาออก\n    let rawTitle = props['Chapter Title']?.title?.[0]?.plain_text || \"Untitled\";\n    let cleanTitle = rawTitle.replace(/^(บทที่|Chapter)\\s*\\d+[:\\s]*/i, \"\").trim();\n\n    const imgUrl = props['Image 1 URL']?.rich_text?.[0]?.plain_text || \"\"; \n    const contentRich = props['Content(HTML)']?.rich_text || [];\n    \n    let rawBody = contentRich.map(c => c.plain_text).join(\"\");\n    let body = rawBody;\n    if (!rawBody.trim().startsWith(\"<\")) {\n        // Wrap plain text in <p>\n        body = rawBody.split(/\\n/).map(l => l.trim() ? `<p>${l}</p>` : \"\").join(\"\");\n    }\n    \n    // Add to TOC\n    fullHtml += `<li><a href=\"#chap_${index+1}\" class=\"toc-link\">บทที่ ${index+1}: ${cleanTitle}</a></li>`;\n    \n    return { index: index + 1, title: cleanTitle, imgUrl, body, id: `chap_${index+1}` };\n});\n\nfullHtml += `</ul>`;\n\n// เติมเนื้อหาแต่ละบท\nchaptersData.forEach(c => {\n    let imgHtml = \"\";\n    if (c.imgUrl && c.imgUrl.startsWith(\"http\")) {\n        imgHtml = `<img src=\"${c.imgUrl}\" width=\"500\" alt=\"Chapter Image\">`;\n    }\n    \n    // ใช้ h1 ใส่ page-break-before ไว้ใน Style แล้ว\n    fullHtml += `\n    <div id=\"${c.id}\">\n        <h1>บทที่ ${c.index}: ${c.title}</h1>\n        ${imgHtml}\n        ${c.body}\n    </div>\n    `;\n});\n\nfullHtml += `</body></html>`;\n\n// Return Binary\nconst fileName = `Book_Export_${Date.now()}.html`;\nconst buffer = Buffer.from(fullHtml, 'utf8');\nconst base64String = buffer.toString('base64');\n\nreturn {\n  json: { fileName },\n  binary: {\n    data: {\n      data: base64String,\n      mimeType: \"text/html\",\n      fileName: fileName\n    }\n  }\n};"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                448,
+                0
+            ],
+            "id": "b86f508a-c912-4727-abc6-12f82d228202",
+            "name": "Build HTML"
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.notion.com/v1/databases/2e9e19eb-e8da-8063-a2f3-f3c25a5654a8/query",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "notionApi",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Notion-Version",
+                            "value": "2022-06-28"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "filter",
+                            "value": "={{ {\n  \"property\": \"Wang-Aksorn Series\",\n  \"relation\": {\n    \"contains\": $json.body.projectId\n  }\n} }}"
+                        },
+                        {
+                            "name": "sorts",
+                            "value": "={{ [ { \"property\": \"Chapter No.\", \"direction\": \"ascending\" } ] }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                224,
+                0
+            ],
+            "id": "2abb1c11-576d-4cfb-8b9e-095d1414bb7d",
+            "name": "Fetch Chapters",
+            "credentials": {
+                "notionApi": {
+                    "id": "MiVg1l3gYrY4mKJo",
+                    "name": "Notion account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "book-binder-v2",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ],
+            "id": "f7ea62f2-7a46-4a3d-902d-8d441fafefd3",
+            "name": "Webhook",
+            "webhookId": "book-binder-v2"
+        }
+    ],
+    "connections": {
+        "Build HTML": {
+            "main": [
+                [
+                    {
+                        "node": "Create Google Doc",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Chapters": {
+            "main": [
+                [
+                    {
+                        "node": "Build HTML",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Chapters",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
