@@ -406,7 +406,7 @@ export async function triggerBookBinder(projectId: string) {
     try {
         const webhookUrl = process.env.N8N_BOOK_BINDER_WEBHOOK || 'https://flow.supralawyer.com/webhook/book-binder';
 
-        // Wait for response to get the Google Doc URL
+        console.log(`Triggering Book Binder for Project ${projectId}...`);
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -421,9 +421,9 @@ export async function triggerBookBinder(projectId: string) {
         const data = await response.json();
         return { success: true, url: data.docUrl };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Trigger Book Binder Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || String(error) };
     }
 }
 
