@@ -150,52 +150,49 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                     </a>
                 )}
 
-                <button
-                    onClick={handleGenerate}
-                    disabled={loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content'}
-                    className={`
-                        flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded transition-colors
-                        ${(loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content')
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-white border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 shadow-sm'}
-                    `}
-                    title="ให้ AI ช่วยเขียนบทนี้"
-                >
-                    {loading ? (
-                        'Sending...'
-                    ) : (chapter.status === 'Drafting' || chapter.status === 'Generating Content') ? (
-                        <div className="flex items-center gap-1">
-                            <span className="animate-pulse">Writing...</span>
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
-                                    const res = await resetChapterStatus(chapter.id);
-                                    setLoading(false);
-
-                                    if (res.success) {
-                                        window.location.reload();
-                                    } else {
-                                        alert("Reset Failed: " + JSON.stringify(res.error));
-                                    }
-                                }}
-                                className="ml-1 p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
-                                title="Reset Status (Force Unlock)"
-                            >
-                                <RotateCcw size={12} />
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            {chapter.status === 'Reviewing' ? (
-                                <span className="text-orange-600">เขียนใหม่</span>
-                            ) : (
-                                <span>เขียนบทนี้</span>
-                            )}
-                            <Send size={14} className={chapter.status === 'Reviewing' ? "text-orange-600" : ""} />
-                        </>
-                    )}
-                </button>
+                {(loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content') ? (
+                    <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded text-xs font-medium text-slate-400 border border-slate-200">
+                        {loading ? (
+                            'Processing...'
+                        ) : (
+                            <>
+                                <span className="animate-pulse">Writing...</span>
+                                <button
+                                    onClick={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
+                                        setLoading(true);
+                                        const res = await resetChapterStatus(chapter.id);
+                                        if (res.success) {
+                                            window.location.reload();
+                                        } else {
+                                            setLoading(false);
+                                            alert("Reset Failed: " + JSON.stringify(res.error));
+                                        }
+                                    }}
+                                    className="ml-1 p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Reset Status (Force Unlock)"
+                                >
+                                    <RotateCcw size={12} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <button
+                        onClick={handleGenerate}
+                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded bg-white border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 shadow-sm transition-colors"
+                        title="ให้ AI ช่วยเขียนบทนี้"
+                    >
+                        {chapter.status === 'Reviewing' ? (
+                            <span className="text-orange-600">เขียนใหม่</span>
+                        ) : (
+                            <span>เขียนบทนี้</span>
+                        )}
+                        <Send size={14} className={chapter.status === 'Reviewing' ? "text-orange-600" : ""} />
+                    </button>
+                )}
 
                 <button
                     onClick={handleDelete}
