@@ -6,6 +6,8 @@ export const statusMapping: Record<string, string> = {
     "Reviewing": "รอตรวจทาน",
     "Drafting": "กำลังเขียน",
     "To Do": "รอดำเนินการ",
+    "Draft": "ร่าง",
+    "Idea": "ไอเดีย",
     "Done": "เสร็จสิ้น"
 };
 
@@ -15,4 +17,6 @@ export const statusStyles: Record<string, string> = {
     "รอดำเนินการ": "bg-slate-50 text-slate-500 border-slate-200",
     "เสร็จสิ้น": "bg-green-50 text-green-700 border-green-200",
     "รอตรวจทาน": "bg-orange-50 text-orange-700 border-orange-200",
+    "ร่าง": "bg-gray-50 text-gray-400 border-gray-200",
+    "ไอเดีย": "bg-purple-50 text-purple-400 border-purple-200",
 };
