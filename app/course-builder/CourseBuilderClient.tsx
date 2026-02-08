@@ -8,6 +8,7 @@ interface Lesson {
     title: string
     content: string
     order: number
+    quiz?: QuizQuestion[]
 }
 
 interface QuizQuestion {
@@ -20,7 +21,6 @@ interface CourseData {
     title: string
     description: string
     lessons: Lesson[]
-    quiz: QuizQuestion[]
 }
 
 export default function CourseBuilderClient({ projects }: { projects: Project[] }) {
@@ -28,8 +28,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
     const [courseData, setCourseData] = useState<CourseData>({
         title: '',
         description: '',
-        lessons: [],
-        quiz: []
+        lessons: []
     })
     const [isGenerating, setIsGenerating] = useState(false)
     const [isPublishing, setIsPublishing] = useState(false)
@@ -41,8 +40,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
         setCourseData({
             title: project.title,
             description: `คอร์สเรียนจากหนังสือ "${project.title}" - ${project.theme}`,
-            lessons: [],
-            quiz: []
+            lessons: []
         })
         setPublishResult(null)
     }
@@ -58,7 +56,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
 
             // Convert chapters to lessons with professional structure
             const lessons: Lesson[] = [];
-            const quizQuestions: QuizQuestion[] = [];
+
 
             chapters.forEach((ch: any, index: number) => {
                 // Determine order and type
@@ -79,12 +77,13 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                 // Enhanced Content Structure for Active Learning
                 let enhancedContent = ch.content || `เนื้อหาจากบท ${ch.chapterNo}: ${ch.title}`;
 
-                // Add "Action Item" placeholder for regular chapters
+
+                const lessonQuiz: QuizQuestion[] = [];
+                // Add a placeholder quiz question for regular chapters
                 if (!isIntro && !isConclusion) {
                     enhancedContent += `\n\n<h3>🚀 ลงมือทำทันที (Action Item)</h3>\n<p>ลองนำความรู้จากบทนี้ไปปรับใช้กับธุรกิจของคุณ:</p>\n<ul>\n<li>ข้อที่ 1: ...</li>\n<li>ข้อที่ 2: ...</li>\n</ul>`;
 
-                    // Add a placeholder quiz question for this chapter
-                    quizQuestions.push({
+                    lessonQuiz.push({
                         question: `คำถามทบทวนจากบท: ${cleanTitle}`,
                         options: ["ตัวเลือก A", "ตัวเลือก B", "ตัวเลือก C", "ตัวเลือก D"],
                         correctAnswer: 0
@@ -94,7 +93,8 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                 lessons.push({
                     title: cleanTitle,
                     content: enhancedContent,
-                    order: order
+                    order: order,
+                    quiz: lessonQuiz
                 });
             });
 
@@ -103,8 +103,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
 
             setCourseData(prev => ({
                 ...prev,
-                lessons,
-                quiz: quizQuestions
+                lessons
             }))
 
         } catch (error) {
@@ -125,7 +124,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
         }))
     }
 
-    const updateLesson = (index: number, field: keyof Lesson, value: string | number) => {
+    const updateLesson = (index: number, field: Exclude<keyof Lesson, 'quiz'>, value: string | number) => {
         setCourseData(prev => ({
             ...prev,
             lessons: prev.lessons.map((lesson, i) =>
@@ -141,42 +140,62 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
         }))
     }
 
-    const addQuizQuestion = () => {
+    const addLessonQuizQuestion = (lessonIndex: number) => {
         setCourseData(prev => ({
             ...prev,
-            quiz: [...prev.quiz, {
-                question: '',
-                options: ['', '', '', ''],
-                correctAnswer: 0
-            }]
-        }))
-    }
-
-    const updateQuizQuestion = (index: number, field: string, value: any) => {
-        setCourseData(prev => ({
-            ...prev,
-            quiz: prev.quiz.map((q, i) =>
-                i === index ? { ...q, [field]: value } : q
+            lessons: prev.lessons.map((lesson, i) =>
+                i === lessonIndex ? {
+                    ...lesson,
+                    quiz: [...(lesson.quiz || []), {
+                        question: '',
+                        options: ['', '', '', ''],
+                        correctAnswer: 0
+                    }]
+                } : lesson
             )
         }))
     }
 
-    const updateQuizOption = (qIndex: number, optIndex: number, value: string) => {
+    const updateLessonQuizQuestion = (lessonIndex: number, qIndex: number, field: string, value: any) => {
         setCourseData(prev => ({
             ...prev,
-            quiz: prev.quiz.map((q, i) =>
-                i === qIndex ? {
-                    ...q,
-                    options: q.options.map((opt, j) => j === optIndex ? value : opt)
-                } : q
+            lessons: prev.lessons.map((lesson, i) =>
+                i === lessonIndex ? {
+                    ...lesson,
+                    quiz: (lesson.quiz || []).map((q, j) =>
+                        j === qIndex ? { ...q, [field]: value } : q
+                    )
+                } : lesson
             )
         }))
     }
 
-    const removeQuizQuestion = (index: number) => {
+    const updateLessonQuizOption = (lessonIndex: number, qIndex: number, optIndex: number, value: string) => {
         setCourseData(prev => ({
             ...prev,
-            quiz: prev.quiz.filter((_, i) => i !== index)
+            lessons: prev.lessons.map((lesson, i) =>
+                i === lessonIndex ? {
+                    ...lesson,
+                    quiz: (lesson.quiz || []).map((q, j) =>
+                        j === qIndex ? {
+                            ...q,
+                            options: q.options.map((opt, k) => k === optIndex ? value : opt)
+                        } : q
+                    )
+                } : lesson
+            )
+        }))
+    }
+
+    const removeLessonQuizQuestion = (lessonIndex: number, qIndex: number) => {
+        setCourseData(prev => ({
+            ...prev,
+            lessons: prev.lessons.map((lesson, i) =>
+                i === lessonIndex ? {
+                    ...lesson,
+                    quiz: (lesson.quiz || []).filter((_, j) => j !== qIndex)
+                } : lesson
+            )
         }))
     }
 
@@ -185,7 +204,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
         setPublishResult(null)
 
         try {
-            const response = await fetch('https://selfpreneur.club/api/publish-course', {
+            const response = await fetch('/api/publish-course', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -194,7 +213,6 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                     title: courseData.title,
                     description: courseData.description,
                     lessons: courseData.lessons,
-                    quiz: courseData.quiz,
                     source: 'ebook-studio',
                     projectId: selectedProject?.id
                 })
@@ -223,6 +241,9 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
             setIsPublishing(false)
         }
     }
+
+    // Calculate total questions for summary
+    const totalQuestions = courseData.lessons.reduce((acc, lesson) => acc + (lesson.quiz?.length || 0), 0);
 
     return (
         <div className="space-y-8">
@@ -343,6 +364,11 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                                             {index + 1}
                                         </span>
                                         <span className="font-medium text-slate-700">{lesson.title}</span>
+                                        {lesson.quiz && lesson.quiz.length > 0 && (
+                                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                <HelpCircle size={12} /> {lesson.quiz.length}
+                                            </span>
+                                        )}
                                     </div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); removeLesson(index); }}
@@ -353,23 +379,88 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                                 </div>
 
                                 {expandedLesson === index && (
-                                    <div className="p-4 space-y-3 border-t border-slate-200">
-                                        <div>
-                                            <label className="block text-sm text-slate-600 mb-1">ชื่อบทเรียน</label>
-                                            <input
-                                                type="text"
-                                                value={lesson.title}
-                                                onChange={(e) => updateLesson(index, 'title', e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                                            />
+                                    <div className="p-4 space-y-6 border-t border-slate-200">
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-sm text-slate-600 mb-1">ชื่อบทเรียน</label>
+                                                <input
+                                                    type="text"
+                                                    value={lesson.title}
+                                                    onChange={(e) => updateLesson(index, 'title', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-slate-600 mb-1">เนื้อหา</label>
+                                                <textarea
+                                                    value={lesson.content}
+                                                    onChange={(e) => updateLesson(index, 'content', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm min-h-[150px]"
+                                                />
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm text-slate-600 mb-1">เนื้อหา</label>
-                                            <textarea
-                                                value={lesson.content}
-                                                onChange={(e) => updateLesson(index, 'content', e.target.value)}
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm min-h-[100px]"
-                                            />
+
+                                        {/* Lesson Quiz Section */}
+                                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                                    <HelpCircle size={16} className="text-purple-600" />
+                                                    แบบทดสอบท้ายบท ({lesson.quiz?.length || 0} ข้อ)
+                                                </h4>
+                                                <button
+                                                    onClick={() => addLessonQuizQuestion(index)}
+                                                    className="text-xs text-purple-600 hover:text-purple-700 flex items-center gap-1 border border-purple-200 px-2 py-1 rounded bg-white"
+                                                >
+                                                    <Plus size={12} />
+                                                    เพิ่มคำถาม
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                {(lesson.quiz || []).map((q, qIndex) => (
+                                                    <div key={qIndex} className="bg-white border border-slate-200 rounded p-3 space-y-2">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="text-xs font-medium text-slate-400">ข้อที่ {qIndex + 1}</div>
+                                                            <button
+                                                                onClick={() => removeLessonQuizQuestion(index, qIndex)}
+                                                                className="text-slate-400 hover:text-red-500"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            value={q.question}
+                                                            onChange={(e) => updateLessonQuizQuestion(index, qIndex, 'question', e.target.value)}
+                                                            placeholder="คำถาม..."
+                                                            className="w-full px-2 py-1 border border-slate-200 rounded text-sm mb-2"
+                                                        />
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {q.options.map((opt, optIndex) => (
+                                                                <div key={optIndex} className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`correct-${index}-${qIndex}`}
+                                                                        checked={q.correctAnswer === optIndex}
+                                                                        onChange={() => updateLessonQuizQuestion(index, qIndex, 'correctAnswer', optIndex)}
+                                                                        className="text-green-600"
+                                                                    />
+                                                                    <input
+                                                                        type="text"
+                                                                        value={opt}
+                                                                        onChange={(e) => updateLessonQuizOption(index, qIndex, optIndex, e.target.value)}
+                                                                        placeholder={`ตัวเลือก ${optIndex + 1}`}
+                                                                        className={`flex-1 px-2 py-1 border rounded text-xs ${q.correctAnswer === optIndex ? 'border-green-400 bg-green-50' : 'border-slate-200'}`}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {(!lesson.quiz || lesson.quiz.length === 0) && (
+                                                    <p className="text-xs text-slate-400 text-center py-2">ยังไม่มีแบบทดสอบในบทนี้</p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -379,87 +470,11 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
                 </section>
             )}
 
-            {/* Step 3: Quiz Section */}
-            {selectedProject && courseData.lessons.length > 0 && (
-                <section className="bg-white rounded-xl border border-slate-200 p-6">
-                    <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2 mb-4">
-                        <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm">3</span>
-                        สร้างคำถาม-คำตอบ (Quiz)
-                    </h2>
-
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-medium text-slate-800 flex items-center gap-2">
-                                <HelpCircle size={18} />
-                                คำถาม ({courseData.quiz.length} ข้อ)
-                            </h3>
-                            <button
-                                onClick={addQuizQuestion}
-                                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                            >
-                                <Plus size={16} />
-                                เพิ่มคำถาม
-                            </button>
-                        </div>
-
-                        {courseData.quiz.map((q, qIndex) => (
-                            <div key={qIndex} className="border border-slate-200 rounded-lg p-4 space-y-3">
-                                <div className="flex items-start justify-between">
-                                    <span className="w-6 h-6 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-xs font-medium">
-                                        {qIndex + 1}
-                                    </span>
-                                    <button
-                                        onClick={() => removeQuizQuestion(qIndex)}
-                                        className="text-slate-400 hover:text-red-500"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm text-slate-600 mb-1">คำถาม</label>
-                                    <input
-                                        type="text"
-                                        value={q.question}
-                                        onChange={(e) => updateQuizQuestion(qIndex, 'question', e.target.value)}
-                                        placeholder="พิมพ์คำถามที่นี่..."
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    {q.options.map((opt, optIndex) => (
-                                        <div key={optIndex} className="flex items-center gap-2">
-                                            <input
-                                                type="radio"
-                                                name={`correct-${qIndex}`}
-                                                checked={q.correctAnswer === optIndex}
-                                                onChange={() => updateQuizQuestion(qIndex, 'correctAnswer', optIndex)}
-                                                className="text-green-600"
-                                            />
-                                            <input
-                                                type="text"
-                                                value={opt}
-                                                onChange={(e) => updateQuizOption(qIndex, optIndex, e.target.value)}
-                                                placeholder={`ตัวเลือก ${optIndex + 1}`}
-                                                className={`flex-1 px-3 py-2 border rounded-lg text-sm ${q.correctAnswer === optIndex ? 'border-green-400 bg-green-50' : 'border-slate-200'
-                                                    }`}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                                <p className="text-xs text-slate-500">* เลือกวงกลมหน้าคำตอบที่ถูกต้อง</p>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            {/* Step 4: Publish */}
+            {/* Step 3: Publish */}
             {selectedProject && courseData.lessons.length > 0 && (
                 <section className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
                     <h2 className="text-lg font-semibold flex items-center gap-2 mb-2">
-                        <span className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-sm">4</span>
+                        <span className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center text-sm">3</span>
                         ส่งไปยัง Selfpreneur Academy
                     </h2>
                     <p className="text-blue-100 text-sm mb-4">
@@ -482,7 +497,7 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
 
                         <div className="text-sm">
                             <div className="text-white/80">สรุป:</div>
-                            <div>{courseData.lessons.length} บทเรียน • {courseData.quiz.length} คำถาม</div>
+                            <div>{courseData.lessons.length} บทเรียน • {totalQuestions} คำถาม</div>
                         </div>
                     </div>
 
