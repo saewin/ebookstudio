@@ -5,6 +5,7 @@ import { Printer, Settings2, FileText, ArrowLeft, Type, Settings } from 'lucide-
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 
 interface Chapter {
     id: string
@@ -150,7 +151,7 @@ export default function BookViewer({ chapters, projectTitle, projectId }: { chap
                             </div>
 
                             <div className={`prose ${sizeClass} prose-headings:font-bold prose-headings:text-black prose-p:text-black prose-p:indent-[1cm] prose-p:mb-4 prose-h3:text-2xl prose-h3:mt-8 prose-h3:mb-4 prose-h4:text-xl prose-h4:mt-6 prose-h4:mb-2 max-w-none text-justify ${leadingClass}`}>
-                                <ReactMarkdown>{chapter.content}</ReactMarkdown>
+                                <ReactMarkdown rehypePlugins={[rehypeRaw]}>{chapter.content}</ReactMarkdown>
                             </div>
 
                             {/* End of Chapter Marker */}
