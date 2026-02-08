@@ -169,11 +169,16 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                             <button
                                 onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (!confirm('Force Reset Status? Use this if the AI process is stuck/failed.')) return;
+                                    if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
                                     setLoading(true);
-                                    await resetChapterStatus(chapter.id);
+                                    const res = await resetChapterStatus(chapter.id);
                                     setLoading(false);
-                                    router.refresh();
+
+                                    if (res.success) {
+                                        router.refresh();
+                                    } else {
+                                        alert("Reset Failed: " + JSON.stringify(res.error));
+                                    }
                                 }}
                                 className="ml-1 p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
                                 title="Reset Status (Force Unlock)"
