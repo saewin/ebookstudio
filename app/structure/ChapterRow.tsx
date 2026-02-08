@@ -187,8 +187,12 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                         </div>
                     ) : (
                         <>
-                            <Send size={14} />
-                            <span>เขียนบทนี้</span>
+                            {chapter.status === 'Reviewing' ? (
+                                <span className="text-orange-600">เขียนใหม่</span>
+                            ) : (
+                                <span>เขียนบทนี้</span>
+                            )}
+                            <Send size={14} className={chapter.status === 'Reviewing' ? "text-orange-600" : ""} />
                         </>
                     )}
                 </button>
