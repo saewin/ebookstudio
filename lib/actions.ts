@@ -404,9 +404,14 @@ export async function triggerBookBinder(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
-        const webhookUrl = process.env.N8N_BOOK_BINDER_WEBHOOK || 'https://flow.supralawyer.com/webhook/book-binder';
+        let webhookUrl = process.env.N8N_BOOK_BINDER_WEBHOOK || '';
 
-        console.log(`Triggering Book Binder for Project ${projectId}...`);
+        // If the URL is missing or looks like a placeholder, use the hardcoded fallback
+        if (!webhookUrl || !webhookUrl.startsWith('http')) {
+            webhookUrl = 'https://flow.supralawyer.com/webhook/book-binder';
+        }
+
+        console.log(`Triggering Book Binder for Project ${projectId} at ${webhookUrl}...`);
         const response = await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

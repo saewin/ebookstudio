@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { Printer, Settings2, FileText, ArrowLeft, Type, Settings } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
-import { exportToDocx } from '@/lib/docx-export'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 // @ts-ignore
@@ -97,16 +96,19 @@ export default function BookViewer({ chapters, projectTitle, projectId }: { chap
 
                     <button
                         onClick={async () => {
-                            try {
-                                await exportToDocx(projectTitle, chapters);
-                            } catch (error) {
-                                alert('เกิดข้อผิดพลาดในการสร้างไฟล์: ' + error);
+                            if (confirm('ยืนยันส่งข้อมูลไปสร้าง Google Doc? (Agent D)\n(ขั้นตอนนี้ใช้เวลาสักครู่ ระบบจะจัดฟอร์แมต สารบัญ และอัปโหลดขึ้น Google Drive ให้โดยอัตโนมัติครับ)')) {
+                                const res = await triggerBookBinder(projectId);
+                                if (res.success) {
+                                    alert('ส่งคำสั่งเรียบร้อย! Agent D กำลังรวบรวมเล่มและจัดหน้าให้คุณครับ');
+                                } else {
+                                    alert('เกิดข้อผิดพลาด: ' + res.error);
+                                }
                             }
                         }}
                         className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 flex items-center gap-2 px-6 py-2 rounded-full shadow-sm hover:shadow transition-all duration-200 font-medium"
                     >
                         <FileText size={18} className="text-blue-500" />
-                        Download .docx (Direct)
+                        Export to Google Docs (Agent D)
                     </button>
                 </div>
             </div>
