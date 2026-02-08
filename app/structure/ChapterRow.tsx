@@ -170,12 +170,11 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                                 onClick={async (e) => {
                                     e.stopPropagation();
                                     if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
-                                    setLoading(true);
                                     const res = await resetChapterStatus(chapter.id);
                                     setLoading(false);
 
                                     if (res.success) {
-                                        router.refresh();
+                                        window.location.reload();
                                     } else {
                                         alert("Reset Failed: " + JSON.stringify(res.error));
                                     }

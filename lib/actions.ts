@@ -685,7 +685,7 @@ export async function resetChapterStatus(chapterId: string) {
             page_id: chapterId,
             properties: {
                 "Status": {
-                    select: { name: "To Do" }
+                    select: { name: "Idea" }
                 }
             }
         });
