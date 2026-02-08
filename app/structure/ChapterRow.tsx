@@ -152,10 +152,10 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
 
                 <button
                     onClick={handleGenerate}
-                    disabled={loading || chapter.status === 'Drafting' || chapter.status === 'Reviewing' || chapter.status === 'Generating Content'}
+                    disabled={loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content'}
                     className={`
                         flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded transition-colors
-                        ${(loading || chapter.status === 'Drafting' || chapter.status === 'Reviewing' || chapter.status === 'Generating Content')
+                        ${(loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content')
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                             : 'bg-white border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 shadow-sm'}
                     `}
@@ -163,7 +163,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                 >
                     {loading ? (
                         'Sending...'
-                    ) : (chapter.status === 'Drafting' || chapter.status === 'Reviewing' || chapter.status === 'Generating Content') ? (
+                    ) : (chapter.status === 'Drafting' || chapter.status === 'Generating Content') ? (
                         <div className="flex items-center gap-1">
                             <span className="animate-pulse">Writing...</span>
                             <button
