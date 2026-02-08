@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Printer, Settings2, FileText, ArrowLeft, Type, Settings } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
 
 interface Chapter {
     id: string
@@ -148,10 +149,9 @@ export default function BookViewer({ chapters, projectTitle, projectId }: { chap
                                 <h2 className="text-4xl font-bold text-black">{chapter.title}</h2>
                             </div>
 
-                            <div
-                                className={`prose ${sizeClass} prose-headings:font-bold prose-headings:text-black prose-p:text-black prose-p:indent-[2.5cm] max-w-none text-justify ${leadingClass} whitespace-pre-wrap`}
-                                dangerouslySetInnerHTML={{ __html: chapter.content }}
-                            />
+                            <div className={`prose ${sizeClass} prose-headings:font-bold prose-headings:text-black prose-p:text-black prose-p:indent-[1cm] prose-p:mb-4 prose-h3:text-2xl prose-h3:mt-8 prose-h3:mb-4 prose-h4:text-xl prose-h4:mt-6 prose-h4:mb-2 max-w-none text-justify ${leadingClass}`}>
+                                <ReactMarkdown>{chapter.content}</ReactMarkdown>
+                            </div>
 
                             {/* End of Chapter Marker */}
                             <div className="flex justify-center mt-12 mb-4">
