@@ -5,6 +5,7 @@ import { Printer, Settings2, FileText, ArrowLeft, Type, Settings } from 'lucide-
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
+// @ts-ignore
 import rehypeRaw from 'rehype-raw'
 
 interface Chapter {

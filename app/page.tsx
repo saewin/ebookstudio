@@ -1,7 +1,15 @@
 import Link from 'next/link'
-import { Plus, BookOpen, Clock, TrendingUp, MoreHorizontal, ArrowRight } from 'lucide-react'
+import { Plus, BookOpen, Clock, TrendingUp, MoreHorizontal, ArrowRight, Settings, ExternalLink } from 'lucide-react'
+import { getProjects } from '@/lib/notion'
+import { statusStyles } from '@/lib/constants'
 
-export default function Home() {
+export default async function Home() {
+  const projects = await getProjects()
+  const recentProjects = projects.slice(0, 5)
+
+  // Calculate some basic stats
+  const activeProjectsCount = projects.filter(p => p.status !== 'Done' && p.status !== 'เสร็จสิ้น').length
+
   return (
     <div className="space-y-12">
       {/* Header Section */}
@@ -21,22 +29,22 @@ export default function Home() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
-          title="โปรเจกต์ที่กำลังทำ"
-          value="3"
+          title="โปรเจกต์ทั้งหมด"
+          value={projects.length.toString()}
           icon={BookOpen}
+          trend={`กำลังดำเนินการ ${activeProjectsCount}`}
+          trendUp={true}
+        />
+        <StatCard
+          title="โปรเจกต์ใหม่ (เดือนนี้)"
+          value="1"
+          icon={Clock}
           trend="+1 สัปดาห์นี้"
           trendUp={true}
         />
         <StatCard
-          title="คำที่เขียนไปแล้ว"
-          value="12.5k"
-          icon={Clock}
-          trend="+2.5k วันนี้"
-          trendUp={true}
-        />
-        <StatCard
           title="อัตราความสำเร็จ"
-          value="85%"
+          value="100%"
           icon={TrendingUp}
           trend="เป็นไปตามแผน"
           trendUp={true}
@@ -47,9 +55,9 @@ export default function Home() {
       <div className="space-y-6 pt-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-foreground">โปรเจกต์ล่าสุด</h2>
-          <button className="text-sm text-slate-500 hover:text-primary transition-colors flex items-center gap-1">
+          <Link href="/structure" className="text-sm text-slate-500 hover:text-primary transition-colors flex items-center gap-1">
             ดูทั้งหมด <ArrowRight size={14} />
-          </button>
+          </Link>
         </div>
 
         <div className="rounded-lg border border-border overflow-hidden bg-white shadow-sm shadow-slate-100">
@@ -59,30 +67,34 @@ export default function Home() {
                 <tr>
                   <th className="px-6 py-3 font-medium">ชื่อโปรเจกต์</th>
                   <th className="px-6 py-3 font-medium">สถานะ</th>
-                  <th className="px-6 py-3 font-medium">ความคืบหน้า</th>
+                  <th className="px-6 py-3 font-medium">จัดการ</th>
                   <th className="px-6 py-3 font-medium">อัปเดตล่าสุด</th>
-                  <th className="px-6 py-3 text-right font-medium">จัดการ</th>
+                  <th className="px-6 py-3 text-right font-medium">ลิงก์</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                <ProjectRow
-                  name="AI สำหรับนักกฎหมาย"
-                  status="กำลังเขียน"
-                  progress={60}
-                  date="วันนี้, 10:23 น."
-                />
-                <ProjectRow
-                  name="ซื้อขายคริปโต 101"
-                  status="ตรวจทาน"
-                  progress={90}
-                  date="เมื่อวานนี้"
-                />
-                <ProjectRow
-                  name="คู่มือสุขภาพดี"
-                  status="วางแผน"
-                  progress={10}
-                  date="15 ม.ค. 2026"
-                />
+                {recentProjects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    id={project.id}
+                    name={project.title}
+                    status={project.status}
+                    date={new Date(project.lastEditedTime).toLocaleDateString('th-TH', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  />
+                ))}
+                {projects.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                      ยังไม่มีโปรเจกต์ในระบบ เริ่มสร้างเล่มแรกของคุณได้เลย!
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -109,13 +121,12 @@ function StatCard({ title, value, icon: Icon, trend, trendUp }: any) {
   )
 }
 
-function ProjectRow({ name, status, progress, date }: any) {
-  const statusStyles: any = {
-    'กำลังเขียน': 'bg-blue-50 text-blue-700 border-blue-100',
-    'ตรวจทาน': 'bg-amber-50 text-amber-700 border-amber-100',
-    'วางแผน': 'bg-slate-50 text-slate-700 border-slate-200',
-    'เสร็จสิ้น': 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  }
+function ProjectRow({ id, name, status, date }: any) {
+  // Translate status for style lookup
+  const statusThai = status === 'Reviewing' ? 'รอตรวจทาน' :
+    status === 'Drafting' ? 'กำลังเขียน' :
+      status === 'Approved' ? 'อนุมัติแล้ว' :
+        status === 'Done' ? 'เสร็จสิ้น' : 'รอดำเนินการ';
 
   return (
     <tr className="group hover:bg-slate-50 transition-colors">
@@ -126,29 +137,37 @@ function ProjectRow({ name, status, progress, date }: any) {
           </div>
           <div>
             <p className="font-medium text-sm text-foreground">{name}</p>
-            <p className="text-xs text-slate-400">Kindle Edition</p>
+            <p className="text-xs text-slate-400">Ebook Project</p>
           </div>
         </div>
       </td>
       <td className="px-6 py-4">
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusStyles[status] || 'bg-gray-100'}`}>
-          {status}
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusStyles[statusThai] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+          {statusThai}
         </span>
       </td>
       <td className="px-6 py-4">
-        <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="flex items-center gap-2">
+          <Link href={`/writing?projectId=${id}`}>
+            <button className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors rounded-md hover:bg-blue-50" title="โต๊ะเขียนงาน">
+              <Plus size={16} />
+            </button>
+          </Link>
+          <Link href={`/structure?projectId=${id}`}>
+            <button className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors rounded-md hover:bg-blue-50" title="โครงสร้างเล่ม">
+              <Settings size={16} />
+            </button>
+          </Link>
         </div>
-        <span className="text-xs text-slate-400 mt-1.5 block">{progress}%</span>
       </td>
-      <td className="px-6 py-4 text-sm text-slate-500">{date}</td>
+      <td className="px-6 py-4 text-xs text-slate-500 uppercase">{date}</td>
       <td className="px-6 py-4 text-right">
-        <button className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-blue-50">
-          <MoreHorizontal size={16} />
-        </button>
+        <Link href={`/export/view/${id}`}>
+          <button className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium">
+            <ExternalLink size={14} />
+            ดูเล่มจริง
+          </button>
+        </Link>
       </td>
     </tr>
   )

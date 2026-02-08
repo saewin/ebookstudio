@@ -98,6 +98,7 @@ export type Project = {
     status: string
     theme: string
     audience: string
+    lastEditedTime: string
 }
 
 export async function getProjects(): Promise<Project[]> {
@@ -119,7 +120,8 @@ export async function getProjects(): Promise<Project[]> {
                 title: props['Book Title']?.title[0]?.plain_text || 'Untitled Project',
                 status: props['Status']?.select?.name || 'Planning',
                 theme: props['Theme/Topic']?.rich_text[0]?.plain_text || '',
-                audience: props['Target audience']?.rich_text[0]?.plain_text || ''
+                audience: props['Target audience']?.rich_text[0]?.plain_text || '',
+                lastEditedTime: page.last_edited_time
             }
         })
     } catch (error) {
