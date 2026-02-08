@@ -3,6 +3,7 @@ import { fetchAllProjectChapters } from '@/lib/actions'
 import { getProjects } from '@/lib/notion'
 import BookViewer from './BookViewer'
 
+export const dynamic = 'force-dynamic'
 
 export default async function ExportViewPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = await params

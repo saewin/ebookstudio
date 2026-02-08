@@ -3,6 +3,8 @@ import { Plus, BookOpen, Clock, TrendingUp, MoreHorizontal, ArrowRight, Settings
 import { getProjects } from '@/lib/notion'
 import { statusStyles } from '@/lib/constants'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
   const projects = await getProjects()
   const recentProjects = projects.slice(0, 5)
