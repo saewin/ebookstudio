@@ -408,7 +408,7 @@ export async function triggerBookBinder(projectId: string) {
 
         // If the URL is missing or looks like a placeholder, use the hardcoded fallback
         if (!webhookUrl || !webhookUrl.startsWith('http')) {
-            webhookUrl = 'https://flow.supralawyer.com/webhook/book-binder';
+            webhookUrl = 'https://flow.supralawyer.com/webhook/book-binder-v2';
         }
 
         console.log(`Triggering Book Binder for Project ${projectId} at ${webhookUrl}...`);
