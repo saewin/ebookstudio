@@ -99,7 +99,13 @@ export default function BookViewer({ chapters, projectTitle, projectId }: { chap
                             if (confirm('ยืนยันส่งข้อมูลไปสร้าง Google Doc? (Agent D)\n(ขั้นตอนนี้ใช้เวลาสักครู่ ระบบจะจัดฟอร์แมต สารบัญ และอัปโหลดขึ้น Google Drive ให้โดยอัตโนมัติครับ)')) {
                                 const res = await triggerBookBinder(projectId);
                                 if (res.success) {
-                                    alert('ส่งคำสั่งเรียบร้อย! Agent D กำลังรวบรวมเล่มและจัดหน้าให้คุณครับ');
+                                    if (res.url) {
+                                        if (confirm('สร้าง Google Doc เรียบร้อยแล้วครับ!\nต้องการเปิดดูไฟล์ที่จัดหน้าเสร็จแล้วเลยไหมครับ?')) {
+                                            window.open(res.url, '_blank');
+                                        }
+                                    } else {
+                                        alert('ส่งคำสั่งเรียบร้อย! Agent D กำลังรวบรวมเล่มและจัดหน้าให้คุณครับ\n(ระบบจะส่งไฟล์เข้า Google Drive ของคุณโดยอัตโนมัติในอึดใจเดียวครับ)');
+                                    }
                                 } else {
                                     alert('เกิดข้อผิดพลาด: ' + res.error);
                                 }
