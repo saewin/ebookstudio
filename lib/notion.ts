@@ -5,10 +5,9 @@ const notion = new Client({
 })
 
 // Database IDs
-// Chapters DB: 2e9e19eb-e8da-8063-a2f3-f3c25a5654a8 (Linked View ID that works as DB ID)
-// Series DB: 2e9e19eb-e8da-807f-9fbd-ec5224452851 (Confirmed via Parent Page)
-const DATABASE_ID = process.env.NOTION_DATABASE_ID
-const SERIES_DB_ID = '2e9e19eb-e8da-807f-9fbd-ec5224452851';
+import { CHAPTERS_DB_ID, SERIES_DB_ID } from './constants';
+
+const DATABASE_ID = CHAPTERS_DB_ID;
 
 // Helper for native fetch (Bypassing broken Client methods)
 export async function notionQuery(dbId: string, filter?: any, sorts?: any[]) {
@@ -69,7 +68,7 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
         }
 
         // Use native fetch helper
-        const response = await notionQuery(DATABASE_ID, filter, sorts);
+        const response = await notionQuery(DATABASE_ID!, filter, sorts);
 
         return response.results.map((page: any) => {
             const props = page.properties

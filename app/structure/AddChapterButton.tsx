@@ -3,9 +3,11 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { createChapter } from '@/lib/actions'
+import { useRouter } from 'next/navigation'
 
 export default function AddChapterButton({ projectId, nextChapterNo }: { projectId: string, nextChapterNo: number }) {
     const [isCreating, setIsCreating] = useState(false)
+    const router = useRouter()
 
     const handleCreate = async (customConfig?: { title: string, no: number }) => {
         let title = customConfig?.title
@@ -29,7 +31,9 @@ export default function AddChapterButton({ projectId, nextChapterNo }: { project
         const res = await createChapter(projectId, title, no)
         setIsCreating(false)
 
-        if (!res.success) {
+        if (res.success) {
+            router.refresh()
+        } else {
             alert("Failed to create chapter: " + JSON.stringify(res.error))
         }
     }

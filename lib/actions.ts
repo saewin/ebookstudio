@@ -8,8 +8,7 @@ const notion = new Client({
     auth: process.env.NOTION_API_KEY,
 })
 
-const SERIES_DB_ID = '2e9e19eb-e8da-807f-9fbd-ec5224452851';
-const CHAPTERS_DB_ID = process.env.NOTION_DATABASE_ID;
+import { CHAPTERS_DB_ID, SERIES_DB_ID, statusMapping } from './constants';
 
 // function bulkCreateChapters at line 14
 export async function bulkCreateChapters(projectId: string, chapterTitles: string[]) {
@@ -36,7 +35,7 @@ export async function bulkCreateChapters(projectId: string, chapterTitles: strin
         // Create all chapters in parallel
         await Promise.all(chapterTitles.map((title, index) =>
             notion.pages.create({
-                parent: { database_id: CHAPTERS_DB_ID },
+                parent: { database_id: CHAPTERS_DB_ID! },
                 properties: {
                     "Chapter Title": {
                         title: [{ text: { content: title } }],
@@ -274,7 +273,7 @@ export async function createChapter(projectId: string, title: string, chapterNo:
 
         // 2. SERIES LINKAGE: Create with explicit relation
         await notion.pages.create({
-            parent: { database_id: CHAPTERS_DB_ID },
+            parent: { database_id: CHAPTERS_DB_ID! },
             properties: {
                 "Chapter Title": {
                     title: [{ text: { content: title } }],
@@ -664,14 +663,7 @@ export async function refreshChapters(projectId: string) {
     try {
         const rawChapters = await getChapters(projectId);
 
-        // Mapping Notion Status (English) -> UI Status (Thai) - Same as in page.tsx
-        const statusMapping: Record<string, string> = {
-            "Approved": "อนุมัติแล้ว",
-            "Reviewing": "รอตรวจทาน",
-            "Drafting": "กำลังเขียน",
-            "To Do": "รอดำเนินการ",
-            "Done": "เสร็จสิ้น"
-        };
+        // Mapping Notion Status (English) -> UI Status (Thai) - Imported from constants
 
         const chapters = rawChapters.map((c: any) => ({
             ...c,
@@ -681,6 +673,26 @@ export async function refreshChapters(projectId: string) {
         return { success: true, data: chapters };
     } catch (error) {
         console.error("Refresh Chapters Error:", error);
+        return { success: false, error };
+    }
+}
+
+export async function resetChapterStatus(chapterId: string) {
+    if (!chapterId) return { success: false, error: "No Chapter ID provided" };
+
+    try {
+        await notion.pages.update({
+            page_id: chapterId,
+            properties: {
+                "Status": {
+                    select: { name: "To Do" }
+                }
+            }
+        });
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error) {
+        console.error("Reset Chapter Status Error:", error);
         return { success: false, error };
     }
 }

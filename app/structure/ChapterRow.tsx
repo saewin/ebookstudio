@@ -1,8 +1,10 @@
 'use client'
 
-import { MoveVertical, FileText, Send, Eye, Trash2 } from 'lucide-react'
-import { triggerGhostwriter, updateChapterTitle, updateChapterNumber, deleteChapter } from '@/lib/actions'
+import { MoveVertical, FileText, Send, Eye, Trash2, RotateCcw } from 'lucide-react'
+import { triggerGhostwriter, updateChapterTitle, updateChapterNumber, deleteChapter, resetChapterStatus } from '@/lib/actions'
 import { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
 
 export default function ChapterRow({ chapter, statusStyles }: { chapter: any, statusStyles: any }) {
     const [loading, setLoading] = useState(false)
@@ -11,6 +13,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
     const [title, setTitle] = useState(chapter.title)
     const [chapterNo, setChapterNo] = useState(chapter.chapterNo)
     const [isDeleting, setIsDeleting] = useState(false)
+    const router = useRouter()
 
     async function handleGenerate() {
         if (!confirm(`ต้องการส่งบทนี้ให้ AI เขียนเนื้อหาใช่ไหม? "${title}"`)) return
@@ -21,7 +24,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
 
         if (result.success) {
             alert('ส่งคำสั่งให้ Agent B (Ghostwriter) เรียบร้อย! \nระบบจะเริ่มเขียนเนื้อหาให้คุณสักครู่...')
-            window.location.reload()
+            router.refresh()
         } else {
             alert('เกิดข้อผิดพลาด: ' + result.error)
         }
@@ -35,8 +38,9 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
         if (!result.success) {
             alert('ลบไม่สำเร็จ: ' + result.error)
             setIsDeleting(false)
+        } else {
+            router.refresh()
         }
-        // If success, router.refresh happens in action, UI will update automatically or on re-render
     }
 
     async function handleSaveTitle() {
@@ -48,6 +52,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
         const result = await updateChapterTitle(chapter.id, title)
         if (result.success) {
             setIsEditing(false)
+            router.refresh()
         } else {
             alert('Error updating title')
         }
@@ -63,6 +68,7 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
         const result = await updateChapterNumber(chapter.id, newNo)
         if (result.success) {
             setIsEditingNo(false)
+            router.refresh()
         } else {
             alert('Error updating chapter number')
             setChapterNo(chapter.chapterNo) // Revert
@@ -158,9 +164,23 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
                     {loading ? (
                         'Sending...'
                     ) : (chapter.status === 'Drafting' || chapter.status === 'Reviewing' || chapter.status === 'Generating Content') ? (
-                        <>
+                        <div className="flex items-center gap-1">
                             <span className="animate-pulse">Writing...</span>
-                        </>
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm('Force Reset Status? Use this if the AI process is stuck/failed.')) return;
+                                    setLoading(true);
+                                    await resetChapterStatus(chapter.id);
+                                    setLoading(false);
+                                    router.refresh();
+                                }}
+                                className="ml-1 p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
+                                title="Reset Status (Force Unlock)"
+                            >
+                                <RotateCcw size={12} />
+                            </button>
+                        </div>
                     ) : (
                         <>
                             <Send size={14} />

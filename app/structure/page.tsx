@@ -1,19 +1,13 @@
 import { RefreshCcw } from 'lucide-react'
 import { getChapters, getProjects } from '@/lib/notion'
+import { statusMapping, statusStyles } from '@/lib/constants'
 import ChapterList from './ChapterList'
 import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
 import BulkAddChapter from './BulkAddChapter'
 import { revalidatePath } from 'next/cache'
 
-// Mapping Notion Status (English) -> UI Status (Thai)
-const statusMapping: Record<string, string> = {
-    "Approved": "อนุมัติแล้ว",
-    "Reviewing": "รอตรวจทาน",
-    "Drafting": "กำลังเขียน",
-    "To Do": "รอดำเนินการ",
-    "Done": "เสร็จสิ้น"
-}
+// Status Mapping Imported from constants
 
 // Ensure Page receives searchParams correctly
 interface PageProps {
@@ -46,13 +40,7 @@ export default async function StructurePage(props: PageProps) {
             statusDisplay: statusMapping[c.status] || c.status
         }))
 
-        const statusStyles: any = {
-            "อนุมัติแล้ว": "bg-sky-100 text-sky-700 border-sky-200",
-            "กำลังเขียน": "bg-yellow-50 text-yellow-700 border-yellow-200",
-            "รอดำเนินการ": "bg-slate-50 text-slate-500 border-slate-200",
-            "เสร็จสิ้น": "bg-green-50 text-green-700 border-green-200",
-            "รอตรวจทาน": "bg-orange-50 text-orange-700 border-orange-200",
-        }
+        // statusStyles imported from constants
 
         return (
             <div className="space-y-8">
