@@ -83,7 +83,7 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
                 chapterNo: chapterNo,
                 status: props['Status']?.select?.name || 'Draft',
                 hasContent: hasContent,
-                content: 'Content hidden for list view'
+                content: props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || ''
             }
         })
     } catch (error) {

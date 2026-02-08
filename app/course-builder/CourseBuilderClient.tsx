@@ -56,17 +56,57 @@ export default function CourseBuilderClient({ projects }: { projects: Project[] 
             const response = await fetch(`/api/chapters?projectId=${selectedProject.id}`)
             const chapters = await response.json()
 
-            // Convert chapters to lessons
-            const lessons: Lesson[] = chapters.map((ch: any, index: number) => ({
-                title: ch.title,
-                content: ch.content || `เนื้อหาจากบท ${ch.chapterNo}: ${ch.title}`,
-                order: index + 1
-            }))
+            // Convert chapters to lessons with professional structure
+            const lessons: Lesson[] = [];
+            const quizQuestions: QuizQuestion[] = [];
+
+            chapters.forEach((ch: any, index: number) => {
+                // Determine order and type
+                const titleLower = (ch.title || "").toLowerCase();
+                const isIntro = /^(introduction|preface|บทนำ|คำนำ|สารบัญ)/.test(titleLower);
+                const isConclusion = /^(conclusion|summary|บทสรุป|ส่งท้าย)/.test(titleLower);
+
+                let order = index + 1;
+                if (isIntro) order = 0;
+                if (isConclusion) order = 999;
+
+                // Clean Title (Remove redundant "Chapter X:" prefix)
+                let cleanTitle = ch.title || `บทที่ ${index + 1}`;
+                const originalTitle = cleanTitle;
+                cleanTitle = cleanTitle.replace(/^(บทที่|chapter)\s*\d+[:\s]*/i, "").trim();
+                if (!cleanTitle) cleanTitle = originalTitle; // Revert if we wiped it out entirely
+
+                // Enhanced Content Structure for Active Learning
+                let enhancedContent = ch.content || `เนื้อหาจากบท ${ch.chapterNo}: ${ch.title}`;
+
+                // Add "Action Item" placeholder for regular chapters
+                if (!isIntro && !isConclusion) {
+                    enhancedContent += `\n\n<h3>🚀 ลงมือทำทันที (Action Item)</h3>\n<p>ลองนำความรู้จากบทนี้ไปปรับใช้กับธุรกิจของคุณ:</p>\n<ul>\n<li>ข้อที่ 1: ...</li>\n<li>ข้อที่ 2: ...</li>\n</ul>`;
+
+                    // Add a placeholder quiz question for this chapter
+                    quizQuestions.push({
+                        question: `คำถามทบทวนจากบท: ${cleanTitle}`,
+                        options: ["ตัวเลือก A", "ตัวเลือก B", "ตัวเลือก C", "ตัวเลือก D"],
+                        correctAnswer: 0
+                    });
+                }
+
+                lessons.push({
+                    title: cleanTitle,
+                    content: enhancedContent,
+                    order: order
+                });
+            });
+
+            // Sort lessons
+            lessons.sort((a, b) => a.order - b.order);
 
             setCourseData(prev => ({
                 ...prev,
-                lessons
+                lessons,
+                quiz: quizQuestions
             }))
+
         } catch (error) {
             console.error('Error generating lessons:', error)
         } finally {
