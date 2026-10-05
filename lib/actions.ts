@@ -15,6 +15,7 @@ const notion = new Client({
 })
 
 import { CHAPTERS_DB_ID, SERIES_DB_ID, statusMapping } from './constants';
+import { sanitizeBookContent } from './sanitize';
 
 function getGeminiApiKey(): string | undefined {
     return process.env.GEMINI_API_KEY;
@@ -452,10 +453,10 @@ export async function fetchChapterDetails(chapterId: string) {
         const props = response.properties;
         const title = props['Chapter Title']?.title?.[0]?.plain_text || 'Untitled';
         const richText = props['Content(HTML)']?.rich_text || [];
-        const content = richText.map((t: any) => t.plain_text).join('');
+        const content = sanitizeBookContent(richText.map((t: any) => t.plain_text).join(''));
         const chapterNo = props['Chapter No.']?.number || 0;
-        const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || '';
-        const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || '';
+        const keyTakeaways = sanitizeBookContent(props['Key Takeaways']?.rich_text?.[0]?.plain_text || '');
+        const keyTerminology = sanitizeBookContent(props['Key Terminology']?.rich_text?.[0]?.plain_text || '');
         const seriesRelation = props['Wang-Aksorn Series']?.relation || [];
         const projectId = seriesRelation[0]?.id || '';
 
@@ -547,10 +548,11 @@ export async function updateChapterContent(chapterId: string, newContent: string
         // Note: Notion text limits are 2000 chars per block, but rich_text property is different.
         // We will split content into chunks of 2000 characters to be safe for rich_text array.
 
+        const cleanContent = sanitizeBookContent(newContent);
         const chunks = [];
-        for (let i = 0; i < newContent.length; i += 2000) {
+        for (let i = 0; i < cleanContent.length; i += 1900) {
             chunks.push({
-                text: { content: newContent.substring(i, i + 2000) }
+                text: { content: cleanContent.substring(i, i + 1900) }
             });
         }
 
@@ -894,8 +896,9 @@ export async function generateFullProfessionalChapter(
             };
         }
 
-        const finalContent = parsed.contentHtml || rawContent;
-        const finalTakeaways = parsed.keyTakeaways || "";
+        const finalContent = sanitizeBookContent(parsed.contentHtml || rawContent);
+        const finalTakeaways = sanitizeBookContent(parsed.keyTakeaways || "");
+        const finalTerminology = sanitizeBookContent(parsed.keyTerminology || "");
 
         // Helper chunk for Notion rich_text 2000 char limit
         const chunkText = (str: string) => {
@@ -915,6 +918,9 @@ export async function generateFullProfessionalChapter(
                 },
                 "Key Takeaways": {
                     rich_text: chunkText(finalTakeaways)
+                },
+                "Key Terminology": {
+                    rich_text: chunkText(finalTerminology)
                 },
                 "Status": {
                     select: { name: "Reviewing" }

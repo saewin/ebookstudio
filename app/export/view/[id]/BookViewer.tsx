@@ -14,6 +14,7 @@ import ReactMarkdown from 'react-markdown'
 // @ts-ignore
 import rehypeRaw from 'rehype-raw'
 import { Chapter, Project } from '@/lib/notion'
+import { sanitizeBookContent } from '@/lib/sanitize'
 
 interface BookViewerProps {
     chapters: Chapter[];
@@ -171,7 +172,7 @@ function paginateChapterContent({
 // Clean duplicate headings at the beginning of content body
 function cleanContentBody(content?: string, cleanTitle?: string, chapterNo?: number): string {
     if (!content) return '';
-    let cleaned = content.trim();
+    let cleaned = sanitizeBookContent(content).trim();
     if (!cleaned) return '';
 
     // If content starts with an H1-H4 heading repeating the title or "บทที่ X"
@@ -781,7 +782,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         </div>
                                         <div className="text-sm text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                                {page.keyTerminology}
+                                                {sanitizeBookContent(page.keyTerminology)}
                                             </ReactMarkdown>
                                         </div>
                                     </div>
@@ -796,7 +797,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         </div>
                                         <div className="text-sm text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                                {page.keyTakeaways}
+                                                {sanitizeBookContent(page.keyTakeaways)}
                                             </ReactMarkdown>
                                         </div>
                                     </div>

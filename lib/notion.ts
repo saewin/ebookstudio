@@ -6,6 +6,7 @@ const notion = new Client({
 
 // Database IDs
 import { CHAPTERS_DB_ID, SERIES_DB_ID } from './constants';
+import { sanitizeBookContent } from './sanitize';
 
 const DATABASE_ID = CHAPTERS_DB_ID;
 
@@ -98,14 +99,14 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
                 chapterNo: chapterNo,
                 status: props['Status']?.select?.name || 'Draft',
                 hasContent: hasContent,
-                content: props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+                content: sanitizeBookContent(props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || ''),
                 image1Url,
                 image2Url,
                 image3Url,
                 imagePrompt,
                 chapterImage,
-                keyTakeaways,
-                keyTerminology,
+                keyTakeaways: sanitizeBookContent(keyTakeaways),
+                keyTerminology: sanitizeBookContent(keyTerminology),
             }
         })
     } catch (error) {
@@ -195,7 +196,8 @@ export async function getChapterContent(id: string): Promise<string> {
         const response = await notion.pages.retrieve({ page_id: id }) as any
         const props = response.properties
         const richText = props['Content(HTML)']?.rich_text || []
-        return richText.map((t: any) => t.plain_text).join('')
+        const raw = richText.map((t: any) => t.plain_text).join('')
+        return sanitizeBookContent(raw)
     } catch (error) {
         console.error('Error fetching chapter content:', error)
         return ''
