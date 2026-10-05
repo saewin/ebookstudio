@@ -235,12 +235,15 @@ body {
   /* Hide UI elements */
   nav,
   aside,
-  header,
-  footer,
   .no-print,
   button,
   .sidebar-container {
     display: none !important;
+  }
+
+  .book-page-header,
+  .book-page-footer {
+    display: flex !important;
   }
 
   /* Ensure content takes full width */

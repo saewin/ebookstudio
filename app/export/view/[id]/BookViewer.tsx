@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { 
     Printer, FileText, ArrowLeft, Type, Settings, 
     BookOpen, Layers, CheckCircle2, Lightbulb, 
     ExternalLink, BookMarked, Sparkles, Download, 
-    Compass, Layout, FileSpreadsheet
+    Compass, Layout, FileSpreadsheet, ChevronLeft,
+    ChevronRight, ArrowUp, List
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
@@ -19,6 +20,23 @@ interface BookViewerProps {
     projectTitle: string;
     project: Project | null;
     projectId: string;
+}
+
+interface BookPageSheet {
+    pageId: string;
+    chapterId: string;
+    chapterNo: number;
+    chapterTitle: string;
+    fullHeader: string;
+    sectionIndex: number;
+    totalSections: number;
+    isFirstSection: boolean;
+    isLastSection: boolean;
+    content: string;
+    pageNumber: number;
+    imageDirectUrl?: string;
+    keyTerminology?: string;
+    keyTakeaways?: string;
 }
 
 // Convert various Google Drive link formats to direct image URL
@@ -35,13 +53,35 @@ function getDirectImageUrl(url?: string | null): string {
 // Clean duplicate chapter numbering from title if already present
 function cleanChapterTitle(title: string): string {
     if (!title) return '';
-    return title.replace(/^(บทที่\s*\d+|บทนำ|Chapter\s*\d+|Introduction)[:\s.-]*/i, '').trim();
+    const cleaned = title.replace(/^(บทที่\s*\d+|บทนำ|Chapter\s*\d+|Introduction)[:\s.-]*/i, '').trim();
+    if (!cleaned) return title.trim();
+    return cleaned;
 }
 
 // Format Thai Numbers if desired, or standard numbers
 function formatChapterLabel(chapterNo: number): string {
     if (chapterNo === 0) return 'บทนำ';
     return `บทที่ ${chapterNo}`;
+}
+
+// Full descriptive header for running headers/footers
+function getFullChapterHeader(chapterNo: number, title: string): string {
+    const clean = cleanChapterTitle(title);
+    if (chapterNo === 0) {
+        if (!clean || clean === 'บทนำ' || clean === '(Introduction)') {
+            return 'บทนำ (Introduction)';
+        }
+        return `บทนำ: ${clean}`;
+    }
+    return `บทที่ ${chapterNo}: ${clean || title}`;
+}
+
+// Split chapter content into logical sections by <hr> or ---
+function splitChapterIntoSections(content?: string): string[] {
+    if (!content) return [];
+    const parts = content.split(/<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n)/i);
+    const cleanedParts = parts.map(p => p.trim()).filter(p => p.length > 0);
+    return cleanedParts.length > 0 ? cleanedParts : [content.trim()];
 }
 
 // Clean duplicate headings at the beginning of content body
@@ -84,11 +124,15 @@ function transformCrossReferences(content: string, chapters: Chapter[]): string 
 export default function BookViewer({ chapters, projectTitle, project, projectId }: BookViewerProps) {
     const [fontFamily, setFontFamily] = useState<'sarabun' | 'serif' | 'sans'>('sarabun');
     const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg'>('base');
-    const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
     const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
     const [viewMode, setViewMode] = useState<'pages' | 'continuous'>('pages');
     const [isExporting, setIsExporting] = useState(false);
     const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
+
+    // Active reading state for floating status bar
+    const [activePageNum, setActivePageNum] = useState<number>(1);
+    const [activeChapterIndex, setActiveChapterIndex] = useState<number>(0);
+    const [activeChapterTitle, setActiveChapterTitle] = useState<string>('');
 
     const fontClass = 
         fontFamily === 'sarabun' ? 'font-[family-name:var(--font-sarabun)]' : 
@@ -106,32 +150,130 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         'lg': { h1: 'text-4xl', h2: 'text-3xl', h3: 'text-2xl' }
     }[fontSize];
 
-    // Compute estimated page numbers for Table of Contents
-    const tableOfContents = useMemo(() => {
-        // Page 1: Cover
-        // Page 2: Copyright & Imprint
-        // Page 3: Table of Contents
-        let currentPage = 4;
-        const charsPerPage = pageSize === 'a4' ? 1800 : 900;
+    const cleanProjectTitle = projectTitle.replace(/^["']|["']$/g, '');
 
-        return chapters.map((chap) => {
-            const pageNum = currentPage;
-            const contentLen = (chap.content || '').length;
-            const imgCount = (chap.image1Url ? 1 : 0) + (chap.image2Url ? 1 : 0) + (chap.image3Url ? 1 : 0);
-            
-            // Estimated page length: content + image space
-            const estimatedPages = Math.max(1, Math.ceil(contentLen / charsPerPage) + (imgCount > 0 ? 1 : 0));
-            currentPage += estimatedPages;
+    // Compute exact continuous pagination and sub-pages
+    const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber } = useMemo(() => {
+        let currentPage = 4; // Page 1: Cover, Page 2: Imprint, Page 3: TOC
+        const pages: BookPageSheet[] = [];
+        const tocList: Array<{
+            id: string;
+            chapterNo: number;
+            title: string;
+            rawTitle: string;
+            pageNumber: number;
+        }> = [];
 
-            return {
+        chapters.forEach((chap) => {
+            const cleanTitle = cleanChapterTitle(chap.title);
+            const fullHeader = getFullChapterHeader(chap.chapterNo, chap.title);
+            const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
+            const sections = splitChapterIntoSections(chap.content);
+
+            // Record chapter start page for Table of Contents
+            tocList.push({
                 id: chap.id,
                 chapterNo: chap.chapterNo,
-                title: cleanChapterTitle(chap.title),
+                title: cleanTitle,
                 rawTitle: chap.title,
-                pageNumber: pageNum
-            };
+                pageNumber: currentPage,
+            });
+
+            if (sections.length === 0) {
+                pages.push({
+                    pageId: `chapter-${chap.id}-0`,
+                    chapterId: chap.id,
+                    chapterNo: chap.chapterNo,
+                    chapterTitle: cleanTitle,
+                    fullHeader: fullHeader,
+                    sectionIndex: 0,
+                    totalSections: 1,
+                    isFirstSection: true,
+                    isLastSection: true,
+                    content: '<p class="text-slate-400 italic text-center py-12">เนื้อหาในบทนี้อยู่ระหว่างการเรียบเรียง</p>',
+                    pageNumber: currentPage++,
+                    imageDirectUrl: directImgUrl,
+                });
+            } else {
+                sections.forEach((secContent, idx) => {
+                    const isFirst = idx === 0;
+                    const isLast = idx === sections.length - 1;
+
+                    pages.push({
+                        pageId: `chapter-${chap.id}-${idx}`,
+                        chapterId: chap.id,
+                        chapterNo: chap.chapterNo,
+                        chapterTitle: cleanTitle,
+                        fullHeader: fullHeader,
+                        sectionIndex: idx,
+                        totalSections: sections.length,
+                        isFirstSection: isFirst,
+                        isLastSection: isLast,
+                        content: secContent,
+                        pageNumber: currentPage++,
+                        imageDirectUrl: isFirst ? directImgUrl : undefined,
+                        keyTerminology: isLast ? chap.keyTerminology : undefined,
+                        keyTakeaways: isLast ? chap.keyTakeaways : undefined,
+                    });
+                });
+            }
         });
-    }, [chapters, pageSize]);
+
+        const aboutAuthorPage = currentPage++;
+        const total = currentPage; // including Back Cover
+
+        return {
+            allBookPages: pages,
+            tableOfContents: tocList,
+            totalPages: total,
+            aboutAuthorPageNumber: aboutAuthorPage,
+        };
+    }, [chapters]);
+
+    // Active reading tracker via scroll position
+    useEffect(() => {
+        const handleScroll = () => {
+            const pageEls = document.querySelectorAll<HTMLElement>('.book-page[data-page-num]');
+            const scrollPosition = window.scrollY + 250;
+            let matched: HTMLElement | null = null;
+
+            pageEls.forEach((el) => {
+                if (el.offsetTop <= scrollPosition) {
+                    matched = el;
+                }
+            });
+
+            if (matched) {
+                const pageNum = parseInt((matched as HTMLElement).dataset.pageNum || '1', 10);
+                const chapId = (matched as HTMLElement).dataset.chapterId;
+                const fullTitle = (matched as HTMLElement).dataset.chapterFullHeader || '';
+
+                setActivePageNum(pageNum);
+                if (fullTitle) {
+                    setActiveChapterTitle(fullTitle);
+                }
+                if (chapId) {
+                    const idx = chapters.findIndex(c => c.id === chapId);
+                    if (idx !== -1) setActiveChapterIndex(idx);
+                }
+            }
+        };
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        handleScroll();
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, [chapters, allBookPages]);
+
+    const handleNavigateChapter = (direction: 'prev' | 'next') => {
+        const nextIdx = direction === 'prev' ? activeChapterIndex - 1 : activeChapterIndex + 1;
+        if (nextIdx >= 0 && nextIdx < chapters.length) {
+            const targetChapter = chapters[nextIdx];
+            const targetEl = document.getElementById(`chapter-${targetChapter.id}`);
+            if (targetEl) {
+                targetEl.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    };
 
     const handleGoogleDocsExport = async () => {
         if (!confirm('ยืนยันส่งข้อมูลไปสร้าง Google Doc? (Agent D)\nระบบจะจัดรูปแบบเล่ม สารบัญ และอัปโหลดไปยัง Google Drive ของคุณ')) {
@@ -160,12 +302,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         window.print();
     };
 
-    const cleanProjectTitle = projectTitle.replace(/^["']|["']$/g, '');
-
     return (
-        <div className="min-h-screen bg-slate-200/70 flex flex-col selection:bg-blue-100 selection:text-blue-900">
+        <div className="min-h-screen bg-slate-200/70 flex flex-col selection:bg-blue-100 selection:text-blue-900 pb-20 print:pb-0">
             {/* Top Toolbar - Hidden on Print */}
-            <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 py-3 sticky top-0 z-50 shadow-sm no-print">
+            <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 md:px-6 py-3 sticky top-0 z-50 shadow-sm no-print">
                 <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
                     
                     {/* Left: Back & Title info */}
@@ -178,13 +318,13 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <ArrowLeft size={18} />
                         </Link>
                         <div className="border-l border-slate-200 pl-3">
-                            <h1 className="font-bold text-slate-800 text-sm md:text-base line-clamp-1 max-w-md">
+                            <h1 className="font-bold text-slate-800 text-sm md:text-base line-clamp-1 max-w-xs md:max-w-md">
                                 {cleanProjectTitle}
                             </h1>
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                                 <span className="inline-flex items-center gap-1">
                                     <BookOpen size={12} className="text-blue-600" />
-                                    {chapters.length} บท
+                                    {chapters.length} บท ({totalPages} หน้า)
                                 </span>
                                 <span>•</span>
                                 <span>{pageSize.toUpperCase()} Standard</span>
@@ -305,8 +445,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             {/* Book Pages Container */}
             <main className="flex-1 overflow-y-auto py-8 px-4 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible">
                 
-                {/* 1. FRONT COVER PAGE */}
+                {/* 1. FRONT COVER PAGE (Page 1) */}
                 <div 
+                    id="book-cover"
+                    data-page-num="1"
+                    data-chapter-full-header="หน้าปก (Cover)"
                     className={`book-page book-cover relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white overflow-hidden flex flex-col justify-between`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
@@ -346,19 +489,22 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     </div>
                 </div>
 
-                {/* 2. HALF-TITLE & IMPRINT / COPYRIGHT PAGE */}
+                {/* 2. HALF-TITLE & IMPRINT / COPYRIGHT PAGE (Page 2) */}
                 <div 
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-12 md:p-20 flex flex-col justify-between`}
+                    id="book-imprint"
+                    data-page-num="2"
+                    data-chapter-full-header="ข้อมูลลิขสิทธิ์ (Imprint)"
+                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
-                    <div className="pt-24 text-center">
+                    <div className="pt-16 md:pt-24 text-center">
                         <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-2 font-serif">
                             {cleanProjectTitle}
                         </h2>
                         <div className="w-12 h-0.5 bg-slate-300 mx-auto mt-4 mb-2" />
                     </div>
 
-                    <div className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto space-y-4 border-t border-slate-200 pt-8 pb-12">
+                    <div className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto space-y-4 border-t border-slate-200 pt-8 pb-12 w-full">
                         <div className="space-y-1">
                             <p className="font-semibold text-slate-700">{cleanProjectTitle}</p>
                             <p>ผู้เขียน / เรียบเรียง: Saewin</p>
@@ -375,159 +521,229 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             </p>
                         </div>
                     </div>
+
+                    {/* Running Footer Page 2 */}
+                    <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                        <span>Ebook Creator Studio</span>
+                        <span className="text-slate-400 font-serif">❖</span>
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                            หน้า 2
+                        </span>
+                    </div>
                 </div>
 
-                {/* 3. TABLE OF CONTENTS (สารบัญ) */}
+                {/* 3. TABLE OF CONTENTS (สารบัญ - Page 3) */}
                 <div 
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-12 md:p-20 flex flex-col`}
+                    id="table-of-contents"
+                    data-page-num="3"
+                    data-chapter-full-header="สารบัญ (Table of Contents)"
+                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
-                    <div className="text-center mb-12">
-                        <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
-                        <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">สารบัญ</h2>
-                        <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3" />
-                    </div>
+                    <div>
+                        <div className="text-center mb-10">
+                            <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
+                            <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">สารบัญ</h2>
+                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3" />
+                        </div>
 
-                    <div className="space-y-4 max-w-xl mx-auto w-full flex-1">
-                        {tableOfContents.map((item) => (
+                        <div className="space-y-3.5 max-w-xl mx-auto w-full">
+                            {tableOfContents.map((item) => (
+                                <a
+                                    key={item.id}
+                                    href={`#chapter-${item.id}`}
+                                    className="group flex items-baseline justify-between text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer"
+                                >
+                                    <span className="font-bold text-sm md:text-base shrink-0 group-hover:text-blue-600">
+                                        {formatChapterLabel(item.chapterNo)}:
+                                    </span>
+                                    <span className="text-sm md:text-base font-medium truncate mx-2 text-slate-800 group-hover:text-blue-600">
+                                        {item.title}
+                                    </span>
+                                    <span className="flex-1 border-b border-dotted border-slate-300 mx-1 mb-1" />
+                                    <span className="font-mono text-xs md:text-sm font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
+                                        {item.pageNumber}
+                                    </span>
+                                </a>
+                            ))}
+
+                            {/* Entry for About the Author */}
                             <a
-                                key={item.id}
-                                href={`#chapter-${item.id}`}
-                                className="group flex items-baseline justify-between text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer"
+                                href="#about-author"
+                                className="group flex items-baseline justify-between text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer pt-3 border-t border-slate-200 mt-2"
                             >
-                                <span className="font-semibold text-sm md:text-base shrink-0 group-hover:underline">
-                                    {formatChapterLabel(item.chapterNo)}:
+                                <span className="font-bold text-sm md:text-base shrink-0 group-hover:text-blue-600">
+                                    ภาคผนวก:
                                 </span>
-                                <span className="text-sm md:text-base font-normal truncate mx-2 text-slate-800 group-hover:text-blue-600">
-                                    {item.title}
+                                <span className="text-sm md:text-base font-medium truncate mx-2 text-slate-800 group-hover:text-blue-600">
+                                    เกี่ยวกับผู้เขียน (About the Author)
                                 </span>
                                 <span className="flex-1 border-b border-dotted border-slate-300 mx-1 mb-1" />
-                                <span className="font-mono text-xs md:text-sm font-bold text-slate-500 group-hover:text-blue-600 shrink-0">
-                                    {item.pageNumber}
+                                <span className="font-mono text-xs md:text-sm font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
+                                    {aboutAuthorPageNumber}
                                 </span>
                             </a>
-                        ))}
+                        </div>
                     </div>
 
-                    <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center text-xs text-slate-400">
-                        <span>Ebook Creator Studio</span>
-                        <span>สารบัญ</span>
+                    {/* Running Footer Page 3 */}
+                    <div className="book-page-footer mt-auto pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                        <span>สารบัญ (Table of Contents)</span>
+                        <span className="text-slate-400 font-serif">❖</span>
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                            หน้า 3
+                        </span>
                     </div>
                 </div>
 
-                {/* 4. CHAPTER PAGES */}
-                {chapters.map((chapter) => {
-                    const cleanTitle = cleanChapterTitle(chapter.title);
-                    const directImgUrl = getDirectImageUrl(chapter.image1Url || chapter.chapterImage);
-
+                {/* 4. CHAPTER PAGES (Paginated Sub-Page Sheets) */}
+                {allBookPages.map((page) => {
                     return (
                         <article
-                            key={chapter.id}
-                            id={`chapter-${chapter.id}`}
-                            className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
-                                viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'
-                            } bg-white text-slate-900 p-10 md:p-20 transition-all ${fontClass}`}
-                            style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
+                            key={page.pageId}
+                            id={page.isFirstSection ? `chapter-${page.chapterId}` : undefined}
+                            data-page-num={page.pageNumber}
+                            data-chapter-id={page.chapterId}
+                            data-chapter-no={page.chapterNo}
+                            data-chapter-full-header={page.fullHeader}
+                            className={`book-page book-content-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
+                                viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-8'
+                            } bg-white text-slate-900 p-8 md:p-14 lg:p-16 flex flex-col justify-between transition-all ${fontClass}`}
+                            style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
                         >
-                            {/* Running Header */}
-                            <div className="flex justify-between items-center border-b border-slate-200 pb-3 mb-10 text-xs text-slate-400">
-                                <span className="truncate max-w-[280px]">{cleanProjectTitle}</span>
-                                <span className="font-medium text-slate-500">{formatChapterLabel(chapter.chapterNo)}</span>
-                            </div>
-
-                            {/* Chapter Header */}
-                            <header className="mb-10 text-center">
-                                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full uppercase tracking-wider mb-3">
-                                    {formatChapterLabel(chapter.chapterNo)}
+                            {/* Running Header at top of every page */}
+                            <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-6 text-xs text-slate-500 shrink-0 select-none">
+                                <span className="truncate max-w-[240px] md:max-w-xs font-medium text-slate-500">
+                                    {cleanProjectTitle}
                                 </span>
-                                <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
-                                    {cleanTitle}
-                                </h2>
-                                <div className="w-16 h-1 bg-blue-600 mx-auto mt-4 rounded-full" />
-                            </header>
-
-                            {/* Chapter Illustration / Featured Image */}
-                            {directImgUrl && (
-                                <figure className="my-8 text-center break-inside-avoid">
-                                    <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-xl">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                            src={directImgUrl}
-                                            alt={chapter.title}
-                                            className="w-full h-auto object-cover max-h-[360px]"
-                                            loading="lazy"
-                                        />
-                                    </div>
-                                    <figcaption className="mt-3 text-xs text-slate-500 italic">
-                                        ภาพประกอบ {formatChapterLabel(chapter.chapterNo)}: {cleanTitle}
-                                    </figcaption>
-                                </figure>
-                            )}
-
-                            {/* Chapter Content Body */}
-                            <div className={`prose ${sizeClass} max-w-none text-justify book-body-content`}>
-                                <ReactMarkdown 
-                                    rehypePlugins={[rehypeRaw]}
-                                    components={{
-                                        h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-8 mb-4 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                        h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-8 mb-4 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                        h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-6 mb-3`} {...props} />,
-                                        p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
-                                        ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
-                                        ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
-                                        blockquote: ({node, ...props}) => (
-                                            <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-6 text-slate-700 italic" {...props} />
-                                        ),
-                                    }}
-                                >
-                                    {transformCrossReferences(cleanContentBody(chapter.content, cleanTitle, chapter.chapterNo), chapters)}
-                                </ReactMarkdown>
+                                <span className="font-semibold text-slate-700 truncate max-w-[280px] md:max-w-md text-right">
+                                    {page.fullHeader}
+                                </span>
                             </div>
 
-                            {/* Key Terminology Section (If provided) */}
-                            {chapter.keyTerminology && (
-                                <div className="mt-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs">
-                                    <div className="flex items-center gap-2 text-emerald-900 font-bold mb-3">
-                                        <BookMarked size={18} className="text-emerald-600" />
-                                        <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
-                                    </div>
-                                    <div className="text-sm text-slate-700 leading-relaxed">
-                                        <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                            {chapter.keyTerminology}
-                                        </ReactMarkdown>
-                                    </div>
-                                </div>
-                            )}
+                            {/* Middle Body Content */}
+                            <div className="flex-1 flex flex-col">
+                                {/* Chapter Hero Header (Only on First Section) */}
+                                {page.isFirstSection && (
+                                    <header className="mb-8 text-center shrink-0">
+                                        <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider mb-2 border border-blue-100">
+                                            {formatChapterLabel(page.chapterNo)}
+                                        </span>
+                                        <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
+                                            {page.chapterTitle}
+                                        </h2>
+                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-4 rounded-full" />
+                                    </header>
+                                )}
 
-                            {/* Key Takeaways Section (If provided) */}
-                            {chapter.keyTakeaways && (
-                                <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs">
-                                    <div className="flex items-center gap-2 text-blue-900 font-bold mb-3">
-                                        <Lightbulb size={18} className="text-amber-500 fill-amber-500" />
-                                        <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
-                                    </div>
-                                    <div className="text-sm text-slate-700 leading-relaxed">
-                                        <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                            {chapter.keyTakeaways}
-                                        </ReactMarkdown>
-                                    </div>
-                                </div>
-                            )}
+                                {/* Featured Chapter Image (Only on First Section if available) */}
+                                {page.isFirstSection && page.imageDirectUrl && (
+                                    <figure className="my-6 text-center break-inside-avoid shrink-0">
+                                        <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-xl">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={page.imageDirectUrl}
+                                                alt={page.chapterTitle}
+                                                className="w-full h-auto object-cover max-h-[340px]"
+                                                loading="lazy"
+                                            />
+                                        </div>
+                                        <figcaption className="mt-2.5 text-xs text-slate-500 italic">
+                                            ภาพประกอบ {formatChapterLabel(page.chapterNo)}: {page.chapterTitle}
+                                        </figcaption>
+                                    </figure>
+                                )}
 
-                            {/* End of Chapter Ornament */}
-                            <div className="text-center my-12 text-slate-300 tracking-[0.5em] text-lg select-none">
-                                ❖ ❖ ❖
+                                {/* Section Markdown Content */}
+                                <div className={`prose ${sizeClass} max-w-none text-justify book-body-content flex-1`}>
+                                    <ReactMarkdown 
+                                        rehypePlugins={[rehypeRaw]}
+                                        components={{
+                                            h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                            h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                            h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-5 mb-2`} {...props} />,
+                                            p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
+                                            ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
+                                            ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
+                                            blockquote: ({node, ...props}) => (
+                                                <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-6 text-slate-700 italic" {...props} />
+                                            ),
+                                        }}
+                                    >
+                                        {transformCrossReferences(
+                                            cleanContentBody(page.content, page.isFirstSection ? page.chapterTitle : undefined, page.chapterNo), 
+                                            chapters
+                                        )}
+                                    </ReactMarkdown>
+                                </div>
+
+                                {/* Key Terminology Section (Rendered on Last Section) */}
+                                {page.isLastSection && page.keyTerminology && (
+                                    <div className="mt-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0">
+                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-3">
+                                            <BookMarked size={18} className="text-emerald-600" />
+                                            <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
+                                        </div>
+                                        <div className="text-sm text-slate-700 leading-relaxed">
+                                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                                {page.keyTerminology}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Key Takeaways Section (Rendered on Last Section) */}
+                                {page.isLastSection && page.keyTakeaways && (
+                                    <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0">
+                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-3">
+                                            <Lightbulb size={18} className="text-amber-500 fill-amber-500" />
+                                            <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
+                                        </div>
+                                        <div className="text-sm text-slate-700 leading-relaxed">
+                                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                                {page.keyTakeaways}
+                                            </ReactMarkdown>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* End of Chapter Ornament (Rendered on Last Section) */}
+                                {page.isLastSection && (
+                                    <div className="text-center my-8 text-slate-300 tracking-[0.5em] text-lg select-none shrink-0">
+                                        ❖ ❖ ❖
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Running Footer at bottom of every page */}
+                            <div className="book-page-footer mt-8 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0">
+                                <span className="truncate max-w-[240px] md:max-w-md text-slate-600 font-medium">
+                                    {page.fullHeader}
+                                </span>
+                                <span className="text-slate-400 font-serif">❖</span>
+                                <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                                    หน้า {page.pageNumber}
+                                </span>
                             </div>
                         </article>
                     );
                 })}
 
-                {/* 5. BACK MATTER: ABOUT THE AUTHOR */}
+                {/* 5. BACK MATTER: ABOUT THE AUTHOR (ท้ายเล่ม) */}
                 <div 
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-12 md:p-20 flex flex-col justify-between`}
-                    style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
+                    id="about-author"
+                    data-page-num={aboutAuthorPageNumber}
+                    data-chapter-full-header="เกี่ยวกับผู้เขียน (About the Author)"
+                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
+                    style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
-                    <div>
+                    {/* Running Header */}
+                    <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-8 text-xs text-slate-500 select-none">
+                        <span className="truncate max-w-[260px] font-medium text-slate-500">{cleanProjectTitle}</span>
+                        <span className="font-semibold text-slate-700">เกี่ยวกับผู้เขียน (About the Author)</span>
+                    </div>
+
+                    <div className="my-auto">
                         <div className="text-center mb-10">
                             <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">About the Author</span>
                             <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">เกี่ยวกับผู้เขียน</h2>
@@ -536,38 +752,53 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                         <div className="max-w-xl mx-auto space-y-4 text-slate-700 leading-relaxed text-justify">
                             <p className="text-indent-book">
-                                หนังสือเล่มนี้จัดทำขึ้นโดยทีมงานและผู้เชี่ยวชาญด้านระบบอัตโนมัติและปัญญาประดิษฐ์ 
-                                เพื่อเป็นแนวทางและเข็มทิศในการประยุกต์ใช้เทคโนโลยีสมัยใหม่สำหรับผู้ประกอบการ 
-                                และผู้ที่สนใจพัฒนาทักษะในโลกยุคดิจิทัล
+                                หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
+                                และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
                             </p>
                             <p className="text-indent-book">
-                                ขอขอบคุณผู้อ่านทุกท่านที่ให้ความไว้วางใจในการเรียนรู้และร่วมเดินทางไปกับเรา 
-                                หวังเป็นอย่างยิ่งว่าเนื้อหาในเล่มนี้จะช่วยจุดประกายไอเดียและสร้างการเปลี่ยนแปลงที่คุ้มค่าในธุรกิจของท่าน
+                                ถ่ายทอดองค์ความรู้และกลยุทธ์ที่ผ่านการพิสูจน์แล้วจากหน้างานจริง ผสานกรณีศึกษาและงานวิจัยระดับสากล 
+                                เพื่อให้ผู้ประกอบการ ผู้นำองค์กร และผู้สนใจ สามารถนำแนวทางไปปรับใช้ได้จริงอย่างเป็นระบบและยั่งยืน
                             </p>
+                            <p className="text-indent-book">
+                                ขอขอบคุณผู้อ่านทุกท่านที่ร่วมเดินทางไปกับเรา หวังเป็นอย่างยิ่งว่าเนื้อหาในเล่มนี้จะช่วยจุดประกายไอเดีย 
+                                และสร้างการเติบโตแบบก้าวกระโดดให้กับธุรกิจของท่าน
+                            </p>
+                        </div>
+
+                        <div className="text-center pt-8 border-t border-slate-100 max-w-sm mx-auto mt-8">
+                            <p className="text-sm font-semibold text-slate-800">Ebook Creator Studio</p>
+                            <p className="text-xs text-slate-400 mt-1">www.aimar.cloud</p>
                         </div>
                     </div>
 
-                    <div className="text-center pt-8 border-t border-slate-200">
-                        <p className="text-sm font-semibold text-slate-800">Ebook Creator Studio</p>
-                        <p className="text-xs text-slate-400 mt-1">www.aimar.cloud</p>
+                    {/* Running Footer for About the Author */}
+                    <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none">
+                        <span className="text-slate-600 font-medium">เกี่ยวกับผู้เขียน (About the Author)</span>
+                        <span className="text-slate-400 font-serif">❖</span>
+                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                            หน้า {aboutAuthorPageNumber}
+                        </span>
                     </div>
                 </div>
 
-                {/* 6. BACK COVER */}
+                {/* 6. BACK COVER (ปกหลัง) */}
                 <div 
-                    className={`book-page book-cover ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white p-12 md:p-20 flex flex-col justify-between relative overflow-hidden`}
+                    id="back-cover"
+                    data-page-num={totalPages}
+                    data-chapter-full-header="ปกหลัง (Back Cover)"
+                    className={`book-page book-cover ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white p-8 md:p-16 lg:p-20 flex flex-col justify-between relative overflow-hidden`}
                     style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
                 >
                     <div className="absolute inset-0 bg-radial from-slate-900/30 via-slate-950 to-black pointer-events-none" />
                     
                     <div className="relative z-10 pt-10">
                         <span className="text-xs text-amber-400/80 tracking-widest uppercase block mb-3 font-semibold">Synopsis</span>
-                        <h3 className="text-2xl font-bold font-serif text-white mb-6 leading-snug">
+                        <h3 className="text-2xl md:text-3xl font-bold font-serif text-white mb-6 leading-snug">
                             {cleanProjectTitle}
                         </h3>
-                        <p className="text-slate-300 text-sm leading-relaxed mb-6">
+                        <p className="text-slate-300 text-sm md:text-base leading-relaxed mb-6 max-w-xl">
                             คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยีและระบบที่จับต้องได้จริง 
-                            ออกแบบมาสำหรับผู้ที่ต้องการความก้าวหน้าและการเติบโตอย่างยั่งยืน
+                            ออกแบบมาสำหรับผู้ที่ต้องการความก้าวหน้าและการเติบโตอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน
                         </p>
                     </div>
 
@@ -587,14 +818,75 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
             </main>
 
+            {/* Floating Reader Navigation Bar (Fixed bottom, hidden on print) */}
+            <aside 
+                aria-label="Book Navigation"
+                className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 no-print max-w-[95vw] sm:max-w-2xl w-auto"
+            >
+                <div className="bg-slate-900/90 hover:bg-slate-900 backdrop-blur-md text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-2xl border border-slate-700/80 flex items-center gap-2 sm:gap-3 text-xs transition-all">
+                    {/* Previous Chapter */}
+                    <button
+                        onClick={() => handleNavigateChapter('prev')}
+                        disabled={activeChapterIndex <= 0}
+                        className="p-1.5 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-colors flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer"
+                        title="บทก่อนหน้า"
+                    >
+                        <ChevronLeft size={16} />
+                        <span className="hidden md:inline text-[11px]">ก่อนหน้า</span>
+                    </button>
+
+                    {/* Center Chapter & Page Info */}
+                    <div className="flex items-center gap-2 border-x border-slate-700/80 px-2 sm:px-3 text-center">
+                        <span className="font-semibold text-amber-300 truncate max-w-[120px] sm:max-w-[200px] md:max-w-[280px]">
+                            {activeChapterTitle || 'กำลังอ่าน'}
+                        </span>
+                        <span className="text-slate-500">•</span>
+                        <span className="font-mono text-slate-300 font-medium whitespace-nowrap text-[11px] sm:text-xs">
+                            หน้า {activePageNum} / {totalPages}
+                        </span>
+                    </div>
+
+                    {/* Next Chapter */}
+                    <button
+                        onClick={() => handleNavigateChapter('next')}
+                        disabled={activeChapterIndex >= chapters.length - 1}
+                        className="p-1.5 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-colors flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer"
+                        title="บทถัดไป"
+                    >
+                        <span className="hidden md:inline text-[11px]">ถัดไป</span>
+                        <ChevronRight size={16} />
+                    </button>
+
+                    {/* Jump to TOC */}
+                    <a
+                        href="#table-of-contents"
+                        className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors cursor-pointer"
+                        title="ไปที่สารบัญ"
+                    >
+                        <List size={16} />
+                    </a>
+
+                    {/* Scroll to Top */}
+                    <button
+                        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                        className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors cursor-pointer"
+                        title="กลับขึ้นบนสุด"
+                    >
+                        <ArrowUp size={16} />
+                    </button>
+                </div>
+            </aside>
+
             <style jsx global>{`
                 /* Screen page simulation */
                 .page-a4 {
-                    width: 210mm;
+                    width: 100%;
+                    max-width: 210mm;
                     min-height: 297mm;
                 }
                 .page-a5 {
-                    width: 148mm;
+                    width: 100%;
+                    max-width: 148mm;
                     min-height: 210mm;
                 }
                 .page-sheet {
@@ -624,7 +916,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         margin: 0 !important;
                         padding: 0 !important;
                     }
-                    .no-print, header {
+                    .no-print, header, aside {
                         display: none !important;
                     }
                     .print-content {
@@ -636,11 +928,19 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         border-radius: 0 !important;
                         margin: 0 !important;
                         width: 100% !important;
-                        min-height: auto !important;
-                        padding: 0 0 20mm 0 !important;
+                        max-width: none !important;
+                        min-height: 100vh !important;
+                        padding: 0 0 15mm 0 !important;
+                        break-after: page !important;
+                        page-break-after: always !important;
+                    }
+                    .book-page-header,
+                    .book-page-footer {
+                        display: flex !important;
                     }
                     .book-cover {
                         height: 100vh !important;
+                        min-height: 100vh !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
