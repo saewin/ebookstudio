@@ -589,7 +589,7 @@ async function executeLLMCompletion({
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'gemini-2.5-flash',
+                    model: 'gemini-flash-latest',
                     messages,
                     max_tokens: maxTokens,
                     temperature
