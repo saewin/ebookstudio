@@ -6,8 +6,9 @@ export function sanitizeBookContent(raw?: string | null): string {
     if (!raw) return '';
     let text = raw;
 
-    // 1. Unescape literal backslash newline sequences ('\r\n', '\n', '\r')
-    // When LLMs return JSON, double-escaped newlines often leak as literal "\n" strings (code 92 + 110)
+    // 1. Unescape literal backslash quotes and newline sequences ('\r\n', '\n', '\r')
+    // When LLMs return JSON, double-escaped newlines and quotes often leak as literal "\n" strings or \"
+    text = text.replace(/\\"/g, '"');
     text = text.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n');
 
     // 2. Normalize rogue slash-n markers if any LLM or prompt emitted '/n /n' or '/n'

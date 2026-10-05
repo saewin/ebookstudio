@@ -104,22 +104,23 @@ function paginateChapterContent({
     // Block-level tags regex (captures containers, headings, paragraphs, lists, quotes, tables)
     const blockRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<table\b[^>]*>[\s\S]*?<\/table>|#{1,6}\s+[^\n]+)/gi;
 
-    // Weight and capacity configurations
-    // A4: 210x297mm (printable height ~240mm -> ~2400 chars per page)
-    // A5: 148x210mm (printable height ~165mm -> ~1200 chars per page)
-    const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.82 : 1.0);
-    const baseBudget = pageSize === 'a4' ? 2400 : 1200;
+    // Calibrated weight and capacity configurations matching physical A4 & A5 dimensions:
+    // A4 (210x297mm): Printable area with 16pt font (~28 lines) comfortably fits ~1100-1300 chars
+    // A5 (148x210mm): Printable area with 16pt font (~18 lines) comfortably fits ~600-750 chars
+    const fontMultiplier = fontSize === 'sm' ? 1.25 : (fontSize === 'lg' ? 0.8 : 1.0);
+    const baseBudget = pageSize === 'a4' ? 1200 : 650;
     const normalBudget = Math.round(baseBudget * fontMultiplier);
-    const firstPageBudget = Math.round((pageSize === 'a4' ? 1600 : 800) * fontMultiplier) - (hasImage ? (pageSize === 'a4' ? 500 : 350) : 0);
+    const firstPageBudget = Math.round((pageSize === 'a4' ? 800 : 420) * fontMultiplier) - (hasImage ? (pageSize === 'a4' ? 350 : 200) : 0);
 
     function getBlockWeight(block: string): number {
         // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
+        // Boxes have title banners, padding, and outer margins, taking ~1.35x text length + 220 overhead
         if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
-            return Math.round(block.length * 1.05) + 120;
+            return Math.round(block.length * 1.35) + 220;
         }
-        // Headings take vertical spacing
+        // Headings take vertical spacing and margin
         if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
-            return 160;
+            return 180;
         }
         return block.length;
     }
@@ -242,6 +243,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [viewMode, setViewMode] = useState<'pages' | 'continuous'>('pages');
     const [isExporting, setIsExporting] = useState(false);
     const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
+    const [showPrintModal, setShowPrintModal] = useState(false);
 
     // Active reading state for floating status bar
     const [activePageNum, setActivePageNum] = useState<number>(1);
@@ -422,7 +424,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     };
 
     const handlePrint = () => {
-        window.print();
+        setShowPrintModal(true);
     };
 
     return (
@@ -734,7 +736,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             } bg-white text-slate-900 ${
                                 pageSize === 'a4' ? 'p-8 md:p-14 lg:p-16' : 'p-6 md:p-8 lg:p-10'
                             } flex flex-col justify-between transition-all ${fontClass}`}
-                            style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
+                            style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                         >
                             {/* Running Header at top of every page */}
                             <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-6 text-xs text-slate-500 shrink-0 select-none">
@@ -1002,6 +1004,73 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 </div>
             </aside>
 
+            {/* Print Settings Guidance Modal */}
+            {showPrintModal && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                        <div className="flex items-center gap-3 text-blue-700">
+                            <div className="p-2.5 bg-blue-50 rounded-xl">
+                                <Printer size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-base">การตั้งค่าพิมพ์ PDF ให้ตรงกับเล่ม 100%</h3>
+                                <p className="text-xs text-slate-500">กรุณาตั้งค่า 3 จุดในหน้าต่างพิมพ์ของเบราว์เซอร์</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-xl p-4 space-y-3 text-xs text-slate-700 border border-slate-200/80">
+                            <div className="flex items-start gap-2.5">
+                                <span className="font-bold text-blue-700 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">1</span>
+                                <div>
+                                    <strong className="text-slate-900">ปลายทาง (Destination):</strong>
+                                    <p className="text-slate-500 mt-0.5">เลือก <code>บันทึกเป็น PDF (Save as PDF)</code></p>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                                <span className="font-bold text-amber-700 bg-amber-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">2</span>
+                                <div>
+                                    <strong className="text-slate-900">ระยะขอบ (Margins):</strong>
+                                    <p className="text-amber-800 font-semibold mt-0.5">เลือก &quot;ไม่มี&quot; (None) ⚠️ (ห้ามเลือกค่าเริ่มต้น)</p>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                                <span className="font-bold text-rose-700 bg-rose-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">3</span>
+                                <div>
+                                    <strong className="text-slate-900">ส่วนหัวและส่วนท้าย (Headers and footers):</strong>
+                                    <p className="text-rose-800 font-semibold mt-0.5">เอาเครื่องหมายถูกออก (Uncheck) เพื่อไม่ให้มี URL และวันที่รกหัว-ท้ายกระดาษ</p>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                                <span className="font-bold text-emerald-700 bg-emerald-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">4</span>
+                                <div>
+                                    <strong className="text-slate-900">กราฟิกพื้นหลัง (Background graphics):</strong>
+                                    <p className="text-emerald-800 font-semibold mt-0.5">ทำเครื่องหมายถูก (Check) เพื่อให้หน้าปกและกล่องสีแสดงผลสมบูรณ์</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 justify-end pt-2">
+                            <button
+                                onClick={() => setShowPrintModal(false)}
+                                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowPrintModal(false);
+                                    setTimeout(() => window.print(), 150);
+                                }}
+                                className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm shadow-blue-500/30 transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                                <Printer size={14} />
+                                เข้าใจแล้ว, เปิดหน้าต่างพิมพ์ PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style jsx global>{`
                 /* Screen page simulation */
                 .page-a4 {
@@ -1032,14 +1101,17 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 /* Print specific styling */
                 @media print {
                     @page {
-                        size: ${pageSize === 'a5' ? 'A5 portrait' : 'A4 portrait'};
-                        margin: ${pageSize === 'a5' ? '12mm 15mm' : '15mm 20mm'};
+                        size: ${pageSize === 'a5' ? '148mm 210mm' : '210mm 297mm'};
+                        margin: 0 !important;
                     }
                     html, body {
                         background: white !important;
                         color: #111827 !important;
                         margin: 0 !important;
                         padding: 0 !important;
+                        width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
                     .no-print, header, aside {
                         display: none !important;
@@ -1052,34 +1124,39 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         box-shadow: none !important;
                         border-radius: 0 !important;
                         margin: 0 !important;
-                        width: 100% !important;
-                        max-width: none !important;
-                        min-height: 100vh !important;
-                        padding: 0 0 15mm 0 !important;
-                        break-after: page !important;
+                        width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
+                        max-width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
+                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        min-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        padding: ${pageSize === 'a5' ? '12mm 14mm' : '16mm 20mm'} !important;
+                        box-sizing: border-box !important;
                         page-break-after: always !important;
+                        break-after: page !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: space-between !important;
                     }
                     .book-page-header,
                     .book-page-footer {
                         display: flex !important;
+                        flex-shrink: 0 !important;
                     }
                     .book-cover {
-                        height: 100vh !important;
-                        min-height: 100vh !important;
+                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        min-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
-                        padding: 40mm 20mm !important;
+                        padding: ${pageSize === 'a5' ? '18mm 14mm' : '26mm 20mm'} !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
                     }
-                    .break-after-page {
-                        break-after: page !important;
-                        page-break-after: always !important;
-                    }
-                    .break-before-page {
-                        break-before: page !important;
-                        page-break-before: always !important;
-                    }
-                    .break-inside-avoid {
+                    .break-inside-avoid, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
                         page-break-inside: avoid !important;
                     }
