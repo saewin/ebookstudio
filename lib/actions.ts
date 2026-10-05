@@ -16,6 +16,10 @@ const notion = new Client({
 
 import { CHAPTERS_DB_ID, SERIES_DB_ID, statusMapping } from './constants';
 
+function getGeminiApiKey(): string | undefined {
+    return process.env.GEMINI_API_KEY;
+}
+
 // function bulkCreateChapters at line 14
 export async function bulkCreateChapters(projectId: string, chapterTitles: string[]) {
     if (!CHAPTERS_DB_ID) return { success: false, error: "Chapters DB ID not configured" };
@@ -576,37 +580,69 @@ async function executeLLMCompletion({
     maxTokens?: number;
     temperature?: number;
 }): Promise<string> {
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiKey = getGeminiApiKey();
     const openrouterKey = process.env.OPENROUTER_API_KEY;
 
-    // Priority 1: Direct Google Gemini API (if configured via GEMINI_API_KEY - 100% Free via Google AI Studio)
+    // Priority 1: Direct Google Gemini API (Multi-model auto fallback)
     if (geminiKey) {
-        try {
-            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${geminiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'gemini-flash-latest',
-                    messages,
-                    max_tokens: maxTokens,
-                    temperature
-                })
-            });
+        const candidateModels = [
+            'gemini-3.5-flash-lite',
+            'gemini-flash-lite-latest',
+            'gemini-3.1-flash-lite',
+            'gemini-3.8-flash',
+            'gemini-3.5-flash',
+            'gemini-flash-latest'
+        ];
 
-            if (!res.ok) {
-                const errText = await res.text();
-                throw new Error(`Google Gemini API (${res.status}): ${errText}`);
+        let lastGeminiError: any = null;
+
+        for (const model of candidateModels) {
+            try {
+                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${geminiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages,
+                        max_tokens: maxTokens,
+                        temperature
+                    })
+                });
+
+                if (res.status === 503 || res.status === 429) {
+                    const warnText = await res.text();
+                    console.warn(`[Gemini] Model ${model} is busy (${res.status}), trying next candidate...`);
+                    lastGeminiError = new Error(`Google Gemini (${model} - ${res.status}): ${warnText}`);
+                    continue;
+                }
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    lastGeminiError = new Error(`Google Gemini API (${model} - ${res.status}): ${errText}`);
+                    // If 404 model not found, try next candidate
+                    if (res.status === 404) {
+                        continue;
+                    }
+                    throw lastGeminiError;
+                }
+
+                const data = await res.json();
+                const content = data.choices?.[0]?.message?.content || '';
+                if (content) {
+                    return content;
+                }
+            } catch (err: any) {
+                console.warn(`[Gemini] Attempt on ${model} failed:`, err?.message || err);
+                lastGeminiError = err;
             }
+        }
 
-            const data = await res.json();
-            return data.choices?.[0]?.message?.content || '';
-        } catch (err: any) {
-            console.error("Google Gemini Direct Error:", err);
-            // If OpenRouter key is also available, fallback to OpenRouter
-            if (!openrouterKey) throw err;
+        // If OpenRouter key is configured and all Gemini attempts failed, attempt OpenRouter as last resort
+        if (!openrouterKey) {
+            throw lastGeminiError || new Error('Google Gemini API ไม่สามารถให้บริการได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
         }
     }
 
@@ -638,10 +674,10 @@ async function executeLLMCompletion({
             } catch {}
 
             if (status === 402) {
-                throw new Error('เครดิตในบัญชี OpenRouter หมด (ยอดคงเหลือ 0 USD) กรุณาเติมเครดิตที่ https://openrouter.ai/settings/credits หรือระบุ GEMINI_API_KEY จาก Google AI Studio เพื่อใช้งานฟรี');
+                throw new Error('เครดิตในบัญชี OpenRouter หมด (ยอดคงเหลือ 0 USD) และ Google Gemini กำลังมีผู้ใช้งานหนาแน่น กรุณารอสักครู่แล้วลองใหม่');
             }
             if (status === 401) {
-                throw new Error('OpenRouter API Key ไม่ถูกต้อง กรุณาตรวจสอบ OPENROUTER_API_KEY ในการตั้งค่า');
+                throw new Error('OpenRouter API Key ไม่ถูกต้อง กรุณาตรวจสอบ OPENROUTER_API_KEY');
             }
             if (status === 429) {
                 throw new Error('การเรียก AI เกินโควตาชั่วคราว (Rate limit) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
@@ -653,8 +689,9 @@ async function executeLLMCompletion({
         return data.choices?.[0]?.message?.content || '';
     }
 
-    throw new Error('ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ');
+    throw new Error('ยังไม่ได้กำหนด GEMINI_API_KEY หรือ OPENROUTER_API_KEY ในระบบ');
 }
+
 
 // Ghostwriter Chat - Direct API to OpenRouter with Veteran DNA & Global Context
 export async function chatWithGhostwriter(
@@ -663,7 +700,7 @@ export async function chatWithGhostwriter(
     chatHistory: { role: 'user' | 'assistant', content: string }[],
     chapterId?: string
 ) {
-    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
         return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
     }
 
@@ -738,7 +775,7 @@ ${chapterContent.substring(0, 7000)}
 
 // Full Professional Chapter Generator following 7-Pillar Anatomical Framework
 export async function generateFullProfessionalChapter(chapterId: string, projectId?: string) {
-    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
         return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
     }
     if (!chapterId) return { success: false, error: "Missing Chapter ID" };
@@ -871,7 +908,7 @@ export async function generateFullProfessionalChapter(chapterId: string, project
 }
 
 export async function generateBriefingSuggestions(topic: string, targetAudience: string, tone: string) {
-    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
         return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
     }
 
