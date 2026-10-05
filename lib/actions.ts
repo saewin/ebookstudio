@@ -575,79 +575,22 @@ async function executeLLMCompletion({
     messages,
     maxTokens = 3000,
     temperature = 0.7,
+    provider = 'gemini',
 }: {
     messages: Array<{ role: string; content: string }>;
     maxTokens?: number;
     temperature?: number;
+    provider?: 'gemini' | 'openrouter';
 }): Promise<string> {
     const geminiKey = getGeminiApiKey();
     const openrouterKey = process.env.OPENROUTER_API_KEY;
 
-    // Priority 1: Direct Google Gemini API (Multi-model auto fallback)
-    if (geminiKey) {
-        const candidateModels = [
-            'gemini-3.5-flash-lite',
-            'gemini-flash-lite-latest',
-            'gemini-3.1-flash-lite',
-            'gemini-3.8-flash',
-            'gemini-3.5-flash',
-            'gemini-flash-latest'
-        ];
-
-        let lastGeminiError: any = null;
-
-        for (const model of candidateModels) {
-            try {
-                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${geminiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        messages,
-                        max_tokens: maxTokens,
-                        temperature
-                    })
-                });
-
-                if (res.status === 503 || res.status === 429) {
-                    const warnText = await res.text();
-                    console.warn(`[Gemini] Model ${model} is busy (${res.status}), trying next candidate...`);
-                    lastGeminiError = new Error(`Google Gemini (${model} - ${res.status}): ${warnText}`);
-                    continue;
-                }
-
-                if (!res.ok) {
-                    const errText = await res.text();
-                    lastGeminiError = new Error(`Google Gemini API (${model} - ${res.status}): ${errText}`);
-                    // If 404 model not found, try next candidate
-                    if (res.status === 404) {
-                        continue;
-                    }
-                    throw lastGeminiError;
-                }
-
-                const data = await res.json();
-                const content = data.choices?.[0]?.message?.content || '';
-                if (content) {
-                    return content;
-                }
-            } catch (err: any) {
-                console.warn(`[Gemini] Attempt on ${model} failed:`, err?.message || err);
-                lastGeminiError = err;
-            }
-        }
-
-        // If OpenRouter key is configured and all Gemini attempts failed, attempt OpenRouter as last resort
+    // Selected Mode: OpenRouter
+    if (provider === 'openrouter') {
         if (!openrouterKey) {
-            throw lastGeminiError || new Error('Google Gemini API ไม่สามารถให้บริการได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
+            throw new Error('ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ กรุณาตรวจสอบการตั้งค่า');
         }
-    }
 
-    // Priority 2: OpenRouter API
-    if (openrouterKey) {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -674,13 +617,13 @@ async function executeLLMCompletion({
             } catch {}
 
             if (status === 402) {
-                throw new Error('เครดิตในบัญชี OpenRouter หมด (ยอดคงเหลือ 0 USD) และ Google Gemini กำลังมีผู้ใช้งานหนาแน่น กรุณารอสักครู่แล้วลองใหม่');
+                throw new Error('เครดิตในบัญชี OpenRouter หมด (ยอดคงเหลือ 0 USD) กรุณาเติมเครดิตที่ https://openrouter.ai/settings/credits หรือกดใช้ปุ่ม "Gemini (ฟรี)" แทนครับ');
             }
             if (status === 401) {
                 throw new Error('OpenRouter API Key ไม่ถูกต้อง กรุณาตรวจสอบ OPENROUTER_API_KEY');
             }
             if (status === 429) {
-                throw new Error('การเรียก AI เกินโควตาชั่วคราว (Rate limit) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
+                throw new Error('การเรียก OpenRouter เกินโควตาชั่วคราว (Rate limit) กรุณารอสักครู่แล้วลองใหม่');
             }
             throw new Error(`OpenRouter Error (${status}): ${parsedMsg}`);
         }
@@ -689,8 +632,68 @@ async function executeLLMCompletion({
         return data.choices?.[0]?.message?.content || '';
     }
 
-    throw new Error('ยังไม่ได้กำหนด GEMINI_API_KEY หรือ OPENROUTER_API_KEY ในระบบ');
+    // Selected Mode: Gemini Free (Direct Google AI Studio)
+    if (!geminiKey) {
+        throw new Error('ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ');
+    }
+
+    const candidateModels = [
+        'gemini-3.5-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3.1-flash-lite',
+        'gemini-3.8-flash',
+        'gemini-3.5-flash',
+        'gemini-flash-latest'
+    ];
+
+    let lastGeminiError: any = null;
+
+    for (const model of candidateModels) {
+        try {
+            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${geminiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model,
+                    messages,
+                    max_tokens: maxTokens,
+                    temperature
+                })
+            });
+
+            if (res.status === 503 || res.status === 429) {
+                const warnText = await res.text();
+                console.warn(`[Gemini] Model ${model} is busy (${res.status}), trying next candidate...`);
+                lastGeminiError = new Error(`Google Gemini (${model} - ${res.status}): ${warnText}`);
+                continue;
+            }
+
+            if (!res.ok) {
+                const errText = await res.text();
+                lastGeminiError = new Error(`Google Gemini API (${model} - ${res.status}): ${errText}`);
+                if (res.status === 404) {
+                    continue;
+                }
+                throw lastGeminiError;
+            }
+
+            const data = await res.json();
+            const content = data.choices?.[0]?.message?.content || '';
+            if (content) {
+                return content;
+            }
+        } catch (err: any) {
+            console.warn(`[Gemini] Attempt on ${model} failed:`, err?.message || err);
+            lastGeminiError = err;
+        }
+    }
+
+    throw lastGeminiError || new Error('Google Gemini API ไม่สามารถให้บริการได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
 }
+
 
 
 // Ghostwriter Chat - Direct API to OpenRouter with Veteran DNA & Global Context
@@ -698,10 +701,14 @@ export async function chatWithGhostwriter(
     message: string,
     chapterContent: string,
     chatHistory: { role: 'user' | 'assistant', content: string }[],
-    chapterId?: string
+    chapterId?: string,
+    provider: 'gemini' | 'openrouter' = 'gemini'
 ) {
-    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
-        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
+    if (provider === 'gemini' && !getGeminiApiKey()) {
+        return { success: false, error: "ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ" };
+    }
+    if (provider === 'openrouter' && !process.env.OPENROUTER_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ" };
     }
 
     try {
@@ -763,7 +770,8 @@ ${chapterContent.substring(0, 7000)}
         const reply = await executeLLMCompletion({
             messages,
             maxTokens: 4000,
-            temperature: 0.7
+            temperature: 0.7,
+            provider
         });
 
         return { success: true, reply: reply || "ไม่สามารถสร้างคำตอบได้" };
@@ -774,14 +782,21 @@ ${chapterContent.substring(0, 7000)}
 }
 
 // Full Professional Chapter Generator following 7-Pillar Anatomical Framework
-export async function generateFullProfessionalChapter(chapterId: string, projectId?: string) {
-    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
-        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
+export async function generateFullProfessionalChapter(
+    chapterId: string, 
+    projectId?: string,
+    provider: 'gemini' | 'openrouter' = 'gemini'
+) {
+    if (provider === 'gemini' && !getGeminiApiKey()) {
+        return { success: false, error: "ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ" };
+    }
+    if (provider === 'openrouter' && !process.env.OPENROUTER_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ" };
     }
     if (!chapterId) return { success: false, error: "Missing Chapter ID" };
 
     try {
-        console.log(`Generating Full Professional Chapter for ${chapterId}...`);
+        console.log(`Generating Full Professional Chapter for ${chapterId} using provider: ${provider}...`);
 
         // 1. Fetch current chapter details
         const chapRes = await fetchChapterDetails(chapterId);
@@ -838,7 +853,8 @@ export async function generateFullProfessionalChapter(chapterId: string, project
         const rawContent = await executeLLMCompletion({
             messages: [{ role: 'user', content: prompt }],
             maxTokens: 6000,
-            temperature: 0.7
+            temperature: 0.7,
+            provider
         });
 
         let jsonStr = (rawContent || "{}").trim();
@@ -907,9 +923,17 @@ export async function generateFullProfessionalChapter(chapterId: string, project
     }
 }
 
-export async function generateBriefingSuggestions(topic: string, targetAudience: string, tone: string) {
-    if (!process.env.OPENROUTER_API_KEY && !getGeminiApiKey()) {
-        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
+export async function generateBriefingSuggestions(
+    topic: string, 
+    targetAudience: string, 
+    tone: string,
+    provider: 'gemini' | 'openrouter' = 'gemini'
+) {
+    if (provider === 'gemini' && !getGeminiApiKey()) {
+        return { success: false, error: "ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ" };
+    }
+    if (provider === 'openrouter' && !process.env.OPENROUTER_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ" };
     }
 
     try {
@@ -938,7 +962,8 @@ Return ONLY the JSON object, no markdown formatting.
         const content = await executeLLMCompletion({
             messages: [{ role: 'user', content: prompt }],
             maxTokens: 2500,
-            temperature: 0.7
+            temperature: 0.7,
+            provider
         });
 
         let jsonStr = (content || "{}").trim();

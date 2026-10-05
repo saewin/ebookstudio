@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Save, Play, Sparkles, Loader2 } from 'lucide-react'
+import { FileText, Save, Play, Sparkles, Loader2, Zap } from 'lucide-react'
 import { createBriefing, generateBriefingSuggestions } from '@/lib/actions'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 export default function BriefingPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
-    const [generating, setGenerating] = useState(false)
+    const [generatingProvider, setGeneratingProvider] = useState<'gemini' | 'openrouter' | null>(null)
 
     // Form State
     const [formData, setFormData] = useState({
@@ -28,15 +28,15 @@ export default function BriefingPage() {
         setFormData(prev => ({ ...prev, [name]: value }))
     }
 
-    const handleAutoFill = async () => {
+    const handleAutoFill = async (provider: 'gemini' | 'openrouter') => {
         if (!formData.projectName || !formData.persona) {
             alert('กรุณากรอก "ชื่อหนังสือ" และ "กลุ่มเป้าหมาย" ก่อนให้ AI ช่วยคิดครับ')
             return
         }
 
-        setGenerating(true)
-        const result = await generateBriefingSuggestions(formData.projectName, formData.persona, formData.tone)
-        setGenerating(false)
+        setGeneratingProvider(provider)
+        const result = await generateBriefingSuggestions(formData.projectName, formData.persona, formData.tone, provider)
+        setGeneratingProvider(null)
 
         if (result.success && result.data) {
             setFormData(prev => ({
@@ -130,18 +130,32 @@ export default function BriefingPage() {
                     </div>
                 </div>
 
-                {/* AI Magic Button */}
-                <div className="flex justify-end">
+                {/* Dual AI Magic Buttons */}
+                <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-3 pt-1">
+                    <span className="text-xs text-slate-500 font-medium hidden sm:inline">เลือก AI ช่วยคิดกลยุทธ์:</span>
                     <button
                         type="button"
-                        onClick={handleAutoFill}
-                        disabled={generating || !formData.projectName || !formData.persona}
-                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-2 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
+                        onClick={() => handleAutoFill('gemini')}
+                        disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
+                        title="ใช้งานฟรีผ่าน Google Gemini API"
                     >
-                        {generating ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                        {generating ? 'AI กำลังวิเคราะห์กลยุทธ์...' : '✨ ให้ AI ช่วยคิดกลยุทธ์ (Auto-Fill)'}
+                        {generatingProvider === 'gemini' ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} className="text-cyan-200" />}
+                        {generatingProvider === 'gemini' ? 'Gemini กำลังวิเคราะห์...' : '✨ AI ช่วยคิด (Gemini ฟรี)'}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => handleAutoFill('openrouter')}
+                        disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
+                        title="ใช้งานผ่าน OpenRouter (ใช้เครดิตในบัญชี OpenRouter)"
+                    >
+                        {generatingProvider === 'openrouter' ? <Loader2 className="animate-spin" size={17} /> : <Zap size={17} className="text-yellow-200" />}
+                        {generatingProvider === 'openrouter' ? 'OpenRouter กำลังวิเคราะห์...' : '⚡ AI ช่วยคิด (OpenRouter)'}
                     </button>
                 </div>
+
 
                 {/* Section 2: Strategic Deep Dive */}
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">

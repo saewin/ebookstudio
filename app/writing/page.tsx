@@ -3,7 +3,7 @@
 import { 
     Save, Sparkles, Send, RefreshCcw, Loader2, 
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
-    FileText, ArrowRight, Wand2 
+    FileText, ArrowRight, Wand2, Zap 
 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
@@ -36,7 +36,8 @@ function WritingContent() {
     } | null>(null)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
-    const [generatingFull, setGeneratingFull] = useState(false)
+    const [generatingFull, setGeneratingFull] = useState<'gemini' | 'openrouter' | null>(null)
+    const [aiProvider, setAiProvider] = useState<'gemini' | 'openrouter'>('gemini')
 
     // Chat states
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -61,19 +62,20 @@ function WritingContent() {
         setSaving(false)
     }
 
-    async function handleGenerateFull() {
+    async function handleGenerateFull(provider: 'gemini' | 'openrouter') {
         if (!chapterId) return
+        const providerLabel = provider === 'gemini' ? 'Google Gemini (ฟรี)' : 'OpenRouter (ใช้เครดิต)'
         const confirmed = confirm(
-            `ต้องการให้ AI เขียน/ยกระดับเนื้อหาบทที่ ${data?.chapterNo}: "${data?.title}"\n` +
+            `ต้องการให้ AI (${providerLabel}) เขียน/ยกระดับเนื้อหาบทที่ ${data?.chapterNo}: "${data?.title}"\n` +
             `ด้วย Veteran Framework (ประสบการณ์ 25 ปี IT + 20 ปี E-commerce, Direct Marketing & SA)\n` +
             `มีครบ 7 เสาหลัก: War Story, เคสตัวอย่าง/งานวิจัย, คลังคำศัพท์, และการอ้างอิงข้ามบท ใช่ไหม?\n\n` +
             `(ระบบจะใช้เวลาประมวลผลประมาณ 15-30 วินาที)`
         )
         if (!confirmed) return
 
-        setGeneratingFull(true)
+        setGeneratingFull(provider)
         try {
-            const res = await generateFullProfessionalChapter(chapterId, data?.projectId)
+            const res = await generateFullProfessionalChapter(chapterId, data?.projectId, provider)
             if (res.success && res.data) {
                 setData(prev => prev ? {
                     ...prev,
@@ -81,16 +83,17 @@ function WritingContent() {
                     keyTakeaways: res.data.keyTakeaways,
                     keyTerminology: res.data.keyTerminology
                 } : null)
-                alert('เขียนเนื้อหาบทตาม Veteran Framework เรียบร้อยแล้ว!')
+                alert(`เขียนเนื้อหาบทด้วย ${providerLabel} เรียบร้อยแล้ว!`)
             } else {
                 alert('เกิดข้อผิดพลาด: ' + (res.error || 'ไม่สามารถสร้างเนื้อหาได้'))
             }
         } catch (err: any) {
             alert('เกิดข้อผิดพลาด: ' + err.message)
         } finally {
-            setGeneratingFull(false)
+            setGeneratingFull(null)
         }
     }
+
 
     const handleQuickPrompt = (promptText: string) => {
         setChatInput(promptText)
@@ -126,7 +129,8 @@ function WritingContent() {
                 userMessage,
                 data?.content || '',
                 chatMessages,
-                chapterId || undefined
+                chapterId || undefined,
+                aiProvider
             )
 
             if (res.success && res.reply) {
@@ -198,22 +202,41 @@ function WritingContent() {
                         <h1 className="text-xl font-serif font-bold text-slate-900 mt-1 line-clamp-1">{data?.title}</h1>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
-                            onClick={handleGenerateFull}
-                            disabled={generatingFull || saving}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 text-white font-medium rounded-lg text-sm shadow-md hover:from-blue-800 hover:to-slate-950 transition-all disabled:opacity-50 cursor-pointer"
-                            title="เขียนเนื้อหาทั้งบทตามกรอบ 25 ปี IT + 20 ปี E-commerce"
+                            onClick={() => handleGenerateFull('gemini')}
+                            disabled={generatingFull !== null || saving}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-700 to-indigo-700 text-white font-medium rounded-lg text-xs md:text-sm shadow-md hover:from-blue-800 hover:to-indigo-800 transition-all disabled:opacity-50 cursor-pointer"
+                            title="เขียนเนื้อหาทั้งบทฟรีด้วย Google Gemini (Veteran Framework)"
                         >
-                            {generatingFull ? (
+                            {generatingFull === 'gemini' ? (
                                 <>
-                                    <Loader2 size={16} className="animate-spin" />
-                                    <span>กำลังเขียนด้วย Veteran Framework...</span>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span>Gemini กำลังเขียน...</span>
                                 </>
                             ) : (
                                 <>
-                                    <Wand2 size={16} className="text-amber-300" />
-                                    <span>เขียนเต็มบท (Veteran Framework)</span>
+                                    <Sparkles size={15} className="text-cyan-200" />
+                                    <span>✨ เขียนเต็มบท (Gemini ฟรี)</span>
+                                </>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={() => handleGenerateFull('openrouter')}
+                            disabled={generatingFull !== null || saving}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-700 to-pink-700 text-white font-medium rounded-lg text-xs md:text-sm shadow-md hover:from-purple-800 hover:to-pink-800 transition-all disabled:opacity-50 cursor-pointer"
+                            title="เขียนเนื้อหาทั้งบทด้วย OpenRouter (ใช้เครดิตในบัญชี OpenRouter)"
+                        >
+                            {generatingFull === 'openrouter' ? (
+                                <>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span>OpenRouter กำลังเขียน...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Zap size={15} className="text-yellow-200" />
+                                    <span>⚡ เขียนเต็มบท (OpenRouter)</span>
                                 </>
                             )}
                         </button>
@@ -227,6 +250,7 @@ function WritingContent() {
                             <span>บันทึก</span>
                         </button>
                     </div>
+
                 </div>
 
                 {/* 7 Pillars Status Bar */}
@@ -268,18 +292,39 @@ function WritingContent() {
                 <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex-1 flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="p-4 border-b border-slate-100 bg-slate-50/70">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-xs">
                                     <Sparkles size={16} />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold text-slate-900 text-sm">ผู้ช่วยนักเขียน (Veteran Ghostwriter)</h3>
-                                    <p className="text-[11px] text-slate-500">25y IT + 20y E-commerce / SA DNA</p>
+                                    <h3 className="font-semibold text-slate-900 text-sm">ผู้ช่วยนักเขียน</h3>
+                                    <p className="text-[11px] text-slate-500">25y IT + 20y E-commerce</p>
                                 </div>
+                            </div>
+
+                            {/* Dual Engine Switch Pill */}
+                            <div className="flex items-center bg-slate-200/90 p-0.5 rounded-lg text-[11px] font-medium">
+                                <button
+                                    type="button"
+                                    onClick={() => setAiProvider('gemini')}
+                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${aiProvider === 'gemini' ? 'bg-white text-blue-700 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+                                    title="ใช้งาน Google Gemini ฟรี"
+                                >
+                                    Gemini ฟรี
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAiProvider('openrouter')}
+                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${aiProvider === 'openrouter' ? 'bg-white text-purple-700 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
+                                    title="ใช้งาน OpenRouter (ต้องมีเครดิต)"
+                                >
+                                    OpenRouter
+                                </button>
                             </div>
                         </div>
                     </div>
+
 
                     {/* Quick Action Chips */}
                     <div className="p-3 border-b border-slate-100 bg-white">
