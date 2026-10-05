@@ -3,8 +3,9 @@
 import { 
     Save, Sparkles, Send, RefreshCcw, Loader2, 
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
-    FileText, ArrowRight, Wand2, Zap 
+    FileText, ArrowRight, ArrowLeft, Wand2, Zap 
 } from 'lucide-react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
 import { 
@@ -188,6 +189,17 @@ function WritingContent() {
             {/* Main Writing Area */}
             <div className="flex-1 flex flex-col space-y-3 w-full">
                 
+                {/* Back to Structure Link */}
+                <div className="flex items-center justify-between">
+                    <Link
+                        href={data?.projectId ? `/structure?projectId=${data.projectId}` : '/structure'}
+                        className="inline-flex items-center gap-1.5 text-xs md:text-sm font-semibold text-sky-700 hover:text-sky-800 bg-white hover:bg-sky-50 px-3.5 py-1.5 rounded-lg border border-sky-200 hover:border-sky-300 shadow-xs transition-all"
+                    >
+                        <ArrowLeft size={16} className="text-sky-600" />
+                        <span>← กลับไปกระดานโครงสร้าง (หน้าสารบัญรวม)</span>
+                    </Link>
+                </div>
+
                 {/* Header Actions & Pillar Bar */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
                     <div>

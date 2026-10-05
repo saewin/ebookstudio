@@ -17,7 +17,9 @@ interface PageProps {
 export default async function StructurePage(props: PageProps) {
     try {
         const searchParams = await props.searchParams
-        const projectIdParam = typeof searchParams.project === 'string' ? searchParams.project : undefined
+        const projectIdParam = typeof searchParams.projectId === 'string'
+            ? searchParams.projectId
+            : (typeof searchParams.project === 'string' ? searchParams.project : undefined)
 
         // 1. Fetch Projects first (to determine context)
         const projects = await getProjects()
