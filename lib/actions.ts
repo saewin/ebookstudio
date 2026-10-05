@@ -919,9 +919,6 @@ export async function generateFullProfessionalChapter(
                 "Key Takeaways": {
                     rich_text: chunkText(finalTakeaways)
                 },
-                "Key Terminology": {
-                    rich_text: chunkText(finalTerminology)
-                },
                 "Status": {
                     select: { name: "Reviewing" }
                 }
@@ -1042,5 +1039,136 @@ export async function resetChapterStatus(chapterId: string) {
     } catch (error) {
         console.error("Reset Chapter Status Error:", error);
         return { success: false, error };
+    }
+}
+
+export async function typesetChapterContent(params: {
+    chapterId: string;
+    rawContent: string;
+    chapterTitle?: string;
+    provider?: 'gemini' | 'openrouter';
+}) {
+    const { chapterId, rawContent, chapterTitle = '', provider = 'gemini' } = params;
+    if (!chapterId) return { success: false, error: "No Chapter ID provided" };
+    if (!rawContent || !rawContent.trim()) return { success: false, error: "ไม่มีเนื้อหาให้จัดหน้า" };
+
+    try {
+        const prompt = `คุณคือ Master Book Typesetter & Executive Editor มืออาชีพ
+
+หน้าที่สำคัญที่สุด:
+คุณได้รับ "เนื้อหาดิบ" สำหรับบท "${chapterTitle}" ซึ่งผู้เขียนอาจพิมพ์ต่อเนื่องกันมา หรือคัดลอกจากภายนอกโดยยังไม่ได้จัดย่อหน้า
+จงนำเนื้อหาทั้งหมดนี้มาจัดหน้าเป็นบทหนังสือระดับ Best-Seller คุณภาพสูง โดยปฏิบัติตามกฎเหล็ก:
+
+1. **ห้ามตัดทอนเนื้อหาสาระสำคัญทิ้งเด็ดขาด (100% Content Preservation):**
+   - รักษาประโยค ใจความ และสำนวนเดิมของผู้เขียนไว้ให้ครบถ้วนสมบูรณ์ ห้ามแต่งเรื่องใหม่ หรือตัดทอนทิ้ง
+
+2. **แบ่งย่อหน้าและจัดโครงสร้างให้อ่านง่าย สบายตา สไตล์หนังสือเล่มจริง:**
+   - ใส่หัวข้อหลัก (##) และหัวข้อย่อย (###) ให้ชัดเจนตามจังหวะเนื้อหา
+   - แยกข้อความที่ติดกันเป็นพืด ให้กลายเป็นย่อหน้าที่สวยงาม สมดุล (แต่ละย่อหน้าเว้นวรรคด้วยบรรทัดว่าง 2 บรรทัด)
+   - หากมีรายการ ขั้นตอน เวิร์กโฟลว์ หรือ Before vs After ให้จัดเป็น Bullet Points (- หรือ 1.) ที่อ่านง่าย
+
+3. **ตรวจจับและสอดแทรก Semantic Callout Boxes ให้ดูพรีเมียม (ถ้าเนื้อหาสอดคล้อง):**
+   - เรื่องเล่า ประสบการณ์จริง หรือบทเรียนราคาแพง ให้ครอบด้วย:
+     <div class="war-story-box" data-title="ประสบการณ์จริงจากสนามรบ">
+     ...เนื้อหาเรื่องเล่า...
+     </div>
+   - เคสตัวอย่าง ธุรกิจจริง สถิติ หรือ Before vs After ให้ครอบด้วย:
+     <div class="case-study-box" data-title="กรณีศึกษาและงานวิจัยรองรับ">
+     ...เนื้อหาเคสศึกษา...
+     </div>
+   - นิยามคำศัพท์สำคัญประจำบท ให้ครอบด้วย:
+     <div class="key-terms-box" data-title="คลังคำศัพท์สำคัญประจำบท">
+     ...คำศัพท์และนิยาม...
+     </div>
+   - เช็กลิสต์ปฏิบัติการ แบบฝึกหัด หรือสิ่งที่ต้องลงมือทำ ให้ครอบด้วย:
+     <div class="action-checklist" data-title="เช็กลิสต์ปฏิบัติการทันที (Action Items)">
+     ...รายการสิ่งที่ต้องทำ...
+     </div>
+
+4. **สรุปท้ายบท:**
+   - จัดทำข้อสรุป 3-5 ข้อสำหรับ Key Takeaways ท้ายบท
+   - คัดคำศัพท์เด่น 2-4 คำสำหรับ Key Terminology
+
+เนื้อหาดิบของผู้เขียน:
+---
+${rawContent}
+---
+
+รูปแบบผลลัพธ์ (ส่งคืนเป็น JSON Object เท่านั้น ห้ามมีข้อความอื่นนอก JSON):
+{
+  "formattedContent": "เนื้อหาทั้งหมดที่จัดรูปแบบด้วย Markdown ผสม Custom HTML Boxes เรียบร้อยแล้ว",
+  "keyTakeaways": "สรุปประเด็นสำคัญ 3-5 ข้อสำหรับกล่อง Key Takeaways ท้ายบท",
+  "keyTerminology": "คำศัพท์สำคัญพร้อมคำอธิบายสั้นๆ"
+}
+`;
+
+        const responseText = await executeLLMCompletion({
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 6000,
+            temperature: 0.3,
+            provider
+        });
+
+        let jsonStr = (responseText || "{}").trim();
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+
+        let parsed: any = {};
+        try {
+            parsed = JSON.parse(jsonStr);
+        } catch (e) {
+            parsed = {
+                formattedContent: responseText,
+                keyTakeaways: "",
+                keyTerminology: ""
+            };
+        }
+
+        const finalContent = sanitizeBookContent(parsed.formattedContent || responseText);
+        const finalTakeaways = sanitizeBookContent(parsed.keyTakeaways || "");
+        const finalTerminology = sanitizeBookContent(parsed.keyTerminology || "");
+
+        const chunkText = (str: string) => {
+            const arr = [];
+            for (let i = 0; i < str.length; i += 1900) {
+                arr.push({ text: { content: str.substring(i, i + 1900) } });
+            }
+            return arr;
+        };
+
+        await notion.pages.update({
+            page_id: chapterId,
+            properties: {
+                "Content(HTML)": {
+                    rich_text: chunkText(finalContent)
+                },
+                "Key Takeaways": {
+                    rich_text: chunkText(finalTakeaways)
+                },
+                "Status": {
+                    select: { name: "Reviewing" }
+                }
+            }
+        });
+
+        revalidatePath('/writing');
+        revalidatePath('/structure');
+        revalidatePath('/export');
+
+        return {
+            success: true,
+            data: {
+                content: finalContent,
+                keyTakeaways: finalTakeaways,
+                keyTerminology: finalTerminology
+            }
+        };
+
+    } catch (error: any) {
+        console.error("Typeset Chapter Content Error:", error);
+        return { success: false, error: error?.message || "เกิดข้อผิดพลาดในการจัดหน้า" };
     }
 }

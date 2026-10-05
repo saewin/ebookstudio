@@ -12,7 +12,8 @@ import {
     fetchChapterDetails, 
     chatWithGhostwriter, 
     updateChapterContent,
-    generateFullProfessionalChapter 
+    generateFullProfessionalChapter,
+    typesetChapterContent
 } from '@/lib/actions'
 import ReactMarkdown from 'react-markdown'
 
@@ -39,6 +40,7 @@ function WritingContent() {
     const [saving, setSaving] = useState(false)
     const [generatingFull, setGeneratingFull] = useState<'gemini' | 'openrouter' | null>(null)
     const [aiProvider, setAiProvider] = useState<'gemini' | 'openrouter'>('gemini')
+    const [typesetting, setTypesetting] = useState(false)
 
     // Chat states
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -92,6 +94,35 @@ function WritingContent() {
             alert('เกิดข้อผิดพลาด: ' + err.message)
         } finally {
             setGeneratingFull(null)
+        }
+    }
+
+    async function handleTypeset() {
+        if (!chapterId || !data?.content) return;
+        setTypesetting(true);
+        try {
+            const res = await typesetChapterContent({
+                chapterId,
+                rawContent: data.content,
+                chapterTitle: data.title,
+                provider: aiProvider
+            });
+
+            if (res.success && res.data) {
+                setData(prev => prev ? {
+                    ...prev,
+                    content: res.data.content,
+                    keyTakeaways: res.data.keyTakeaways,
+                    keyTerminology: res.data.keyTerminology
+                } : null);
+                alert('✨ จัดหน้าและแทรกองค์ประกอบหนังสือมืออาชีพเรียบร้อยแล้ว!');
+            } else {
+                alert(`❌ จัดหน้าไม่สำเร็จ: ${res.error || 'กรุณาลองใหม่อีกครั้ง'}`);
+            }
+        } catch (e: any) {
+            alert(`❌ เกิดข้อผิดพลาด: ${e.message}`);
+        } finally {
+            setTypesetting(false);
         }
     }
 
@@ -254,8 +285,27 @@ function WritingContent() {
                         </button>
 
                         <button
+                            onClick={handleTypeset}
+                            disabled={typesetting || generatingFull !== null || !data?.content}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium rounded-lg text-xs md:text-sm shadow-md hover:from-emerald-700 hover:to-teal-700 transition-all disabled:opacity-50 cursor-pointer"
+                            title="นำเนื้อหาที่เขียนหรือคัดลอกมา มาจัดวรรคตอน หัวข้อ และใส่กล่องมืออาชีพให้อัตโนมัติ"
+                        >
+                            {typesetting ? (
+                                <>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span>กำลังจัดหน้า...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={15} className="text-emerald-200" />
+                                    <span>จัดหน้าอัตโนมัติ (AI Typeset)</span>
+                                </>
+                            )}
+                        </button>
+
+                        <button
                             onClick={handleSave}
-                            disabled={saving}
+                            disabled={saving || typesetting}
                             className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors disabled:opacity-50 cursor-pointer"
                         >
                             {saving ? <Loader2 size={16} className="animate-spin text-blue-600" /> : <Save size={16} />}

@@ -132,9 +132,38 @@ function paginateChapterContent({
 
         let blocks: string[] = (secTrimmed.match(blockRegex) as string[] | null) || [];
         if (blocks.length === 0) {
-            // Split by double newline if no html tags
+            // Split by double newline or single newline if no html tags
             blocks = secTrimmed.split(/\n\n+/).filter(b => b.trim().length > 0);
+            if (blocks.length <= 1) {
+                const singleLines = secTrimmed.split(/\r?\n+/).filter(b => b.trim().length > 0);
+                if (singleLines.length > 1) {
+                    blocks = singleLines;
+                }
+            }
         }
+
+        // Decompose oversized plain text blocks (e.g. copied text without paragraph breaks)
+        const normalizedBlocks: string[] = [];
+        for (const b of blocks) {
+            if (b.length > normalBudget && !b.startsWith('<table')) {
+                let rem = b;
+                const chunkLimit = Math.round(normalBudget * 0.7);
+                while (rem.length > chunkLimit) {
+                    const search = rem.slice(Math.round(chunkLimit * 0.6), chunkLimit);
+                    const match = search.match(/(?:\. |\? |! |\n|[\s\u200B])(?!.*(?:\. |\? |! |\n|[\s\u200B]))/);
+                    let splitIdx = chunkLimit;
+                    if (match && match.index !== undefined) {
+                        splitIdx = Math.round(chunkLimit * 0.6) + match.index + match[0].length;
+                    }
+                    normalizedBlocks.push(rem.slice(0, splitIdx).trim());
+                    rem = rem.slice(splitIdx).trim();
+                }
+                if (rem.length > 0) normalizedBlocks.push(rem);
+            } else {
+                normalizedBlocks.push(b);
+            }
+        }
+        blocks = normalizedBlocks.filter(b => b.length > 0);
 
         let currentPageBlocks: string[] = [];
         let currentWeight = 0;
