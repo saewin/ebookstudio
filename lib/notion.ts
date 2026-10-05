@@ -44,6 +44,13 @@ export type Chapter = {
     status: string
     content: string
     hasContent?: boolean
+    image1Url?: string
+    image2Url?: string
+    image3Url?: string
+    imagePrompt?: string
+    chapterImage?: string
+    keyTakeaways?: string
+    keyTerminology?: string
 }
 
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
@@ -76,6 +83,14 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
             const chapterNo = props['Chapter No.']?.number || 0
 
             const hasContent = (props['Content(HTML)']?.rich_text?.length || 0) > 0
+            const image1Url = props['Image 1 URL']?.rich_text?.[0]?.plain_text || ''
+            const image2Url = props['Image 2 URL']?.rich_text?.[0]?.plain_text || ''
+            const image3Url = props['Image 3 URL']?.rich_text?.[0]?.plain_text || ''
+            const imagePrompt = props['Image Prompt']?.rich_text?.[0]?.plain_text || props['Image_Prompt_1']?.rich_text?.[0]?.plain_text || ''
+            const chapterImageFiles = props['Chapter Image']?.files || []
+            const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || ''
+            const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || ''
+            const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || ''
 
             return {
                 id: page.id,
@@ -83,7 +98,14 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
                 chapterNo: chapterNo,
                 status: props['Status']?.select?.name || 'Draft',
                 hasContent: hasContent,
-                content: props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || ''
+                content: props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+                image1Url,
+                image2Url,
+                image3Url,
+                imagePrompt,
+                chapterImage,
+                keyTakeaways,
+                keyTerminology,
             }
         })
     } catch (error) {
@@ -98,6 +120,8 @@ export type Project = {
     status: string
     theme: string
     audience: string
+    tone?: string
+    coverImageUrl?: string | null
     lastEditedTime: string
 }
 
@@ -115,18 +139,54 @@ export async function getProjects(): Promise<Project[]> {
 
         return response.results.map((page: any) => {
             const props = page.properties
+            const coverFiles = props['Cover Image']?.files || []
+            const coverImageUrl = coverFiles[0]?.file?.url || coverFiles[0]?.external?.url || page.cover?.file?.url || page.cover?.external?.url || null
+
             return {
                 id: page.id,
                 title: props['Book Title']?.title[0]?.plain_text || 'Untitled Project',
                 status: props['Status']?.select?.name || 'Planning',
-                theme: props['Theme/Topic']?.rich_text[0]?.plain_text || '',
-                audience: props['Target audience']?.rich_text[0]?.plain_text || '',
+                theme: props['Theme/Topic']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+                audience: props['Target audience']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+                tone: props['Tone Of Voice']?.select?.name || 'Professional',
+                coverImageUrl,
                 lastEditedTime: page.last_edited_time
             }
         })
     } catch (error) {
         console.error('Error fetching projects:', error)
         return []
+    }
+}
+
+export async function getProject(projectId: string): Promise<Project | null> {
+    try {
+        if (!process.env.NOTION_API_KEY) throw new Error("Missing NOTION_API_KEY");
+        const res = await fetch(`https://api.notion.com/v1/pages/${projectId}`, {
+            headers: {
+                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
+                'Notion-Version': '2022-06-28'
+            }
+        });
+        if (!res.ok) return null;
+        const page: any = await res.json();
+        const props = page.properties;
+        const coverFiles = props['Cover Image']?.files || [];
+        const coverImageUrl = coverFiles[0]?.file?.url || coverFiles[0]?.external?.url || page.cover?.file?.url || page.cover?.external?.url || null;
+
+        return {
+            id: page.id,
+            title: props['Book Title']?.title?.[0]?.plain_text || 'Untitled Project',
+            status: props['Status']?.select?.name || 'Planning',
+            theme: props['Theme/Topic']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+            audience: props['Target audience']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
+            tone: props['Tone Of Voice']?.select?.name || 'Professional',
+            coverImageUrl,
+            lastEditedTime: page.last_edited_time
+        };
+    } catch (error) {
+        console.error('Error fetching single project:', error);
+        return null;
     }
 }
 

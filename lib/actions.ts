@@ -2,7 +2,13 @@
 
 import { Client } from '@notionhq/client'
 import { revalidatePath } from 'next/cache'
-import { getChapters, notionQuery } from '@/lib/notion'
+import { getChapters, getProject, notionQuery } from '@/lib/notion'
+import { 
+    MASTER_AUTHOR_PERSONA, 
+    buildProfessionalChapterPrompt, 
+    buildGhostwriterSystemPrompt, 
+    BookProjectContext 
+} from '@/lib/prompts/authorPersona'
 
 const notion = new Client({
     auth: process.env.NOTION_API_KEY,
@@ -440,12 +446,27 @@ export async function fetchChapterDetails(chapterId: string) {
     try {
         const response = await notion.pages.retrieve({ page_id: chapterId }) as any;
         const props = response.properties;
-        const title = props['Chapter Title']?.title[0]?.plain_text || 'Untitled';
+        const title = props['Chapter Title']?.title?.[0]?.plain_text || 'Untitled';
         const richText = props['Content(HTML)']?.rich_text || [];
         const content = richText.map((t: any) => t.plain_text).join('');
         const chapterNo = props['Chapter No.']?.number || 0;
+        const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || '';
+        const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || '';
+        const seriesRelation = props['Wang-Aksorn Series']?.relation || [];
+        const projectId = seriesRelation[0]?.id || '';
 
-        return { success: true, data: { title, content, chapterNo } };
+        return { 
+            success: true, 
+            data: { 
+                id: chapterId,
+                title, 
+                content, 
+                chapterNo, 
+                keyTakeaways, 
+                keyTerminology, 
+                projectId 
+            } 
+        };
     } catch (error) {
         console.error("Fetch Chapter Details Error:", error);
         return { success: false, error };
@@ -470,17 +491,38 @@ export async function fetchAllProjectChapters(projectId: string) {
             },
         ]);
 
-        const chapters = await Promise.all(response.results.map(async (page: any) => {
+        const chapters = response.results.map((page: any) => {
             const props = page.properties;
-            const title = props['Chapter Title']?.title[0]?.plain_text || 'Untitled';
+            const title = props['Chapter Title']?.title?.[0]?.plain_text || 'Untitled';
             const chapterNo = props['Chapter No.']?.number || 0;
 
             // For export, we need the full content.
             const richText = props['Content(HTML)']?.rich_text || [];
             const content = richText.map((t: any) => t.plain_text).join('');
 
-            return { id: page.id, title, chapterNo, content };
-        }));
+            const image1Url = props['Image 1 URL']?.rich_text?.[0]?.plain_text || '';
+            const image2Url = props['Image 2 URL']?.rich_text?.[0]?.plain_text || '';
+            const image3Url = props['Image 3 URL']?.rich_text?.[0]?.plain_text || '';
+            const imagePrompt = props['Image Prompt']?.rich_text?.[0]?.plain_text || props['Image_Prompt_1']?.rich_text?.[0]?.plain_text || '';
+            const chapterImageFiles = props['Chapter Image']?.files || [];
+            const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || '';
+            const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || '';
+            const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || '';
+
+            return {
+                id: page.id,
+                title,
+                chapterNo,
+                content,
+                image1Url,
+                image2Url,
+                image3Url,
+                imagePrompt,
+                chapterImage,
+                keyTakeaways,
+                keyTerminology,
+            };
+        });
 
         return { success: true, data: chapters };
     } catch (error) {
@@ -524,7 +566,7 @@ export async function updateChapterContent(chapterId: string, newContent: string
     }
 }
 
-// Ghostwriter Chat - Direct API to OpenRouter
+// Ghostwriter Chat - Direct API to OpenRouter with Veteran DNA & Global Context
 export async function chatWithGhostwriter(
     message: string,
     chapterContent: string,
@@ -537,28 +579,57 @@ export async function chatWithGhostwriter(
     }
 
     try {
-        const systemPrompt = `คุณคือ "ผู้ช่วยนักเขียน (Ghostwriter)"
-หน้าที่: ช่วยผู้ใช้เขียน ปรับปรุง หรือแก้ไขเนื้อหาในบทหนังสือ
-บริบท:
-- ผู้ใช้กำลังเขียนเรื่องราวใน Editor
-- คุณต้องตอบเป็นภาษาไทยเสมอ
-- สไตล์การตอบ: เป็นกันเอง มืออาชีพ สั้นกระชับ
+        let systemPrompt = MASTER_AUTHOR_PERSONA;
 
-เนื้อหาบทปัจจุบัน (Reference):
+        // If chapterId is provided, enrich context with book title and sibling chapters
+        if (chapterId) {
+            try {
+                const chapRes = await fetchChapterDetails(chapterId);
+                if (chapRes.success && chapRes.data) {
+                    const currentChap = chapRes.data;
+                    let projectTitle = "หนังสือคู่มือปฏิบัติการธุรกิจและไอที";
+                    let allChapters: { id: string; chapterNo: number; title: string }[] = [];
+
+                    if (currentChap.projectId) {
+                        const [proj, chaps] = await Promise.all([
+                            getProject(currentChap.projectId),
+                            getChapters(currentChap.projectId)
+                        ]);
+                        if (proj) projectTitle = proj.title;
+                        if (chaps && chaps.length > 0) {
+                            allChapters = chaps.map(c => ({ id: c.id, chapterNo: c.chapterNo, title: c.title }));
+                        }
+                    }
+
+                    systemPrompt = buildGhostwriterSystemPrompt({
+                        projectTitle,
+                        chapterTitle: currentChap.title,
+                        chapterNo: currentChap.chapterNo,
+                        allChapters
+                    });
+                }
+            } catch (ctxErr) {
+                console.warn("Could not enrich ghostwriter context:", ctxErr);
+            }
+        }
+
+        const enrichedSystemPrompt = `
+${systemPrompt}
+
+เนื้อหาบทปัจจุบันที่กำลังแก้ไข (Reference Content):
 ---
-${chapterContent.substring(0, 5000)}
+${chapterContent.substring(0, 7000)}
 ---
 
-คำสั่งพิเศษ:
-ถ้าผู้ใช้สั่งให้ "แก้" "เขียนเพิ่ม" "ปรับปรุง" หรือ "เปลี่ยน" เนื้อหา:
-1. ให้เสนอเนื้อหาใหม่เฉพาะส่วนที่ต้องแก้
-2. ไม่ต้องส่งเนื้อหาทั้งบทมา (เพื่อประหยัด Token)
-3. ให้ผู้ใช้ Copy ไปวางเอง
-4. ถ้าเป็นโค้ด HTML ให้ใส่ Code Block เพื่อให้ Copy ง่ายๆ
+คำสั่งพิเศษสำหรับการตอบ:
+1. ตอบเป็นภาษาไทยเสมอ ในฐานะ Senior Consultant & IT/E-commerce Veteran (25 ปี)
+2. เมื่อผู้ใช้ขอให้ปรับปรุง, เพิ่มเคส, สอดแทรก War Story หรือสรุป ให้ตอบเสนอเนื้อหาที่มีคุณภาพสูงพร้อมใช้งาน
+3. ถ้าเป็นโค้ด HTML หรือบล็อกพิเศษ (เช่น <div class="war-story-box">, <div class="case-study-box">, <div class="key-terms-box">, <div class="action-checklist">) ให้ใส่ใน Markdown code block เพื่อให้ผู้ใช้กด Copy ไปวางในเนื้อหาได้ง่าย
+4. อธิบายเหตุผลเบื้องหลังสั้นกระชับว่าส่วนที่เสริมนี้ช่วยแก้ปัญหาหรือเพิ่มคุณค่าอย่างไรตามมุมมอง System Analysis & Direct Marketing
 `;
 
         const messages = [
-            { role: 'system', content: systemPrompt },
+            { role: 'system', content: enrichedSystemPrompt },
             ...chatHistory.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: message }
         ];
@@ -592,6 +663,159 @@ ${chapterContent.substring(0, 5000)}
     } catch (error) {
         console.error("Chat Error:", error);
         return { success: false, error: "Failed to get response" };
+    }
+}
+
+// Full Professional Chapter Generator following 7-Pillar Anatomical Framework
+export async function generateFullProfessionalChapter(chapterId: string, projectId?: string) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) return { success: false, error: "OpenRouter API Key not configured" };
+    if (!chapterId) return { success: false, error: "Missing Chapter ID" };
+
+    try {
+        console.log(`Generating Full Professional Chapter for ${chapterId}...`);
+
+        // 1. Fetch current chapter details
+        const chapRes = await fetchChapterDetails(chapterId);
+        if (!chapRes.success || !chapRes.data) {
+            return { success: false, error: "Chapter not found in Notion" };
+        }
+        const currentChapter = chapRes.data;
+        const effectiveProjectId = projectId || currentChapter.projectId;
+
+        // 2. Fetch Project & Outline Context
+        let projectContext: BookProjectContext = {
+            title: "คู่มือปฏิบัติการธุรกิจและไอทีฉบับมืออาชีพ",
+            targetAudience: "ผู้ประกอบการ, ผู้บริหาร, และผู้พัฒนาระบบ",
+            theme: "การวางระบบและการตลาดเชิงกลยุทธ์",
+            tone: "Pragmatic Veteran"
+        };
+        let allChapters: { id: string; chapterNo: number; title: string }[] = [];
+
+        if (effectiveProjectId) {
+            const [proj, chaps] = await Promise.all([
+                getProject(effectiveProjectId),
+                getChapters(effectiveProjectId)
+            ]);
+            if (proj) {
+                projectContext = {
+                    title: proj.title,
+                    targetAudience: proj.audience || projectContext.targetAudience,
+                    theme: proj.theme || projectContext.theme,
+                    tone: proj.tone || "Pragmatic Veteran"
+                };
+            }
+            if (chaps && chaps.length > 0) {
+                allChapters = chaps.map(c => ({ id: c.id, chapterNo: c.chapterNo, title: c.title }));
+            }
+        }
+
+        if (allChapters.length === 0) {
+            allChapters = [{ id: chapterId, chapterNo: currentChapter.chapterNo, title: currentChapter.title }];
+        }
+
+        // 3. Build Prompt with 7 Pillars & Global Context
+        const prompt = buildProfessionalChapterPrompt({
+            project: projectContext,
+            currentChapter: {
+                id: chapterId,
+                chapterNo: currentChapter.chapterNo,
+                title: currentChapter.title,
+                existingContent: currentChapter.content
+            },
+            allChapters
+        });
+
+        // 4. Call OpenRouter
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ebook-creator.studio',
+                'X-Title': 'Ebook Creator Studio'
+            },
+            body: JSON.stringify({
+                model: 'google/gemini-2.0-flash-001',
+                messages: [
+                    { role: 'user', content: prompt }
+                ],
+                max_tokens: 6000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`OpenRouter API Error: ${errText}`);
+        }
+
+        const data = await response.json();
+        const rawContent = data.choices?.[0]?.message?.content || "{}";
+
+        let jsonStr = rawContent.trim();
+        if (jsonStr.startsWith('```json')) {
+            jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '');
+        } else if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '');
+        }
+
+        let parsed: any = {};
+        try {
+            parsed = JSON.parse(jsonStr);
+        } catch (e) {
+            parsed = {
+                contentHtml: rawContent,
+                keyTakeaways: "สรุปประเด็นสำคัญประจำบทเรียบร้อยแล้ว",
+                keyTerminology: ""
+            };
+        }
+
+        const finalContent = parsed.contentHtml || rawContent;
+        const finalTakeaways = parsed.keyTakeaways || "";
+
+        // Helper chunk for Notion rich_text 2000 char limit
+        const chunkText = (str: string) => {
+            const arr = [];
+            for (let i = 0; i < str.length; i += 1900) {
+                arr.push({ text: { content: str.substring(i, i + 1900) } });
+            }
+            return arr;
+        };
+
+        // 5. Update Notion
+        await notion.pages.update({
+            page_id: chapterId,
+            properties: {
+                "Content(HTML)": {
+                    rich_text: chunkText(finalContent)
+                },
+                "Key Takeaways": {
+                    rich_text: chunkText(finalTakeaways)
+                },
+                "Status": {
+                    select: { name: "Reviewing" }
+                }
+            }
+        });
+
+        revalidatePath('/writing');
+        revalidatePath('/structure');
+        revalidatePath('/export');
+
+        return { 
+            success: true, 
+            data: {
+                content: finalContent,
+                keyTakeaways: finalTakeaways,
+                keyTerminology: parsed.keyTerminology || "",
+                crossReferences: parsed.crossReferences || []
+            } 
+        };
+
+    } catch (error: any) {
+        console.error("Generate Full Professional Chapter Error:", error);
+        return { success: false, error: error.message || "Failed to generate professional chapter" };
     }
 }
 

@@ -26,7 +26,7 @@ async function wpFetch(endpoint: string, method: string, body?: any) {
 
 export async function POST(req: Request) {
     try {
-        const { title, description, lessons } = await req.json();
+        const { title, description, lessons, quiz } = await req.json();
 
         if (!title || !lessons) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -93,6 +93,67 @@ export async function POST(req: Request) {
 
 
 
+
+
+        // 2b. Create Final Quiz (Interactive via SPA/V1)
+        if (quiz && quiz.length > 0) {
+            console.log(`📝 Creating Final Quiz with ${quiz.length} questions...`);
+
+            try {
+                // 1. Create Quiz Post
+                // Need to construct payload for wpFetch (which wraps fetch)
+                const quizRes = await wpFetch('/wp/v2/lp_quiz', 'POST', {
+                    title: 'แบบทดสอบสุดท้าย (Final Assessment)',
+                    content: '<!-- wp:paragraph --><p>Please answer the following questions to complete the course.</p><!-- /wp:paragraph -->',
+                    status: 'publish'
+                });
+                const quizId = quizRes.id;
+                console.log(`   -> Created Quiz: ${quizId}`);
+
+                // 2. Create Questions via Custom Endpoint
+                const questionIds = [];
+                for (let i = 0; i < quiz.length; i++) {
+                    const q = quiz[i];
+                    // Map options
+                    const options = q.options.map((opt: any, idx: number) => ({
+                        text: opt,
+                        is_true: (idx === q.correctAnswer) ? 'yes' : 'no'
+                    }));
+
+
+                    const type = options.length > 2 ? 'single_choice' : 'true_or_false';
+
+                    // Call spa/v1/create-question
+                    const questionRes = await wpFetch('/spa/v1/create-question', 'POST', {
+                        title: `Question ${i + 1}: ${q.question.substring(0, 50)}...`,
+                        content: q.question,
+                        type: type,
+                        mark: 5,
+                        options: options,
+                        explanation: `Correct answer is: ${q.options[q.correctAnswer]}`
+                    });
+
+                    if (questionRes && questionRes.id) {
+                        questionIds.push(questionRes.id);
+                    }
+                }
+
+                // 3. Assign Questions to Quiz
+                if (questionIds.length > 0) {
+                    await wpFetch('/spa/v1/assign-quiz-questions', 'POST', {
+                        quiz_id: quizId,
+                        question_ids: questionIds
+                    });
+                    console.log(`   -> Assigned ${questionIds.length} questions to Quiz ${quizId}`);
+                }
+
+                // Add Quiz to Curriculum
+                curriculumItems.push(quizId);
+
+            } catch (err) {
+                console.error("❌ Failed to create interactive quiz:", err);
+            }
+        }
 
         const sections = [];
 

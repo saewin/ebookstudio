@@ -1,24 +1,25 @@
 
 import { fetchAllProjectChapters } from '@/lib/actions'
-import { getProjects } from '@/lib/notion'
+import { getProject, getProjects } from '@/lib/notion'
 import BookViewer from './BookViewer'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ExportViewPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = await params
-    console.log("DEBUG: ExportViewPage params:", resolvedParams);
-    const { id } = resolvedParams
-    const projectId = id
-    console.log("DEBUG: ExportViewPage projectId:", projectId);
-    const chaptersResult = await fetchAllProjectChapters(projectId)
+    const { id: projectId } = resolvedParams
 
-    // We also need the project title. 
-    // Optimization: create a specialized fetchProjectDetails, but reusing getProjects for now or just find from list is safer if ID is standard.
-    // However, fetchAllProjectChapters only returns chapters.
-    // Let's quick fetch project list and find the title.
-    const projects = await getProjects()
-    const project = projects.find(p => p.id === projectId)
+    const [chaptersResult, singleProject] = await Promise.all([
+        fetchAllProjectChapters(projectId),
+        getProject(projectId)
+    ])
+
+    let project = singleProject
+    if (!project) {
+        const projects = await getProjects()
+        project = projects.find(p => p.id === projectId) || null
+    }
+
     const projectTitle = project?.title || 'Unknown Project'
 
     if (!chaptersResult.success || !chaptersResult.data) {
@@ -35,6 +36,7 @@ export default async function ExportViewPage({ params }: { params: Promise<{ id:
         <BookViewer
             chapters={chaptersResult.data}
             projectTitle={projectTitle}
+            project={project}
             projectId={projectId}
         />
     )
