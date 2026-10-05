@@ -13,20 +13,25 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
     const [title, setTitle] = useState(chapter.title)
     const [chapterNo, setChapterNo] = useState(chapter.chapterNo)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [generatingProvider, setGeneratingProvider] = useState<'gemini' | 'openrouter' | null>(null)
     const router = useRouter()
 
-    async function handleGenerate() {
-        if (!confirm(`ต้องการส่งบทนี้ให้ AI เขียนเนื้อหาใช่ไหม? "${title}"`)) return
+    async function handleGenerate(provider: 'gemini' | 'openrouter' = 'gemini') {
+        const providerName = provider === 'gemini' ? 'Gemini (ฟรี)' : 'OpenRouter'
+        if (!confirm(`ต้องการให้ AI (${providerName}) เขียนเนื้อหาบทที่ ${chapter.chapterNo}: "${title}" ใช่ไหม?\n(โครงสร้าง 7 เสาหลัก ใช้เวลาประมวลผลประมาณ 15-20 วินาที)`)) return
 
         setLoading(true)
-        const result = await triggerGhostwriter(chapter.id)
+        setGeneratingProvider(provider)
+        const result = await triggerGhostwriter(chapter.id, chapter.projectId, provider)
         setLoading(false)
+        setGeneratingProvider(null)
 
         if (result.success) {
-            alert('ส่งคำสั่งให้ Agent B (Ghostwriter) เรียบร้อย! \nระบบจะเริ่มเขียนเนื้อหาให้คุณสักครู่...')
+            alert(`เขียนเนื้อหาบทที่ ${chapter.chapterNo} ด้วย ${providerName} สำเร็จเรียบร้อยแล้ว!`)
             router.refresh()
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error)
+            alert('เกิดข้อผิดพลาด: ' + (result.error || 'ไม่สามารถเขียนบทได้'))
+            router.refresh()
         }
     }
 
@@ -140,58 +145,57 @@ export default function ChapterRow({ chapter, statusStyles }: { chapter: any, st
             </div>
 
             <div className="flex items-center gap-2">
-                {chapter.hasContent && (
-                    <a
-                        href={`/writing?id=${chapter.id}`}
-                        className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded transition-colors"
-                        title="อ่านเนื้อหา (View Content)"
-                    >
-                        <Eye size={18} />
-                    </a>
-                )}
+                <a
+                    href={`/writing?id=${chapter.id}`}
+                    className={`p-1.5 rounded transition-colors ${chapter.hasContent ? 'text-sky-600 hover:bg-sky-50' : 'text-slate-400 hover:text-sky-600 hover:bg-sky-50'}`}
+                    title={chapter.hasContent ? "อ่านและตรวจทานเนื้อหา (Read / Edit)" : "เข้าสู่หน้าเขียนบทนี้ (Write in Editor)"}
+                >
+                    <Eye size={18} />
+                </a>
 
                 {(loading || chapter.status === 'Drafting' || chapter.status === 'Generating Content') ? (
-                    <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded text-xs font-medium text-slate-400 border border-slate-200">
-                        {loading ? (
-                            'Processing...'
-                        ) : (
-                            <>
-                                <span className="animate-pulse">Writing...</span>
-                                <button
-                                    onClick={async (e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
-                                        setLoading(true);
-                                        const res = await resetChapterStatus(chapter.id);
-                                        if (res.success) {
-                                            window.location.reload();
-                                        } else {
-                                            setLoading(false);
-                                            alert("Reset Failed: " + JSON.stringify(res.error));
-                                        }
-                                    }}
-                                    className="ml-1 p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
-                                    title="Reset Status (Force Unlock)"
-                                >
-                                    <RotateCcw size={12} />
-                                </button>
-                            </>
-                        )}
+                    <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded text-xs font-medium text-amber-700 border border-amber-200">
+                        <span className="animate-spin text-amber-600">↻</span>
+                        <span className="animate-pulse">
+                            {generatingProvider === 'openrouter' ? 'กำลังเขียน (OpenRouter)...' : 'กำลังเขียน (Gemini ฟรี 15s)...'}
+                        </span>
+                        <button
+                            onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!confirm('ยืนยันการ Reset Status? (กดเมื่อ AI ค้างนานเกินไป)')) return;
+                                setLoading(true);
+                                const res = await resetChapterStatus(chapter.id);
+                                setLoading(false);
+                                if (res.success) {
+                                    router.refresh();
+                                } else {
+                                    alert("Reset Failed: " + JSON.stringify(res.error));
+                                }
+                            }}
+                            className="ml-1 p-1 hover:bg-amber-100 rounded text-amber-500 hover:text-red-500 transition-colors"
+                            title="Reset Status (Force Unlock)"
+                        >
+                            <RotateCcw size={12} />
+                        </button>
                     </div>
                 ) : (
-                    <button
-                        onClick={handleGenerate}
-                        className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded bg-white border border-sky-200 text-sky-600 hover:bg-sky-50 hover:border-sky-300 shadow-sm transition-colors"
-                        title="ให้ AI ช่วยเขียนบทนี้"
-                    >
-                        {chapter.status === 'Reviewing' ? (
-                            <span className="text-orange-600">เขียนใหม่</span>
-                        ) : (
-                            <span>เขียนบทนี้</span>
-                        )}
-                        <Send size={14} className={chapter.status === 'Reviewing' ? "text-orange-600" : ""} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={() => handleGenerate('gemini')}
+                            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 transition-colors shadow-xs"
+                            title="เขียนบทนี้ด้วย Google Gemini (ฟรี ไม่เสียเครดิต)"
+                        >
+                            <span>✨ {chapter.hasContent ? 'เขียนใหม่ (ฟรี)' : 'เขียนบทนี้ (ฟรี)'}</span>
+                        </button>
+                        <button
+                            onClick={() => handleGenerate('openrouter')}
+                            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors shadow-xs"
+                            title="เขียนบทนี้ด้วย OpenRouter"
+                        >
+                            <span>⚡ OpenRouter</span>
+                        </button>
+                    </div>
                 )}
 
                 <button

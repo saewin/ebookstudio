@@ -312,11 +312,15 @@ export async function createChapter(projectId: string, title: string, chapterNo:
     }
 }
 
-export async function triggerGhostwriter(chapterId: string) {
+export async function triggerGhostwriter(
+    chapterId: string, 
+    projectId?: string, 
+    provider: 'gemini' | 'openrouter' = 'gemini'
+) {
     if (!chapterId) return { success: false, error: "No Chapter ID provided" };
 
     try {
-        console.log(`Triggering Ghostwriter for Chapter ${chapterId}`);
+        console.log(`Triggering AI Chapter Generation for Chapter ${chapterId} with provider: ${provider}`);
 
         // Step 1: Update Notion Status to Drafting
         await notion.pages.update({
@@ -328,25 +332,21 @@ export async function triggerGhostwriter(chapterId: string) {
             }
         });
 
-        // Step 2: Trigger n8n Webhook (Agent B)
-        const webhookUrl = process.env.N8N_GHOSTWRITER_WEBHOOK || 'https://flow.supralawyer.com/webhook/ghostwriter';
-        try {
-            await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chapterId })
-            });
-            console.log(`Webhook triggered: ${webhookUrl}`);
-        } catch (webhookError) {
-            console.error("Webhook Error (non-blocking):", webhookError);
-            // Don't fail the whole operation if webhook fails
+        // Step 2: Directly execute full professional chapter generation
+        const res = await generateFullProfessionalChapter(chapterId, projectId, provider);
+        if (!res.success) {
+            console.error("AI Chapter Generation failed:", res.error);
+            await resetChapterStatus(chapterId);
+            return { success: false, error: res.error };
         }
 
         revalidatePath('/structure');
-        return { success: true };
-    } catch (error) {
+        revalidatePath('/writing');
+        return { success: true, data: res.data };
+    } catch (error: any) {
         console.error("Trigger Ghostwriter Error:", error);
-        return { success: false, error };
+        await resetChapterStatus(chapterId);
+        return { success: false, error: error.message || error };
     }
 }
 
