@@ -566,6 +566,96 @@ export async function updateChapterContent(chapterId: string, newContent: string
     }
 }
 
+// Unified LLM caller supporting both Google Gemini API (Free tier from Google AI Studio) and OpenRouter
+async function executeLLMCompletion({
+    messages,
+    maxTokens = 3000,
+    temperature = 0.7,
+}: {
+    messages: Array<{ role: string; content: string }>;
+    maxTokens?: number;
+    temperature?: number;
+}): Promise<string> {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+
+    // Priority 1: Direct Google Gemini API (if configured via GEMINI_API_KEY - 100% Free via Google AI Studio)
+    if (geminiKey) {
+        try {
+            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${geminiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'gemini-2.5-flash',
+                    messages,
+                    max_tokens: maxTokens,
+                    temperature
+                })
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Google Gemini API (${res.status}): ${errText}`);
+            }
+
+            const data = await res.json();
+            return data.choices?.[0]?.message?.content || '';
+        } catch (err: any) {
+            console.error("Google Gemini Direct Error:", err);
+            // If OpenRouter key is also available, fallback to OpenRouter
+            if (!openrouterKey) throw err;
+        }
+    }
+
+    // Priority 2: OpenRouter API
+    if (openrouterKey) {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openrouterKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://ebookstudio.aimar.cloud',
+                'X-Title': 'Ebook Creator Studio'
+            },
+            body: JSON.stringify({
+                model: 'google/gemini-2.5-flash',
+                messages,
+                max_tokens: maxTokens,
+                temperature
+            })
+        });
+
+        if (!response.ok) {
+            const status = response.status;
+            const errText = await response.text();
+            let parsedMsg = errText;
+            try {
+                const j = JSON.parse(errText);
+                parsedMsg = j.error?.message || errText;
+            } catch {}
+
+            if (status === 402) {
+                throw new Error('เครดิตในบัญชี OpenRouter หมด (ยอดคงเหลือ 0 USD) กรุณาเติมเครดิตที่ https://openrouter.ai/settings/credits หรือระบุ GEMINI_API_KEY จาก Google AI Studio เพื่อใช้งานฟรี');
+            }
+            if (status === 401) {
+                throw new Error('OpenRouter API Key ไม่ถูกต้อง กรุณาตรวจสอบ OPENROUTER_API_KEY ในการตั้งค่า');
+            }
+            if (status === 429) {
+                throw new Error('การเรียก AI เกินโควตาชั่วคราว (Rate limit) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง');
+            }
+            throw new Error(`OpenRouter Error (${status}): ${parsedMsg}`);
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
+
+    throw new Error('ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ');
+}
+
 // Ghostwriter Chat - Direct API to OpenRouter with Veteran DNA & Global Context
 export async function chatWithGhostwriter(
     message: string,
@@ -573,9 +663,8 @@ export async function chatWithGhostwriter(
     chatHistory: { role: 'user' | 'assistant', content: string }[],
     chapterId?: string
 ) {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) {
-        return { success: false, error: "OpenRouter API Key not configured" };
+    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
     }
 
     try {
@@ -634,42 +723,24 @@ ${chapterContent.substring(0, 7000)}
             { role: 'user', content: message }
         ];
 
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://ebook-creator.studio',
-                'X-Title': 'Ebook Creator Studio'
-            },
-            body: JSON.stringify({
-                model: 'google/gemini-2.0-flash-001',
-                messages: messages,
-                max_tokens: 4000,
-                temperature: 0.7
-            })
+        const reply = await executeLLMCompletion({
+            messages,
+            maxTokens: 4000,
+            temperature: 0.7
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("OpenRouter Error:", errorText);
-            return { success: false, error: "AI service error" };
-        }
-
-        const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "ไม่สามารถสร้างคำตอบได้";
-
-        return { success: true, reply };
-    } catch (error) {
+        return { success: true, reply: reply || "ไม่สามารถสร้างคำตอบได้" };
+    } catch (error: any) {
         console.error("Chat Error:", error);
-        return { success: false, error: "Failed to get response" };
+        return { success: false, error: error.message || "Failed to get response" };
     }
 }
 
 // Full Professional Chapter Generator following 7-Pillar Anatomical Framework
 export async function generateFullProfessionalChapter(chapterId: string, projectId?: string) {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return { success: false, error: "OpenRouter API Key not configured" };
+    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
+    }
     if (!chapterId) return { success: false, error: "Missing Chapter ID" };
 
     try {
@@ -726,38 +797,18 @@ export async function generateFullProfessionalChapter(chapterId: string, project
             allChapters
         });
 
-        // 4. Call OpenRouter
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://ebook-creator.studio',
-                'X-Title': 'Ebook Creator Studio'
-            },
-            body: JSON.stringify({
-                model: 'google/gemini-2.0-flash-001',
-                messages: [
-                    { role: 'user', content: prompt }
-                ],
-                max_tokens: 6000,
-                temperature: 0.7
-            })
+        // 4. Call LLM
+        const rawContent = await executeLLMCompletion({
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 6000,
+            temperature: 0.7
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`OpenRouter API Error: ${errText}`);
-        }
-
-        const data = await response.json();
-        const rawContent = data.choices?.[0]?.message?.content || "{}";
-
-        let jsonStr = rawContent.trim();
+        let jsonStr = (rawContent || "{}").trim();
         if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '');
+            jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
         } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '');
+            jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
 
         let parsed: any = {};
@@ -820,8 +871,9 @@ export async function generateFullProfessionalChapter(chapterId: string, project
 }
 
 export async function generateBriefingSuggestions(topic: string, targetAudience: string, tone: string) {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return { success: false, error: "OpenRouter API Key not configured" };
+    if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY หรือ GEMINI_API_KEY ในระบบ" };
+    }
 
     try {
         const prompt = `
@@ -846,46 +898,27 @@ Make the content compelling, professional, and marketable.
 Return ONLY the JSON object, no markdown formatting.
 `;
 
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://ebook-creator.studio',
-                'X-Title': 'Ebook Creator Studio'
-            },
-            body: JSON.stringify({
-                model: 'google/gemini-2.0-flash-001',
-                messages: [
-                    { role: 'user', content: prompt }
-                ],
-                max_tokens: 2000,
-                temperature: 0.7
-            })
+        const content = await executeLLMCompletion({
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 2500,
+            temperature: 0.7
         });
 
-        if (!response.ok) {
-            throw new Error(`OpenRouter API Error: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || "{}";
-
-        let jsonStr = content.trim();
+        let jsonStr = (content || "{}").trim();
         // Remove markdown code blocks if present
         if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/^```json/, '').replace(/```$/, '');
+            jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
         } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/^```/, '').replace(/```$/, '');
+            jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
 
         const suggestions = JSON.parse(jsonStr);
 
         return { success: true, data: suggestions };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Generate Briefing Error:", error);
-        return { success: false, error: "Failed to generate suggestions" };
+        return { success: false, error: error.message || "Failed to generate suggestions" };
     }
 }
 
