@@ -576,11 +576,13 @@ async function executeLLMCompletion({
     maxTokens = 3000,
     temperature = 0.7,
     provider = 'gemini',
+    jsonMode = false,
 }: {
     messages: Array<{ role: string; content: string }>;
     maxTokens?: number;
     temperature?: number;
     provider?: 'gemini' | 'openrouter';
+    jsonMode?: boolean;
 }): Promise<string> {
     const geminiKey = getGeminiApiKey();
     const openrouterKey = process.env.OPENROUTER_API_KEY;
@@ -591,6 +593,16 @@ async function executeLLMCompletion({
             throw new Error('ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ กรุณาตรวจสอบการตั้งค่า');
         }
 
+        const bodyPayload: any = {
+            model: 'google/gemini-2.5-flash',
+            messages,
+            max_tokens: maxTokens,
+            temperature
+        };
+        if (jsonMode) {
+            bodyPayload.response_format = { type: 'json_object' };
+        }
+
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -599,12 +611,7 @@ async function executeLLMCompletion({
                 'HTTP-Referer': 'https://ebookstudio.aimar.cloud',
                 'X-Title': 'Ebook Creator Studio'
             },
-            body: JSON.stringify({
-                model: 'google/gemini-2.5-flash',
-                messages,
-                max_tokens: maxTokens,
-                temperature
-            })
+            body: JSON.stringify(bodyPayload)
         });
 
         if (!response.ok) {
@@ -632,7 +639,7 @@ async function executeLLMCompletion({
         return data.choices?.[0]?.message?.content || '';
     }
 
-    // Selected Mode: Gemini Free (Direct Google AI Studio)
+    // Selected Mode: Gemini Free (Direct Native Google AI Studio Endpoint - High Speed)
     if (!geminiKey) {
         throw new Error('ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ');
     }
@@ -640,33 +647,46 @@ async function executeLLMCompletion({
     const candidateModels = [
         'gemini-3.5-flash-lite',
         'gemini-flash-lite-latest',
-        'gemini-3.1-flash-lite',
-        'gemini-3.8-flash',
-        'gemini-3.5-flash',
-        'gemini-flash-latest'
+        'gemini-3.8-flash'
     ];
+
+    const systemInstruction = messages.find(m => m.role === 'system')?.content;
+    const contents = messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+        }));
+
+    if (contents.length === 0 && systemInstruction) {
+        contents.push({ role: 'user', parts: [{ text: systemInstruction }] });
+    }
+
+    const nativeBody: any = {
+        contents,
+        generationConfig: {
+            maxOutputTokens: maxTokens,
+            temperature,
+            ...(jsonMode ? { responseMimeType: "application/json" } : {})
+        }
+    };
+    if (systemInstruction && contents.length > 0 && contents[0].parts[0].text !== systemInstruction) {
+        nativeBody.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
 
     let lastGeminiError: any = null;
 
     for (const model of candidateModels) {
         try {
-            const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${geminiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model,
-                    messages,
-                    max_tokens: maxTokens,
-                    temperature
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(nativeBody)
             });
 
             if (res.status === 503 || res.status === 429) {
                 const warnText = await res.text();
-                console.warn(`[Gemini] Model ${model} is busy (${res.status}), trying next candidate...`);
+                console.warn(`[Gemini Native] Model ${model} is busy (${res.status}), trying next candidate...`);
                 lastGeminiError = new Error(`Google Gemini (${model} - ${res.status}): ${warnText}`);
                 continue;
             }
@@ -674,25 +694,24 @@ async function executeLLMCompletion({
             if (!res.ok) {
                 const errText = await res.text();
                 lastGeminiError = new Error(`Google Gemini API (${model} - ${res.status}): ${errText}`);
-                if (res.status === 404) {
-                    continue;
-                }
+                if (res.status === 404) continue;
                 throw lastGeminiError;
             }
 
             const data = await res.json();
-            const content = data.choices?.[0]?.message?.content || '';
+            const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
             if (content) {
                 return content;
             }
         } catch (err: any) {
-            console.warn(`[Gemini] Attempt on ${model} failed:`, err?.message || err);
+            console.warn(`[Gemini Native] Attempt on ${model} failed:`, err?.message || err);
             lastGeminiError = err;
         }
     }
 
     throw lastGeminiError || new Error('Google Gemini API ไม่สามารถให้บริการได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
 }
+
 
 
 
@@ -937,41 +956,36 @@ export async function generateBriefingSuggestions(
     }
 
     try {
-        const prompt = `
-Context: You are an expert book editor and strategist helping a user plan a non-fiction book (E-book).
-Task: Based on the "Working Title/Topic" and "Target Reader" provided, generate high-quality strategic content for the book briefing.
-Language: Thai (ภาษาไทย) ONLY.
+        const prompt = `คุณคือผู้เชี่ยวชาญการวางกลยุทธ์หนังสือ (Strategic Book Editor)
+ช่วยวางแผน Strategic Briefing สำหรับ E-book เล่มนี้:
+- ชื่อหนังสือ: "${topic}"
+- กลุ่มผู้อ่านเป้าหมาย: "${targetAudience}"
+- โทนการเล่า: "${tone}"
 
-Input:
-- Working Title/Topic: "${topic}"
-- Target Reader: "${targetAudience}"
-- Desired Tone: "${tone}"
-
-Output: Provide a JSON object with the following fields:
-1. "painPoints": (String) 3-5 key problems the reader is facing (bullet points).
-2. "transformation": (String) How the reader's life/business will change after reading.
-3. "coreMessage": (String) The one single message/takeaway of the book.
-4. "antiGoals": (String) What this book is NOT about (to avoid scope creep).
-5. "roleOfBook": (String) The role of this book in the author's business (e.g., Lead Magnet, Authority Builder).
-6. "draftStructure": (String) A rough list of 5-10 chapter titles.
-
-Make the content compelling, professional, and marketable.
-Return ONLY the JSON object, no markdown formatting.
-`;
+จงตอบเป็น JSON object ที่สั้น กระชับ ตรงประเด็น ทรงพลัง (ความยาวรวมไม่เกิน 400 คำ เพื่อความรวดเร็วและชัดเจน):
+{
+  "painPoints": "- ปัญหา 1\\n- ปัญหา 2\\n- ปัญหา 3",
+  "transformation": "การเปลี่ยนแปลงที่ผู้อ่านจะได้รับใน 1-2 ประโยค",
+  "coreMessage": "ใจความสำคัญแก่นแท้ของหนังสือ 1 ประโยค",
+  "antiGoals": "- สิ่งที่หนังสือเล่มนี้ไม่ได้สอนหรือไม่ใช่เป้าหมาย",
+  "roleOfBook": "บทบาทของหนังสือในธุรกิจ (เช่น Lead Magnet, Authority Builder)",
+  "draftStructure": "บทที่ 1: ...\\nบทที่ 2: ...\\nบทที่ 3: ...\\nบทที่ 4: ...\\nบทที่ 5: ..."
+}
+ตอบเฉพาะ JSON object เท่านั้น ห้ามใส่คำอธิบายอื่น`;
 
         const content = await executeLLMCompletion({
             messages: [{ role: 'user', content: prompt }],
-            maxTokens: 2500,
-            temperature: 0.7,
-            provider
+            maxTokens: 1000,
+            temperature: 0.5,
+            provider,
+            jsonMode: true
         });
 
         let jsonStr = (content || "{}").trim();
-        // Remove markdown code blocks if present
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        // Robust regex extraction for JSON object
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            jsonStr = jsonMatch[0];
         }
 
         const suggestions = JSON.parse(jsonStr);
@@ -982,6 +996,7 @@ Return ONLY the JSON object, no markdown formatting.
         console.error("Generate Briefing Error:", error);
         return { success: false, error: error.message || "Failed to generate suggestions" };
     }
+
 }
 
 export async function refreshChapters(projectId: string) {

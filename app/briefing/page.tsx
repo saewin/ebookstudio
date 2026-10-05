@@ -2,13 +2,27 @@
 
 import { FileText, Save, Play, Sparkles, Loader2, Zap } from 'lucide-react'
 import { createBriefing, generateBriefingSuggestions } from '@/lib/actions'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function BriefingPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [generatingProvider, setGeneratingProvider] = useState<'gemini' | 'openrouter' | null>(null)
+    const [elapsedSec, setElapsedSec] = useState(0)
+
+    useEffect(() => {
+        let timer: any
+        if (generatingProvider) {
+            setElapsedSec(0)
+            timer = setInterval(() => {
+                setElapsedSec(s => s + 1)
+            }, 1000)
+        } else {
+            setElapsedSec(0)
+        }
+        return () => clearInterval(timer)
+    }, [generatingProvider])
 
     // Form State
     const [formData, setFormData] = useState({
@@ -35,23 +49,28 @@ export default function BriefingPage() {
         }
 
         setGeneratingProvider(provider)
-        const result = await generateBriefingSuggestions(formData.projectName, formData.persona, formData.tone, provider)
-        setGeneratingProvider(null)
+        try {
+            const result = await generateBriefingSuggestions(formData.projectName, formData.persona, formData.tone, provider)
 
-        if (result.success && result.data) {
-            setFormData(prev => ({
-                ...prev,
-                painPoints: result.data.painPoints || prev.painPoints,
-                transformation: result.data.transformation || prev.transformation,
-                coreMessage: result.data.coreMessage || prev.coreMessage,
-                antiGoals: result.data.antiGoals || prev.antiGoals,
-                roleOfBook: result.data.roleOfBook || prev.roleOfBook,
-                draftStructure: Array.isArray(result.data.draftStructure)
-                    ? result.data.draftStructure.join('\n')
-                    : (result.data.draftStructure || prev.draftStructure)
-            }))
-        } else {
-            alert('ขออภัย AI ไม่สามารถสร้างเนื้อหาได้ในขณะนี้: ' + (result.error || 'Unknown Error'))
+            if (result.success && result.data) {
+                setFormData(prev => ({
+                    ...prev,
+                    painPoints: result.data.painPoints || prev.painPoints,
+                    transformation: result.data.transformation || prev.transformation,
+                    coreMessage: result.data.coreMessage || prev.coreMessage,
+                    antiGoals: result.data.antiGoals || prev.antiGoals,
+                    roleOfBook: result.data.roleOfBook || prev.roleOfBook,
+                    draftStructure: Array.isArray(result.data.draftStructure)
+                        ? result.data.draftStructure.join('\n')
+                        : (result.data.draftStructure || prev.draftStructure)
+                }))
+            } else {
+                alert('ขออภัย AI ไม่สามารถสร้างเนื้อหาได้ในขณะนี้: ' + (result.error || 'Unknown Error'))
+            }
+        } catch (err: any) {
+            alert('เกิดข้อผิดพลาด: ' + (err.message || String(err)))
+        } finally {
+            setGeneratingProvider(null)
         }
     }
 
@@ -131,30 +150,52 @@ export default function BriefingPage() {
                 </div>
 
                 {/* Dual AI Magic Buttons */}
-                <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-3 pt-1">
-                    <span className="text-xs text-slate-500 font-medium hidden sm:inline">เลือก AI ช่วยคิดกลยุทธ์:</span>
-                    <button
-                        type="button"
-                        onClick={() => handleAutoFill('gemini')}
-                        disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
-                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
-                        title="ใช้งานฟรีผ่าน Google Gemini API"
-                    >
-                        {generatingProvider === 'gemini' ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} className="text-cyan-200" />}
-                        {generatingProvider === 'gemini' ? 'Gemini กำลังวิเคราะห์...' : '✨ AI ช่วยคิด (Gemini ฟรี)'}
-                    </button>
+                <div className="flex flex-col items-end gap-1.5 pt-1">
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-3">
+                        <span className="text-xs text-slate-500 font-medium hidden sm:inline">เลือก AI ช่วยคิดกลยุทธ์:</span>
+                        <button
+                            type="button"
+                            onClick={() => handleAutoFill('gemini')}
+                            disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
+                            title="ใช้งานฟรีผ่าน Google Gemini API (~10-20 วินาที)"
+                        >
+                            {generatingProvider === 'gemini' ? (
+                                <>
+                                    <Loader2 className="animate-spin" size={17} />
+                                    <span>Gemini กำลังวิเคราะห์... ({elapsedSec}s)</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={17} className="text-cyan-200" />
+                                    <span>✨ AI ช่วยคิด (Gemini ฟรี)</span>
+                                </>
+                            )}
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={() => handleAutoFill('openrouter')}
-                        disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
-                        title="ใช้งานผ่าน OpenRouter (ใช้เครดิตในบัญชี OpenRouter)"
-                    >
-                        {generatingProvider === 'openrouter' ? <Loader2 className="animate-spin" size={17} /> : <Zap size={17} className="text-yellow-200" />}
-                        {generatingProvider === 'openrouter' ? 'OpenRouter กำลังวิเคราะห์...' : '⚡ AI ช่วยคิด (OpenRouter)'}
-                    </button>
+                        <button
+                            type="button"
+                            onClick={() => handleAutoFill('openrouter')}
+                            disabled={generatingProvider !== null || !formData.projectName || !formData.persona}
+                            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-5 py-2.5 rounded-full font-medium shadow-md transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95 text-sm cursor-pointer"
+                            title="ใช้งานผ่าน OpenRouter (ใช้เครดิตในบัญชี OpenRouter)"
+                        >
+                            {generatingProvider === 'openrouter' ? (
+                                <>
+                                    <Loader2 className="animate-spin" size={17} />
+                                    <span>OpenRouter กำลังวิเคราะห์... ({elapsedSec}s)</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Zap size={17} className="text-yellow-200" />
+                                    <span>⚡ AI ช่วยคิด (OpenRouter)</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">💡 Gemini ฟรีใช้เวลาประมวลผลประมาณ 10-20 วินาที</p>
                 </div>
+
 
 
                 {/* Section 2: Strategic Deep Dive */}
