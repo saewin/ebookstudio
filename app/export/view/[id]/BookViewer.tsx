@@ -76,12 +76,96 @@ function getFullChapterHeader(chapterNo: number, title: string): string {
     return `บทที่ ${chapterNo}: ${clean || title}`;
 }
 
-// Split chapter content into logical sections by <hr> or ---
-function splitChapterIntoSections(content?: string): string[] {
-    if (!content) return [];
-    const parts = content.split(/<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n)/i);
-    const cleanedParts = parts.map(p => p.trim()).filter(p => p.length > 0);
-    return cleanedParts.length > 0 ? cleanedParts : [content.trim()];
+// Smart, Content-Aware Pagination Engine for A4 & A5 Book Formats
+function paginateChapterContent({
+    content,
+    pageSize = 'a4',
+    fontSize = 'base',
+    hasImage = false,
+    cleanTitle = '',
+    chapterNo
+}: {
+    content?: string;
+    pageSize: 'a4' | 'a5';
+    fontSize: 'sm' | 'base' | 'lg';
+    hasImage?: boolean;
+    cleanTitle?: string;
+    chapterNo?: number;
+}): string[] {
+    if (!content || !content.trim()) return [];
+
+    let cleaned = cleanContentBody(content, cleanTitle, chapterNo);
+    if (!cleaned) return [];
+
+    // If author intentionally placed <hr> or ---, respect those as hard page breaks
+    const rawSections = cleaned.split(/<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n)/i);
+
+    // Block-level tags regex (captures containers, headings, paragraphs, lists, quotes, tables)
+    const blockRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<table\b[^>]*>[\s\S]*?<\/table>|#{1,6}\s+[^\n]+)/gi;
+
+    // Weight and capacity configurations
+    // A4: 210x297mm (printable height ~240mm -> ~2400 chars per page)
+    // A5: 148x210mm (printable height ~165mm -> ~1200 chars per page)
+    const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.82 : 1.0);
+    const baseBudget = pageSize === 'a4' ? 2400 : 1200;
+    const normalBudget = Math.round(baseBudget * fontMultiplier);
+    const firstPageBudget = Math.round((pageSize === 'a4' ? 1600 : 800) * fontMultiplier) - (hasImage ? (pageSize === 'a4' ? 500 : 350) : 0);
+
+    function getBlockWeight(block: string): number {
+        // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
+        if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
+            return Math.round(block.length * 1.05) + 120;
+        }
+        // Headings take vertical spacing
+        if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
+            return 160;
+        }
+        return block.length;
+    }
+
+    const finalPages: string[] = [];
+
+    rawSections.forEach((section) => {
+        const secTrimmed = section.trim();
+        if (!secTrimmed) return;
+
+        let blocks: string[] = (secTrimmed.match(blockRegex) as string[] | null) || [];
+        if (blocks.length === 0) {
+            // Split by double newline if no html tags
+            blocks = secTrimmed.split(/\n\n+/).filter(b => b.trim().length > 0);
+        }
+
+        let currentPageBlocks: string[] = [];
+        let currentWeight = 0;
+        let isFirstPage = finalPages.length === 0;
+
+        for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            const weight = getBlockWeight(block);
+            const targetBudget = isFirstPage ? firstPageBudget : normalBudget;
+
+            // Orphan heading prevention: If block is a heading, lookahead to next block to ensure heading isn't alone
+            const isHeading = /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim());
+            const nextWeight = (isHeading && i + 1 < blocks.length) ? getBlockWeight(blocks[i + 1]) : 0;
+            const testWeight = weight + nextWeight;
+
+            if (currentPageBlocks.length > 0 && (currentWeight + testWeight > targetBudget)) {
+                finalPages.push(currentPageBlocks.join('\n\n'));
+                currentPageBlocks = [block];
+                currentWeight = weight;
+                isFirstPage = false;
+            } else {
+                currentPageBlocks.push(block);
+                currentWeight += weight;
+            }
+        }
+
+        if (currentPageBlocks.length > 0) {
+            finalPages.push(currentPageBlocks.join('\n\n'));
+        }
+    });
+
+    return finalPages.length > 0 ? finalPages : [cleaned];
 }
 
 // Clean duplicate headings at the beginning of content body
@@ -153,6 +237,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const cleanProjectTitle = projectTitle.replace(/^["']|["']$/g, '');
 
     // Compute exact continuous pagination and sub-pages
+    // Compute exact continuous pagination and sub-pages
     const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber } = useMemo(() => {
         let currentPage = 4; // Page 1: Cover, Page 2: Imprint, Page 3: TOC
         const pages: BookPageSheet[] = [];
@@ -168,8 +253,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             const cleanTitle = cleanChapterTitle(chap.title);
             const fullHeader = getFullChapterHeader(chap.chapterNo, chap.title);
             const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
-            const sections = splitChapterIntoSections(chap.content);
-
+            
             // Record chapter start page for Table of Contents
             tocList.push({
                 id: chap.id,
@@ -177,6 +261,15 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 title: cleanTitle,
                 rawTitle: chap.title,
                 pageNumber: currentPage,
+            });
+
+            const sections = paginateChapterContent({
+                content: chap.content,
+                pageSize,
+                fontSize,
+                hasImage: !!directImgUrl,
+                cleanTitle,
+                chapterNo: chap.chapterNo
             });
 
             if (sections.length === 0) {
@@ -228,7 +321,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             totalPages: total,
             aboutAuthorPageNumber: aboutAuthorPage,
         };
-    }, [chapters]);
+    }, [chapters, pageSize, fontSize]);
 
     // Active reading tracker via scroll position
     useEffect(() => {
@@ -608,7 +701,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             data-chapter-full-header={page.fullHeader}
                             className={`book-page book-content-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
                                 viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-8'
-                            } bg-white text-slate-900 p-8 md:p-14 lg:p-16 flex flex-col justify-between transition-all ${fontClass}`}
+                            } bg-white text-slate-900 ${
+                                pageSize === 'a4' ? 'p-8 md:p-14 lg:p-16' : 'p-6 md:p-8 lg:p-10'
+                            } flex flex-col justify-between transition-all ${fontClass}`}
                             style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
                         >
                             {/* Running Header at top of every page */}
@@ -907,8 +1002,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 /* Print specific styling */
                 @media print {
                     @page {
-                        size: A4;
-                        margin: 15mm 20mm;
+                        size: ${pageSize === 'a5' ? 'A5 portrait' : 'A4 portrait'};
+                        margin: ${pageSize === 'a5' ? '12mm 15mm' : '15mm 20mm'};
                     }
                     html, body {
                         background: white !important;
