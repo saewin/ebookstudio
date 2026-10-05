@@ -463,7 +463,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         <span className="inline-block px-3 py-1 bg-amber-400/10 text-amber-300 border border-amber-400/30 rounded-full text-xs font-medium tracking-widest uppercase mb-4">
                             {project?.theme ? 'EBOOK EDITION' : 'SPECIAL PUBLICATION'}
                         </span>
-                        <p className="text-xs text-slate-400 tracking-[0.3em] uppercase">Wang-Aksorn Publishing</p>
+                        <p className="text-xs text-slate-400 tracking-[0.3em] uppercase">Saewin</p>
                     </div>
 
                     {/* Center Title & Subtitle */}
@@ -509,7 +509,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <p className="font-semibold text-slate-700">{cleanProjectTitle}</p>
                             <p>ผู้เขียน / เรียบเรียง: Saewin</p>
                             <p>จัดพิมพ์และเผยแพร่โดย: Ebook Creator Studio</p>
-                            <p>จัดรูปเล่ม: Wang-Aksorn Automated Publishing Engine</p>
+                            <p>จัดรูปเล่ม: Saewin Automated Publishing Engine</p>
                             <p>ปีที่พิมพ์: พุทธศักราช 2569 / ค.ศ. 2026</p>
                         </div>
 
@@ -805,7 +805,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     <div className="relative z-10 pb-8 border-t border-slate-800 pt-8 flex items-end justify-between">
                         <div>
                             <p className="text-xs text-slate-400">Published by</p>
-                            <p className="text-sm font-bold text-white">Wang-Aksorn Studio</p>
+                            <p className="text-sm font-bold text-white">Saewin</p>
                         </div>
                         <div className="text-right">
                             <span className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">STANDARD EDITION</span>
