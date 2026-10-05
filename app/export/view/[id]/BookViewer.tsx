@@ -77,6 +77,28 @@ function getFullChapterHeader(chapterNo: number, title: string): string {
     return `บทที่ ${chapterNo}: ${clean || title}`;
 }
 
+// Helper to extract blocks keeping HTML containers atomic and splitting markdown by double newlines
+function extractBlocks(text: string): string[] {
+    if (!text || !text.trim()) return [];
+    const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>)/gi;
+    const tokens: string[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = containerRegex.exec(text)) !== null) {
+        const textBefore = text.slice(lastIndex, match.index).trim();
+        if (textBefore) {
+            tokens.push(...textBefore.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+        }
+        tokens.push(match[0].trim());
+        lastIndex = match.index + match[0].length;
+    }
+    const remainingText = text.slice(lastIndex).trim();
+    if (remainingText) {
+        tokens.push(...remainingText.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+    }
+    return tokens;
+}
+
 // Smart, Content-Aware Pagination Engine for A4 & A5 Book Formats
 function paginateChapterContent({
     content,
@@ -101,26 +123,24 @@ function paginateChapterContent({
     // If author intentionally placed <hr> or ---, respect those as hard page breaks
     const rawSections = cleaned.split(/<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n)/i);
 
-    // Block-level tags regex (captures containers, headings, paragraphs, lists, quotes, tables)
-    const blockRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<table\b[^>]*>[\s\S]*?<\/table>|#{1,6}\s+[^\n]+)/gi;
-
     // Calibrated weight and capacity configurations matching physical A4 & A5 dimensions:
-    // A4 (210x297mm): Printable area with 16pt font (~28 lines) comfortably fits ~1100-1300 chars
-    // A5 (148x210mm): Printable area with 16pt font (~18 lines) comfortably fits ~600-750 chars
-    const fontMultiplier = fontSize === 'sm' ? 1.25 : (fontSize === 'lg' ? 0.8 : 1.0);
-    const baseBudget = pageSize === 'a4' ? 1200 : 650;
+    // A4 (210x297mm): Printable area with 16pt font (~35 lines) comfortably fits ~2000-2400 chars
+    // A5 (148x210mm): Printable area with 16pt font (~22 lines) comfortably fits ~1000-1300 chars
+    const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.85 : 1.0);
+    const baseBudget = pageSize === 'a4' ? 2200 : 1200;
     const normalBudget = Math.round(baseBudget * fontMultiplier);
-    const firstPageBudget = Math.round((pageSize === 'a4' ? 800 : 420) * fontMultiplier) - (hasImage ? (pageSize === 'a4' ? 350 : 200) : 0);
+    const firstPageBase = pageSize === 'a4' ? 1600 : 850;
+    const imagePenalty = hasImage ? (pageSize === 'a4' ? 650 : 350) : 0;
+    const firstPageBudget = Math.round(Math.max(400, (firstPageBase - imagePenalty) * fontMultiplier));
 
     function getBlockWeight(block: string): number {
         // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
-        // Boxes have title banners, padding, and outer margins, taking ~1.35x text length + 220 overhead
         if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
-            return Math.round(block.length * 1.35) + 220;
+            return Math.round(block.length * 1.2) + 200;
         }
         // Headings take vertical spacing and margin
         if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
-            return 180;
+            return 200;
         }
         return block.length;
     }
@@ -131,22 +151,12 @@ function paginateChapterContent({
         const secTrimmed = section.trim();
         if (!secTrimmed) return;
 
-        let blocks: string[] = (secTrimmed.match(blockRegex) as string[] | null) || [];
-        if (blocks.length === 0) {
-            // Split by double newline or single newline if no html tags
-            blocks = secTrimmed.split(/\n\n+/).filter(b => b.trim().length > 0);
-            if (blocks.length <= 1) {
-                const singleLines = secTrimmed.split(/\r?\n+/).filter(b => b.trim().length > 0);
-                if (singleLines.length > 1) {
-                    blocks = singleLines;
-                }
-            }
-        }
+        const rawBlocks = extractBlocks(secTrimmed);
 
         // Decompose oversized plain text blocks (e.g. copied text without paragraph breaks)
         const normalizedBlocks: string[] = [];
-        for (const b of blocks) {
-            if (b.length > normalBudget && !b.startsWith('<table')) {
+        for (const b of rawBlocks) {
+            if (b.length > normalBudget && !b.startsWith('<table') && !b.startsWith('<div')) {
                 let rem = b;
                 const chunkLimit = Math.round(normalBudget * 0.7);
                 while (rem.length > chunkLimit) {
@@ -164,7 +174,7 @@ function paginateChapterContent({
                 normalizedBlocks.push(b);
             }
         }
-        blocks = normalizedBlocks.filter(b => b.length > 0);
+        const blocks = normalizedBlocks.filter(b => b.length > 0);
 
         let currentPageBlocks: string[] = [];
         let currentWeight = 0;
@@ -180,7 +190,13 @@ function paginateChapterContent({
             const nextWeight = (isHeading && i + 1 < blocks.length) ? getBlockWeight(blocks[i + 1]) : 0;
             const testWeight = weight + nextWeight;
 
-            if (currentPageBlocks.length > 0 && (currentWeight + testWeight > targetBudget)) {
+            // Heading attachment guard: If current page ONLY contains headings, NEVER push page break!
+            const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
+
+            if (hasOnlyHeadings) {
+                currentPageBlocks.push(block);
+                currentWeight += weight;
+            } else if (currentPageBlocks.length > 0 && (currentWeight + testWeight > targetBudget)) {
                 finalPages.push(currentPageBlocks.join('\n\n'));
                 currentPageBlocks = [block];
                 currentWeight = weight;
@@ -1126,16 +1142,13 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         margin: 0 !important;
                         width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
                         max-width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
-                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        min-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        min-height: ${pageSize === 'a5' ? '208mm' : '295mm'} !important;
                         padding: ${pageSize === 'a5' ? '12mm 14mm' : '16mm 20mm'} !important;
                         box-sizing: border-box !important;
                         page-break-after: always !important;
                         break-after: page !important;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
-                        overflow: hidden !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
@@ -1146,15 +1159,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         flex-shrink: 0 !important;
                     }
                     .book-cover {
-                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        min-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        min-height: ${pageSize === 'a5' ? '208mm' : '295mm'} !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
                         padding: ${pageSize === 'a5' ? '18mm 14mm' : '26mm 20mm'} !important;
                         box-sizing: border-box !important;
-                        overflow: hidden !important;
                     }
                     .break-inside-avoid, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;

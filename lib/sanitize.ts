@@ -6,6 +6,21 @@ export function sanitizeBookContent(raw?: string | null): string {
     if (!raw) return '';
     let text = raw;
 
+    // 0. Extract contentHtml if content was stored as raw JSON or fenced json block
+    if (text.includes('"contentHtml"')) {
+        const match = text.match(/"contentHtml"\s*:\s*"([\s\S]*?)(?:",\s*"\w+"|\s*"\s*\}\s*```?$)/);
+        if (match && match[1]) {
+            text = match[1];
+        }
+    } else if (/^```(?:json)?\s*\{[\s\S]*\}\s*```$/i.test(text.trim())) {
+        const inner = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+        try {
+            const parsed = JSON.parse(inner);
+            if (parsed.contentHtml) text = parsed.contentHtml;
+            else if (parsed.content) text = parsed.content;
+        } catch (e) {}
+    }
+
     // 1. Unescape literal backslash quotes and newline sequences ('\r\n', '\n', '\r')
     // When LLMs return JSON, double-escaped newlines and quotes often leak as literal "\n" strings or \"
     text = text.replace(/\\"/g, '"');
