@@ -6,7 +6,7 @@ import {
     BookOpen, Layers, CheckCircle2, Lightbulb, 
     ExternalLink, BookMarked, Sparkles, Download, 
     Compass, Layout, FileSpreadsheet, ChevronLeft,
-    ChevronRight, ArrowUp, List
+    ChevronRight, ArrowUp, List, HelpCircle
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
@@ -380,6 +380,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [isExporting, setIsExporting] = useState(false);
     const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
     const [showPrintModal, setShowPrintModal] = useState(false);
+    const [dontShowPrintModalAgain, setDontShowPrintModalAgain] = useState(false);
 
     // Active reading state for floating status bar
     const [activePageNum, setActivePageNum] = useState<number>(1);
@@ -560,7 +561,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     };
 
     const handlePrint = () => {
-        setShowPrintModal(true);
+        if (typeof window !== 'undefined' && localStorage.getItem('hideEbookPrintGuide') === 'true') {
+            window.print();
+        } else {
+            setShowPrintModal(true);
+        }
     };
 
     return (
@@ -691,14 +696,23 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             {isExporting ? 'กำลังส่งออก...' : 'Google Docs'}
                         </button>
 
-                        <button
-                            onClick={handlePrint}
-                            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm shadow-blue-500/20"
-                            title="พิมพ์หรือบันทึกเป็น PDF ผ่าน Print Dialog"
-                        >
-                            <Printer size={14} />
-                            พิมพ์ / บันทึก PDF
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={handlePrint}
+                                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm shadow-blue-500/20 cursor-pointer"
+                                title="พิมพ์หรือบันทึกเป็น PDF ผ่าน Print Dialog"
+                            >
+                                <Printer size={14} />
+                                พิมพ์ / บันทึก PDF
+                            </button>
+                            <button
+                                onClick={() => setShowPrintModal(true)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                title="ดูคำแนะนำการตั้งค่าพิมพ์ PDF ให้สวยงามสมบูรณ์แบบ"
+                            >
+                                <HelpCircle size={15} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -1185,23 +1199,37 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             </div>
                         </div>
 
-                        <div className="flex gap-2 justify-end pt-2">
-                            <button
-                                onClick={() => setShowPrintModal(false)}
-                                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                            >
-                                ยกเลิก
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setShowPrintModal(false);
-                                    setTimeout(() => window.print(), 150);
-                                }}
-                                className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm shadow-blue-500/30 transition-all cursor-pointer flex items-center gap-1.5"
-                            >
-                                <Printer size={14} />
-                                เข้าใจแล้ว, เปิดหน้าต่างพิมพ์ PDF
-                            </button>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+                                <input 
+                                    type="checkbox" 
+                                    checked={dontShowPrintModalAgain} 
+                                    onChange={(e) => setDontShowPrintModalAgain(e.target.checked)} 
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                                />
+                                <span>ไม่ต้องแสดงคำแนะนำนี้อีก</span>
+                            </label>
+                            <div className="flex gap-2 justify-end">
+                                <button
+                                    onClick={() => setShowPrintModal(false)}
+                                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (dontShowPrintModalAgain && typeof window !== 'undefined') {
+                                            localStorage.setItem('hideEbookPrintGuide', 'true');
+                                        }
+                                        setShowPrintModal(false);
+                                        setTimeout(() => window.print(), 150);
+                                    }}
+                                    className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm shadow-blue-500/30 transition-all cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <Printer size={14} />
+                                    เข้าใจแล้ว, เปิดหน้าต่างพิมพ์ PDF
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1276,6 +1304,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     @page {
                         size: ${pageSize === 'a5' ? '148mm 210mm' : '210mm 297mm'};
                         margin: 0 !important;
+                    }
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
                     }
                     html, body {
                         background: white !important;
