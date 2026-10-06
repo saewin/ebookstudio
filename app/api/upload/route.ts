@@ -1,0 +1,56 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
+
+export async function POST(req: NextRequest) {
+    try {
+        const formData = await req.formData();
+        const file = formData.get('file') as File | null;
+
+        if (!file) {
+            return NextResponse.json({ success: false, error: 'ไม่พบไฟล์รูปภาพ' }, { status: 400 });
+        }
+
+        // Validate MIME type
+        if (!file.type.startsWith('image/')) {
+            return NextResponse.json({ success: false, error: 'รองรับเฉพาะไฟล์รูปภาพเท่านั้น (PNG, JPG, WebP, GIF, SVG)' }, { status: 400 });
+        }
+
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+
+        // Upload target directory: public/uploads
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        await mkdir(uploadsDir, { recursive: true });
+
+        // Clean file extension and name
+        const originalName = file.name || 'image.png';
+        const ext = path.extname(originalName) || '.png';
+        const rawBase = path.basename(originalName, ext);
+        // Keep alphanumeric, dash, underscores; fallback to 'img' if empty
+        const cleanBase = rawBase.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_').substring(0, 50) || 'img';
+        const timestamp = Date.now();
+        const uniqueFileName = `${timestamp}-${cleanBase}${ext}`;
+        const filePath = path.join(uploadsDir, uniqueFileName);
+
+        await writeFile(filePath, buffer);
+
+        // Serve URL: /uploads/<filename> (and also /api/uploads/<filename>)
+        const url = `/uploads/${uniqueFileName}`;
+
+        return NextResponse.json({
+            success: true,
+            url,
+            fileName: uniqueFileName,
+            originalName,
+            size: file.size,
+            type: file.type
+        });
+    } catch (error: any) {
+        console.error('File Upload Error:', error);
+        return NextResponse.json(
+            { success: false, error: error.message || 'เกิดข้อผิดพลาดในการบันทึกรูปภาพ' },
+            { status: 500 }
+        );
+    }
+}

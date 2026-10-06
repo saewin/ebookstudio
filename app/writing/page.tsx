@@ -4,11 +4,11 @@ import {
     Save, Sparkles, Send, RefreshCcw, Loader2, 
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
-    Image as ImageIcon
+    Image as ImageIcon, Upload, Link as LinkIcon
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { 
     fetchChapterDetails, 
     chatWithGhostwriter, 
@@ -47,9 +47,89 @@ function WritingContent() {
 
     // Image Modal states
     const [showImageModal, setShowImageModal] = useState(false)
+    const [imageSourceTab, setImageSourceTab] = useState<'local' | 'url'>('local')
     const [imageUrlInput, setImageUrlInput] = useState('')
     const [imageCaptionInput, setImageCaptionInput] = useState('')
     const [savingImage, setSavingImage] = useState(false)
+    const [uploadingFile, setUploadingFile] = useState(false)
+    const [isDragging, setIsDragging] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    async function handleFileUpload(file: File) {
+        if (!file) return
+        if (!file.type.startsWith('image/')) {
+            alert('กรุณาเลือกไฟล์รูปภาพเท่านั้น (PNG, JPG, WebP, GIF, SVG)')
+            return
+        }
+        setUploadingFile(true)
+        try {
+            const formData = new FormData()
+            formData.append('file', file)
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+            })
+            const json = await res.json()
+            if (json.success && json.url) {
+                setImageUrlInput(json.url)
+            } else {
+                alert('อัปโหลดรูปไม่สำเร็จ: ' + (json.error || 'Unknown error'))
+            }
+        } catch (err: any) {
+            alert('เกิดข้อผิดพลาดในการอัปโหลด: ' + err.message)
+        } finally {
+            setUploadingFile(false)
+        }
+    }
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragging(false)
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFileUpload(e.dataTransfer.files[0])
+        }
+    }
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragging(true)
+    }
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragging(false)
+    }
+
+    const handleModalPaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items
+        if (!items) return
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile()
+                if (file) {
+                    setImageSourceTab('local')
+                    handleFileUpload(file)
+                    break
+                }
+            }
+        }
+    }
+
+    const handleTextareaPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const items = e.clipboardData?.items
+        if (!items) return
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile()
+                if (file) {
+                    setShowImageModal(true)
+                    setImageSourceTab('local')
+                    handleFileUpload(file)
+                    break
+                }
+            }
+        }
+    }
 
     // Chat states
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -389,7 +469,8 @@ function WritingContent() {
                         className="w-full h-full p-8 md:p-12 resize-none focus:outline-none focus:ring-0 font-serif text-base md:text-lg leading-relaxed text-slate-800"
                         value={data?.content || ''}
                         onChange={(e) => setData(prev => prev ? { ...prev, content: e.target.value } : null)}
-                        placeholder="เริ่มเขียนเนื้อหาที่นี่ หรือกดปุ่ม 'เขียนเต็มบท (Veteran Framework)' ด้านบน..."
+                        onPaste={handleTextareaPaste}
+                        placeholder="เริ่มเขียนเนื้อหาที่นี่ หรือกดปุ่ม 'เขียนเต็มบท (Veteran Framework)' ด้านบน... (สามารถกด Cmd+V เพื่อวางรูปภาพได้ทันที)"
                     />
                 </div>
             </div>
@@ -524,24 +605,118 @@ function WritingContent() {
 
             {/* Image Insertion Modal */}
             {showImageModal && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div 
+                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+                    onPaste={handleModalPaste}
+                >
+                    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                             <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm md:text-base">
                                 <ImageIcon size={18} className="text-blue-600" />
                                 แทรกรูปภาพ (Insert Image)
                             </h3>
                             <button
-                                onClick={() => setShowImageModal(false)}
+                                onClick={() => {
+                                    setShowImageModal(false)
+                                    setImageUrlInput('')
+                                    setImageCaptionInput('')
+                                }}
                                 className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        {/* Source Mode Tabs */}
+                        <div className="flex p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+                            <button
+                                type="button"
+                                onClick={() => setImageSourceTab('local')}
+                                className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    imageSourceTab === 'local' 
+                                        ? 'bg-white text-blue-700 shadow-xs' 
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                <Upload size={14} />
+                                <span>อัปโหลดจากคอมพิวเตอร์</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setImageSourceTab('url')}
+                                className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    imageSourceTab === 'url' 
+                                        ? 'bg-white text-blue-700 shadow-xs' 
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                <LinkIcon size={14} />
+                                <span>วางลิงก์ URL / Google Drive</span>
+                            </button>
+                        </div>
+
+                        {/* Tab 1: Local Upload from Computer */}
+                        {imageSourceTab === 'local' && (
+                            <div className="space-y-3">
+                                <div
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className={`border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer ${
+                                        isDragging
+                                            ? 'border-blue-500 bg-blue-50/80 scale-[1.01]'
+                                            : 'border-slate-200 hover:border-blue-400 bg-slate-50/50 hover:bg-blue-50/30'
+                                    }`}
+                                >
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                handleFileUpload(e.target.files[0])
+                                            }
+                                        }}
+                                    />
+
+                                    {uploadingFile ? (
+                                        <div className="py-4 flex flex-col items-center justify-center gap-2">
+                                            <Loader2 size={28} className="animate-spin text-blue-600" />
+                                            <span className="text-xs font-semibold text-slate-700">กำลังอัปโหลดรูปภาพจากคอมพิวเตอร์...</span>
+                                            <span className="text-[11px] text-slate-400">กรุณารอสักครู่</span>
+                                        </div>
+                                    ) : imageUrlInput && imageUrlInput.startsWith('/uploads/') ? (
+                                        <div className="py-2 flex flex-col items-center gap-1.5">
+                                            <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
+                                                <CheckCircle2 size={13} className="text-emerald-600" /> อัปโหลดสำเร็จแล้ว
+                                            </div>
+                                            <span className="text-[11px] text-slate-500 font-mono truncate max-w-xs">{imageUrlInput}</span>
+                                            <span className="text-xs text-blue-600 hover:underline mt-1 font-medium">คลิกเพื่อเลือกรูปใหม่ หรือลากไฟล์มาวางแทนที่</span>
+                                        </div>
+                                    ) : (
+                                        <div className="py-3 flex flex-col items-center gap-1.5">
+                                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-1">
+                                                <Upload size={20} />
+                                            </div>
+                                            <span className="text-xs font-semibold text-slate-800">
+                                                คลิกเลือกรูปภาพจากเครื่อง หรือลากไฟล์มาวางที่นี่
+                                            </span>
+                                            <span className="text-[11px] text-slate-400">
+                                                รองรับ PNG, JPG, WebP, GIF, SVG (หรือกด <kbd className="px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-mono">Cmd+V</kbd> เพื่อวางภาพที่คัดลอกไว้)
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Tab 2: URL or Google Drive Link */}
+                        {imageSourceTab === 'url' && (
+                            <div className="space-y-2">
+                                <label className="block text-xs font-semibold text-slate-700">
                                     URL รูปภาพ (ลิงก์ตรง หรือ Google Drive)
                                 </label>
                                 <input
@@ -552,50 +727,54 @@ function WritingContent() {
                                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
                                 />
                             </div>
+                        )}
 
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                    คำอธิบายใต้ภาพ (Caption) <span className="text-slate-400 font-normal">(ถ้ามี)</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={imageCaptionInput}
-                                    onChange={(e) => setImageCaptionInput(e.target.value)}
-                                    placeholder="เช่น แผนภาพแสดงกระบวนการทำงาน"
-                                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                />
-                            </div>
-
-                            {imageUrlInput.trim() && (
-                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
-                                    <span className="text-[10px] text-slate-400 block mb-1">ตัวอย่างภาพ:</span>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img 
-                                        src={imageUrlInput.trim()} 
-                                        alt="Preview" 
-                                        className="max-h-36 mx-auto rounded object-contain"
-                                        onError={(e) => {
-                                            (e.target as HTMLElement).style.display = 'none';
-                                        }}
-                                    />
-                                </div>
-                            )}
+                        {/* Caption Field */}
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                คำอธิบายใต้ภาพ (Caption) <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={imageCaptionInput}
+                                onChange={(e) => setImageCaptionInput(e.target.value)}
+                                placeholder="เช่น แผนภาพแสดงกระบวนการทำงาน, สถิติส่วนแบ่งตลาด ฯลฯ"
+                                className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            />
                         </div>
 
+                        {/* Image Preview Box */}
+                        {imageUrlInput.trim() && (
+                            <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-center">
+                                <span className="text-[10px] text-slate-400 block mb-1">ตัวอย่างภาพที่จะแสดงในหนังสือ:</span>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img 
+                                    src={imageUrlInput.trim()} 
+                                    alt="Preview" 
+                                    className="max-h-36 mx-auto rounded-lg object-contain border border-slate-200 shadow-xs bg-white"
+                                    onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                />
+                            </div>
+                        )}
+
+                        {/* Modal Action Buttons */}
                         <div className="pt-2 flex flex-col gap-2">
                             <button
                                 onClick={() => {
                                     if (!imageUrlInput.trim()) {
-                                        alert('กรุณากรอก URL รูปภาพ');
-                                        return;
+                                        alert('กรุณาเลือกไฟล์หรือระบุ URL รูปภาพก่อนครับ')
+                                        return
                                     }
-                                    const imgTag = `\n\n<figure class="my-6 text-center break-inside-avoid">\n  <img src="${imageUrlInput.trim()}" alt="${imageCaptionInput.trim() || 'ภาพประกอบ'}" class="max-w-xl w-full h-auto mx-auto rounded-xl border border-slate-200 shadow-sm" />\n  ${imageCaptionInput.trim() ? `<figcaption class="mt-2 text-xs text-slate-500 italic">${imageCaptionInput.trim()}</figcaption>` : ''}\n</figure>\n\n`;
-                                    setData(prev => prev ? { ...prev, content: (prev.content || '') + imgTag } : null);
-                                    setShowImageModal(false);
-                                    setImageUrlInput('');
-                                    setImageCaptionInput('');
+                                    const imgTag = `\n\n<figure class="my-6 text-center break-inside-avoid">\n  <img src="${imageUrlInput.trim()}" alt="${imageCaptionInput.trim() || 'ภาพประกอบ'}" class="max-w-xl w-full h-auto mx-auto rounded-xl border border-slate-200 shadow-sm" />\n  ${imageCaptionInput.trim() ? `<figcaption class="mt-2 text-xs text-slate-500 italic">${imageCaptionInput.trim()}</figcaption>` : ''}\n</figure>\n\n`
+                                    setData(prev => prev ? { ...prev, content: (prev.content || '') + imgTag } : null)
+                                    setShowImageModal(false)
+                                    setImageUrlInput('')
+                                    setImageCaptionInput('')
                                 }}
-                                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                disabled={uploadingFile || !imageUrlInput.trim()}
+                                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                             >
                                 <span>📥 แทรกลงในเนื้อหาบท (Inline Image)</span>
                             </button>
@@ -603,23 +782,23 @@ function WritingContent() {
                             <button
                                 onClick={async () => {
                                     if (!imageUrlInput.trim() || !chapterId) {
-                                        alert('กรุณากรอก URL รูปภาพ');
-                                        return;
+                                        alert('กรุณาเลือกไฟล์หรือระบุ URL รูปภาพก่อนครับ')
+                                        return
                                     }
-                                    setSavingImage(true);
-                                    const res = await updateChapterImage(chapterId, imageUrlInput.trim());
+                                    setSavingImage(true)
+                                    const res = await updateChapterImage(chapterId, imageUrlInput.trim())
                                     if (res.success) {
-                                        setData(prev => prev ? { ...prev, image1Url: imageUrlInput.trim() } : null);
-                                        alert('✨ ตั้งเป็นภาพหน้าปกประจำบทเรียบร้อยแล้ว!');
-                                        setShowImageModal(false);
-                                        setImageUrlInput('');
-                                        setImageCaptionInput('');
+                                        setData(prev => prev ? { ...prev, image1Url: imageUrlInput.trim() } : null)
+                                        alert('✨ ตั้งเป็นภาพหน้าปกประจำบทเรียบร้อยแล้ว!')
+                                        setShowImageModal(false)
+                                        setImageUrlInput('')
+                                        setImageCaptionInput('')
                                     } else {
-                                        alert('เกิดข้อผิดพลาด: ' + res.error);
+                                        alert('เกิดข้อผิดพลาด: ' + res.error)
                                     }
-                                    setSavingImage(false);
+                                    setSavingImage(false)
                                 }}
-                                disabled={savingImage}
+                                disabled={savingImage || uploadingFile || !imageUrlInput.trim()}
                                 className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                             >
                                 {savingImage ? <Loader2 size={13} className="animate-spin text-blue-600" /> : null}
