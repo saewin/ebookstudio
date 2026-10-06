@@ -8,7 +8,8 @@ export async function GET(
 ) {
     try {
         const { filename } = await params;
-        const safeName = path.basename(filename);
+        const decoded = decodeURIComponent(filename);
+        const safeName = path.basename(decoded);
         const filePath = path.join(process.cwd(), 'public', 'uploads', safeName);
 
         const fileBuffer = await readFile(filePath);

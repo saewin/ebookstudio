@@ -23,20 +23,19 @@ export async function POST(req: NextRequest) {
         const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
         await mkdir(uploadsDir, { recursive: true });
 
-        // Clean file extension and name
+        // Clean file extension and name (safe ASCII alphanumeric)
         const originalName = file.name || 'image.png';
-        const ext = path.extname(originalName) || '.png';
+        const ext = (path.extname(originalName) || '.png').toLowerCase();
         const rawBase = path.basename(originalName, ext);
-        // Keep alphanumeric, dash, underscores; fallback to 'img' if empty
-        const cleanBase = rawBase.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_').substring(0, 50) || 'img';
+        const cleanBase = rawBase.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').substring(0, 30) || 'img';
         const timestamp = Date.now();
         const uniqueFileName = `${timestamp}-${cleanBase}${ext}`;
         const filePath = path.join(uploadsDir, uniqueFileName);
 
         await writeFile(filePath, buffer);
 
-        // Serve URL: /uploads/<filename> (and also /api/uploads/<filename>)
-        const url = `/uploads/${uniqueFileName}`;
+        // Serve URL via dedicated streaming route: /api/uploads/<filename>
+        const url = `/api/uploads/${uniqueFileName}`;
 
         return NextResponse.json({
             success: true,

@@ -4,7 +4,8 @@ import {
     Save, Sparkles, Send, RefreshCcw, Loader2, 
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
-    Image as ImageIcon, Upload, Link as LinkIcon
+    Image as ImageIcon, Upload, Link as LinkIcon,
+    Eye, Edit3
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -18,6 +19,7 @@ import {
     updateChapterImage
 } from '@/lib/actions'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 
 interface ChatMessage {
     role: 'user' | 'assistant'
@@ -44,6 +46,18 @@ function WritingContent() {
     const [generatingFull, setGeneratingFull] = useState<'gemini' | 'openrouter' | null>(null)
     const [aiProvider, setAiProvider] = useState<'gemini' | 'openrouter'>('gemini')
     const [typesetting, setTypesetting] = useState(false)
+
+    // Editor view mode & cursor
+    const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit')
+    const [cursorPos, setCursorPos] = useState<number | null>(null)
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+    function openImageModal() {
+        if (textareaRef.current) {
+            setCursorPos(textareaRef.current.selectionStart)
+        }
+        setShowImageModal(true)
+    }
 
     // Image Modal states
     const [showImageModal, setShowImageModal] = useState(false)
@@ -393,7 +407,7 @@ function WritingContent() {
                         </button>
 
                         <button
-                            onClick={() => setShowImageModal(true)}
+                            onClick={openImageModal}
                             className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-xs md:text-sm transition-colors cursor-pointer"
                             title="แทรกรูปภาพในเนื้อหา หรือตั้งเป็นภาพหน้าปกประจำบท"
                         >
@@ -444,10 +458,24 @@ function WritingContent() {
                                 <ImageIcon size={13} className="text-blue-600" />
                                 ภาพหน้าปกประจำบท:
                             </span>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img 
+                                src={data.image1Url.startsWith('/uploads/') ? '/api' + data.image1Url : data.image1Url} 
+                                alt="Cover" 
+                                className="w-5 h-5 object-cover rounded border border-blue-200 shrink-0" 
+                                onError={(e) => { (e.target as HTMLElement).style.display = 'none' }}
+                            />
                             <span className="truncate max-w-xs md:max-w-md text-slate-600 font-mono text-[11px]">{data.image1Url}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            <a href={data.image1Url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">ดูรูป</a>
+                            <a 
+                                href={data.image1Url.startsWith('/uploads/') ? '/api' + data.image1Url : data.image1Url} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="text-blue-600 hover:underline font-medium"
+                            >
+                                ดูรูป
+                            </a>
                             <button 
                                 onClick={async () => {
                                     if (confirm('ต้องการลบภาพหน้าปกประจำบทนี้ใช่ไหม?')) {
@@ -455,7 +483,7 @@ function WritingContent() {
                                         setData(prev => prev ? { ...prev, image1Url: '' } : null);
                                     }
                                 }}
-                                className="text-red-500 hover:text-red-700 cursor-pointer ml-1"
+                                className="text-red-500 hover:text-red-700 cursor-pointer ml-1 font-medium"
                             >
                                 ลบ
                             </button>
@@ -463,15 +491,63 @@ function WritingContent() {
                     </div>
                 )}
 
-                {/* Editor Content Area */}
+                {/* Editor Content Area with Live Preview Switcher */}
                 <div className="bg-white rounded-xl shadow-xs border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[500px]">
-                    <textarea
-                        className="w-full h-full p-8 md:p-12 resize-none focus:outline-none focus:ring-0 font-serif text-base md:text-lg leading-relaxed text-slate-800"
-                        value={data?.content || ''}
-                        onChange={(e) => setData(prev => prev ? { ...prev, content: e.target.value } : null)}
-                        onPaste={handleTextareaPaste}
-                        placeholder="เริ่มเขียนเนื้อหาที่นี่ หรือกดปุ่ม 'เขียนเต็มบท (Veteran Framework)' ด้านบน... (สามารถกด Cmd+V เพื่อวางรูปภาพได้ทันที)"
-                    />
+                    {/* Editor Header Bar */}
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50/70">
+                        <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-xs font-medium">
+                            <button
+                                type="button"
+                                onClick={() => setEditorMode('edit')}
+                                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    editorMode === 'edit' 
+                                        ? 'bg-white text-blue-700 shadow-xs font-semibold' 
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Edit3 size={13} />
+                                <span>✍️ เขียน / แก้ไข</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEditorMode('preview')}
+                                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    editorMode === 'preview' 
+                                        ? 'bg-white text-blue-700 shadow-xs font-semibold' 
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Eye size={13} />
+                                <span>👁️ ดูตัวอย่างจัดหน้าจริง</span>
+                            </button>
+                        </div>
+
+                        <span className="text-[11px] text-slate-400 hidden sm:inline">
+                            {editorMode === 'edit' ? 'วางเคอร์เซอร์ตรงจุดที่ต้องการ แล้วกด "แทรกรูปภาพ" ได้ทันที' : 'แสดงภาพและกล่องข้อความเหมือนในเล่ม Ebook'}
+                        </span>
+                    </div>
+
+                    {editorMode === 'edit' ? (
+                        <textarea
+                            ref={textareaRef}
+                            className="w-full h-full p-8 md:p-12 resize-none focus:outline-none focus:ring-0 font-serif text-base md:text-lg leading-relaxed text-slate-800"
+                            value={data?.content || ''}
+                            onChange={(e) => setData(prev => prev ? { ...prev, content: e.target.value } : null)}
+                            onPaste={handleTextareaPaste}
+                            onSelect={() => {
+                                if (textareaRef.current) {
+                                    setCursorPos(textareaRef.current.selectionStart)
+                                }
+                            }}
+                            placeholder="เริ่มเขียนเนื้อหาที่นี่ หรือกดปุ่ม 'เขียนเต็มบท (Veteran Framework)' ด้านบน... (สามารถกด Cmd+V เพื่อวางรูปภาพได้ทันที)"
+                        />
+                    ) : (
+                        <div className="w-full h-full p-8 md:p-12 overflow-y-auto prose prose-slate max-w-none text-slate-800 font-serif leading-relaxed">
+                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                {(data?.content || '').replace(/src=(["'])\/uploads\//gi, 'src=$1/api/uploads/')}
+                            </ReactMarkdown>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -749,11 +825,11 @@ function WritingContent() {
                                 <span className="text-[10px] text-slate-400 block mb-1">ตัวอย่างภาพที่จะแสดงในหนังสือ:</span>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img 
-                                    src={imageUrlInput.trim()} 
+                                    src={imageUrlInput.trim().startsWith('/uploads/') ? '/api' + imageUrlInput.trim() : imageUrlInput.trim()} 
                                     alt="Preview" 
                                     className="max-h-36 mx-auto rounded-lg object-contain border border-slate-200 shadow-xs bg-white"
                                     onError={(e) => {
-                                        (e.target as HTMLElement).style.display = 'none';
+                                        console.error('Image preview error:', imageUrlInput)
                                     }}
                                 />
                             </div>
@@ -762,16 +838,42 @@ function WritingContent() {
                         {/* Modal Action Buttons */}
                         <div className="pt-2 flex flex-col gap-2">
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (!imageUrlInput.trim()) {
                                         alert('กรุณาเลือกไฟล์หรือระบุ URL รูปภาพก่อนครับ')
                                         return
                                     }
-                                    const imgTag = `\n\n<figure class="my-6 text-center break-inside-avoid">\n  <img src="${imageUrlInput.trim()}" alt="${imageCaptionInput.trim() || 'ภาพประกอบ'}" class="max-w-xl w-full h-auto mx-auto rounded-xl border border-slate-200 shadow-sm" />\n  ${imageCaptionInput.trim() ? `<figcaption class="mt-2 text-xs text-slate-500 italic">${imageCaptionInput.trim()}</figcaption>` : ''}\n</figure>\n\n`
-                                    setData(prev => prev ? { ...prev, content: (prev.content || '') + imgTag } : null)
+                                    let finalUrl = imageUrlInput.trim()
+                                    if (finalUrl.startsWith('/uploads/')) {
+                                        finalUrl = '/api' + finalUrl
+                                    }
+
+                                    const imgTag = `\n\n<figure class="my-6 text-center break-inside-avoid">\n  <img src="${finalUrl}" alt="${imageCaptionInput.trim() || 'ภาพประกอบ'}" class="max-w-xl w-full h-auto mx-auto rounded-xl border border-slate-200 shadow-sm" />\n  ${imageCaptionInput.trim() ? `<figcaption class="mt-2 text-xs text-slate-500 italic font-sans">${imageCaptionInput.trim()}</figcaption>` : ''}\n</figure>\n\n`
+                                    
+                                    const currentContent = data?.content || ''
+                                    const insertAt = (cursorPos !== null && cursorPos !== undefined && cursorPos >= 0 && cursorPos <= currentContent.length)
+                                        ? cursorPos
+                                        : currentContent.length
+
+                                    const before = currentContent.slice(0, insertAt)
+                                    const after = currentContent.slice(insertAt)
+                                    const newContent = `${before}${imgTag}${after}`
+
+                                    setData(prev => prev ? { ...prev, content: newContent } : null)
                                     setShowImageModal(false)
                                     setImageUrlInput('')
                                     setImageCaptionInput('')
+
+                                    if (chapterId) {
+                                        setSaving(true)
+                                        const res = await updateChapterContent(chapterId, newContent)
+                                        setSaving(false)
+                                        if (res.success) {
+                                            alert('✨ แทรกรูปภาพลงในเนื้อหาตรงตำแหน่งที่เลือก และบันทึกลง Notion เรียบร้อยแล้ว!')
+                                        } else {
+                                            alert('บันทึกรูปไม่สำเร็จ: ' + res.error)
+                                        }
+                                    }
                                 }}
                                 disabled={uploadingFile || !imageUrlInput.trim()}
                                 className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
@@ -785,10 +887,15 @@ function WritingContent() {
                                         alert('กรุณาเลือกไฟล์หรือระบุ URL รูปภาพก่อนครับ')
                                         return
                                     }
+                                    let finalUrl = imageUrlInput.trim()
+                                    if (finalUrl.startsWith('/uploads/')) {
+                                        finalUrl = '/api' + finalUrl
+                                    }
+
                                     setSavingImage(true)
-                                    const res = await updateChapterImage(chapterId, imageUrlInput.trim())
+                                    const res = await updateChapterImage(chapterId, finalUrl)
                                     if (res.success) {
-                                        setData(prev => prev ? { ...prev, image1Url: imageUrlInput.trim() } : null)
+                                        setData(prev => prev ? { ...prev, image1Url: finalUrl } : null)
                                         alert('✨ ตั้งเป็นภาพหน้าปกประจำบทเรียบร้อยแล้ว!')
                                         setShowImageModal(false)
                                         setImageUrlInput('')

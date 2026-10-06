@@ -40,10 +40,18 @@ interface BookPageSheet {
     keyTakeaways?: string;
 }
 
-// Convert various Google Drive link formats to direct image URL
+// Convert various Google Drive link formats or local upload paths to direct image URL
 function getDirectImageUrl(url?: string | null): string {
     if (!url) return '';
-    const trimmed = url.trim();
+    let trimmed = url.trim();
+    if (trimmed.startsWith('/uploads/')) {
+        trimmed = '/api' + trimmed;
+    }
+    if (trimmed.startsWith('/api/uploads/')) {
+        const prefix = '/api/uploads/';
+        const rawFile = trimmed.slice(prefix.length);
+        return prefix + encodeURIComponent(decodeURIComponent(rawFile));
+    }
     const match = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
         return `https://lh3.googleusercontent.com/d/${match[1]}`;
@@ -82,7 +90,7 @@ function extractBlocks(text: string): string[] {
     if (!text || !text.trim()) return [];
     // Ensure block closing tags are followed by double newlines so each paragraph is an independent block
     const normalized = text.replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote)>)\s*(?=<)/gi, '$1\n\n');
-    const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>)/gi;
+    const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>|<figure\b[^>]*>[\s\S]*?<\/figure>)/gi;
     const tokens: string[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -200,6 +208,10 @@ function paginateChapterContent({
     const firstPageBudget = Math.round(Math.max(400, (firstPageBase - imagePenalty) * fontMultiplier));
 
     function getBlockWeight(block: string): number {
+        // Inline Images & Figures take substantial physical page height
+        if (/<(?:img|figure)\b/i.test(block)) {
+            return pageSize === 'a4' ? 600 : 400;
+        }
         // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
         if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
             return Math.round(block.length * 1.15) + 160;
@@ -318,11 +330,16 @@ function paginateChapterContent({
     return finalPages.length > 0 ? finalPages : [cleaned];
 }
 
-// Clean duplicate headings at the beginning of content body
 function cleanContentBody(content?: string, cleanTitle?: string, chapterNo?: number): string {
     if (!content) return '';
     let cleaned = sanitizeBookContent(content).trim();
     if (!cleaned) return '';
+
+    // Auto-rewrite and encode local upload URLs in images so they load reliably
+    cleaned = cleaned.replace(/src=(["'])\/uploads\/([^"']+)\1/gi, (match, quote, filename) => {
+        const encodedFile = encodeURIComponent(decodeURIComponent(filename));
+        return `src=${quote}/api/uploads/${encodedFile}${quote}`;
+    });
 
     // If content starts with an H1-H4 heading repeating the title or "บทที่ X"
     if (cleanTitle) {
