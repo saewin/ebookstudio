@@ -220,6 +220,45 @@ body {
   margin-bottom: 0.75em !important;
 }
 
+/* Continuous Section & Box Flow Styles */
+.war-story-box.box-split-next::before {
+  content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;
+}
+.case-study-box.box-split-next::before {
+  content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important;
+}
+.key-terms-box.box-split-next::before {
+  content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important;
+}
+.action-checklist.box-split-next::before {
+  content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important;
+}
+
+.box-split-first {
+  margin-bottom: 12px !important;
+  border-bottom-style: dashed !important;
+}
+
+.box-split-next {
+  margin-top: 12px !important;
+  border-top-style: dashed !important;
+}
+
+.box-continuation-footer {
+  border-top: 1px dashed rgba(0, 0, 0, 0.15);
+  margin-top: 12px;
+  padding-top: 6px;
+  font-size: 0.75rem;
+  color: #64748b;
+  text-align: right;
+  font-style: italic;
+  font-weight: 500;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
 @media print {
   @page {
     margin: 1.5cm 2cm;

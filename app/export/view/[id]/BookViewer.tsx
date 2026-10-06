@@ -80,23 +80,89 @@ function getFullChapterHeader(chapterNo: number, title: string): string {
 // Helper to extract blocks keeping HTML containers atomic and splitting markdown by double newlines
 function extractBlocks(text: string): string[] {
     if (!text || !text.trim()) return [];
+    // Ensure block closing tags are followed by double newlines so each paragraph is an independent block
+    const normalized = text.replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote)>)\s*(?=<)/gi, '$1\n\n');
     const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>)/gi;
     const tokens: string[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = containerRegex.exec(text)) !== null) {
-        const textBefore = text.slice(lastIndex, match.index).trim();
+    while ((match = containerRegex.exec(normalized)) !== null) {
+        const textBefore = normalized.slice(lastIndex, match.index).trim();
         if (textBefore) {
             tokens.push(...textBefore.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
         }
         tokens.push(match[0].trim());
         lastIndex = match.index + match[0].length;
     }
-    const remainingText = text.slice(lastIndex).trim();
+    const remainingText = normalized.slice(lastIndex).trim();
     if (remainingText) {
         tokens.push(...remainingText.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
     }
     return tokens;
+}
+
+// Split a large callout box across page breaks cleanly
+function trySplitBox(boxHtml: string, remainingBudget: number): {
+    part1: string;
+    part2: string;
+    part1Weight: number;
+    part2Weight: number;
+} | null {
+    // If remaining budget is less than 400 chars, it's better to push the whole box to the next page
+    if (remainingBudget < 400) return null;
+
+    const match = boxHtml.match(/^<div\b([^>]*)>([\s\S]*?)<\/div>$/i);
+    if (!match) return null;
+    const rawAttrs = match[1];
+    const innerHtml = match[2].trim();
+
+    // Extract child elements: <p>...</p>, <ul>...</ul>, <ol>...</ol>, <blockquote>...</blockquote>
+    const childRegex = /(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<div\b[^>]*>[\s\S]*?<\/div>)/gi;
+    const children = innerHtml.match(childRegex);
+    if (!children || children.length <= 1) return null;
+
+    const part1Children: string[] = [];
+    let part1Weight = 160; // container styling overhead
+
+    let splitIndex = -1;
+    for (let i = 0; i < children.length; i++) {
+        const childWeight = Math.round(children[i].length * 1.15);
+        if (part1Weight + childWeight <= remainingBudget) {
+            part1Children.push(children[i]);
+            part1Weight += childWeight;
+        } else {
+            splitIndex = i;
+            break;
+        }
+    }
+
+    // Must have at least 1 child element in Part 1 and at least 1 remaining for Part 2
+    if (part1Children.length === 0 || splitIndex === -1 || splitIndex >= children.length) {
+        return null;
+    }
+
+    const part2Children = children.slice(splitIndex);
+
+    // Prepare attributes for continuous rendering
+    const classMatch = rawAttrs.match(/class="([^"]*)"/i);
+    const existingClass = classMatch ? classMatch[1] : '';
+    const titleMatch = rawAttrs.match(/data-title="([^"]*)"/i);
+    const title = titleMatch ? titleMatch[1] : '';
+
+    const part1Attrs = rawAttrs.replace(/class="[^"]*"/i, `class="${existingClass} box-split-first"`);
+    const part2Attrs = rawAttrs
+        .replace(/class="[^"]*"/i, `class="${existingClass} box-split-next"`)
+        .replace(/data-title="[^"]*"/i, `data-title="${title ? title + ' (ต่อ)' : 'ต่อจากหน้าก่อน'}"`);
+
+    const part1Html = `<div${part1Attrs}>\n${part1Children.join('\n')}\n<div class="box-continuation-footer">➥ (มีต่อหน้าถัดไป)</div>\n</div>`;
+    const part2Html = `<div${part2Attrs}>\n${part2Children.join('\n')}\n</div>`;
+
+    return {
+        part1: part1Html,
+        part2: part2Html,
+        part1Weight,
+        part2Weight: Math.round(part2Html.length * 1.15) + 160
+    };
 }
 
 // Smart, Content-Aware Pagination Engine for A4 & A5 Book Formats
@@ -136,11 +202,11 @@ function paginateChapterContent({
     function getBlockWeight(block: string): number {
         // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
         if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
-            return Math.round(block.length * 1.2) + 200;
+            return Math.round(block.length * 1.15) + 160;
         }
         // Headings take vertical spacing and margin
         if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
-            return 200;
+            return 180;
         }
         return block.length;
     }
@@ -174,21 +240,17 @@ function paginateChapterContent({
                 normalizedBlocks.push(b);
             }
         }
-        const blocks = normalizedBlocks.filter(b => b.length > 0);
+        const blocksQueue = normalizedBlocks.filter(b => b.length > 0);
 
         let currentPageBlocks: string[] = [];
         let currentWeight = 0;
         let isFirstPage = finalPages.length === 0;
 
-        for (let i = 0; i < blocks.length; i++) {
-            const block = blocks[i];
+        while (blocksQueue.length > 0) {
+            const block = blocksQueue.shift()!;
             const weight = getBlockWeight(block);
             const targetBudget = isFirstPage ? firstPageBudget : normalBudget;
-
-            // Orphan heading prevention: If block is a heading, lookahead to next block to ensure heading isn't alone
-            const isHeading = /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim());
-            const nextWeight = (isHeading && i + 1 < blocks.length) ? getBlockWeight(blocks[i + 1]) : 0;
-            const testWeight = weight + nextWeight;
+            const remainingBudget = targetBudget - currentWeight;
 
             // Heading attachment guard: If current page ONLY contains headings, NEVER push page break!
             const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
@@ -196,14 +258,55 @@ function paginateChapterContent({
             if (hasOnlyHeadings) {
                 currentPageBlocks.push(block);
                 currentWeight += weight;
-            } else if (currentPageBlocks.length > 0 && (currentWeight + testWeight > targetBudget)) {
-                finalPages.push(currentPageBlocks.join('\n\n'));
-                currentPageBlocks = [block];
-                currentWeight = weight;
-                isFirstPage = false;
-            } else {
+                continue;
+            }
+
+            // Check if block fits on current page
+            if (currentWeight + weight <= targetBudget) {
                 currentPageBlocks.push(block);
                 currentWeight += weight;
+            } else {
+                // Block does not fit in remaining space. Can we split it if it's a Callout Box?
+                const isBox = /<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block);
+                let splitResult = null;
+                if (isBox && currentPageBlocks.length > 0 && remainingBudget >= 350) {
+                    splitResult = trySplitBox(block, remainingBudget);
+                }
+
+                if (splitResult) {
+                    // Split box: Put Part 1 on current page, close page, queue Part 2 for next page
+                    currentPageBlocks.push(splitResult.part1);
+                    finalPages.push(currentPageBlocks.join('\n\n'));
+                    currentPageBlocks = [];
+                    currentWeight = 0;
+                    isFirstPage = false;
+                    blocksQueue.unshift(splitResult.part2);
+                } else {
+                    // Cannot or shouldn't split: put block back at the front of queue
+                    blocksQueue.unshift(block);
+
+                    // Keep-with-next: If the current page ends with a heading, DO NOT leave it alone at the bottom!
+                    // Pull it back into blocksQueue so it moves to the top of the next page with its content!
+                    while (
+                        currentPageBlocks.length > 1 &&
+                        /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(currentPageBlocks[currentPageBlocks.length - 1].trim())
+                    ) {
+                        const pulledHeading = currentPageBlocks.pop()!;
+                        blocksQueue.unshift(pulledHeading);
+                    }
+
+                    if (currentPageBlocks.length > 0) {
+                        finalPages.push(currentPageBlocks.join('\n\n'));
+                        currentPageBlocks = [];
+                        currentWeight = 0;
+                        isFirstPage = false;
+                    } else {
+                        // Edge case: single block exceeds entire page budget
+                        const huge = blocksQueue.shift()!;
+                        currentPageBlocks.push(huge);
+                        currentWeight += getBlockWeight(huge);
+                    }
+                }
             }
         }
 
@@ -1112,6 +1215,43 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p:first-of-type {
                     text-indent: 0 !important;
+                }
+
+                /* Continuous Section & Box Flow Styles */
+                .war-story-box.box-split-next::before {
+                    content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;
+                }
+                .case-study-box.box-split-next::before {
+                    content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important;
+                }
+                .key-terms-box.box-split-next::before {
+                    content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important;
+                }
+                .action-checklist.box-split-next::before {
+                    content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important;
+                }
+
+                .box-split-first {
+                    margin-bottom: 12px !important;
+                    border-bottom-style: dashed !important;
+                }
+                .box-split-next {
+                    margin-top: 12px !important;
+                    border-top-style: dashed !important;
+                }
+                .box-continuation-footer {
+                    border-top: 1px dashed rgba(0, 0, 0, 0.15);
+                    margin-top: 12px;
+                    padding-top: 6px;
+                    font-size: 0.75rem;
+                    color: #64748b;
+                    text-align: right;
+                    font-style: italic;
+                    font-weight: 500;
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                    gap: 4px;
                 }
 
                 /* Print specific styling */
