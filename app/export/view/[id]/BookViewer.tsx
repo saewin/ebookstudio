@@ -200,28 +200,33 @@ function paginateChapterContent({
     // Explicit author pagebreaks: e.g. <!-- pagebreak -->, <!-- page-break -->, or <div class="page-break"></div>
     const hardSections = cleaned.split(/<!--\s*page-?break\s*-->|<div[^>]*class="[^"]*page-break[^"]*"[^>]*><\/div>/i);
 
-    // Calibrated weight and capacity configurations matching physical A4 & A5 dimensions:
-    // A4 (210x297mm): Printable area with 16pt font (~35 lines) comfortably fits ~2000-2400 chars
-    // A5 (148x210mm): Printable area with 16pt font (~22 lines) comfortably fits ~1000-1300 chars
+    // Calibrated weight and capacity configurations strictly matching physical A4 & A5 dimensions:
+    // A4 (210x297mm): Printable text area accommodates ~1,850 characters max without spillover
+    // A5 (148x210mm): Printable text area accommodates ~1,000 characters max without spillover
     const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.85 : 1.0);
-    const baseBudget = pageSize === 'a4' ? 2200 : 1200;
+    const baseBudget = pageSize === 'a4' ? 1850 : 1000;
     const normalBudget = Math.round(baseBudget * fontMultiplier);
-    const firstPageBase = pageSize === 'a4' ? 1850 : 1000;
+    const firstPageBase = pageSize === 'a4' ? 1650 : 900;
     const imagePenalty = hasImage ? (pageSize === 'a4' ? 450 : 250) : 0;
-    const firstPageBudget = Math.round(Math.max(500, (firstPageBase - imagePenalty) * fontMultiplier));
+    const firstPageBudget = Math.round(Math.max(450, (firstPageBase - imagePenalty) * fontMultiplier));
 
     function getBlockWeight(block: string): number {
-        // Inline Images & Figures take substantial physical page height
+        // Inline Images & Figures (constrained to max-h 200px in CSS): ~240px total = ~650 chars equiv
         if (/<(?:img|figure)\b/i.test(block)) {
-            return pageSize === 'a4' ? 600 : 400;
+            return pageSize === 'a4' ? 650 : 400;
         }
         // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
         if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
-            return Math.round(block.length * 1.15) + 160;
+            return Math.round(block.length * 1.15) + 200;
         }
-        // Headings take vertical spacing and margin
+        // Headings take vertical spacing, larger font and margin
         if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
-            return 180;
+            return 200;
+        }
+        // Lists have item line wraps & margins
+        if (/<(?:ul|ol)\b/i.test(block)) {
+            const items = (block.match(/<li\b/gi) || []).length;
+            return block.length + items * 45;
         }
         // Horizontal divider line (<hr> or ---)
         if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
@@ -273,8 +278,8 @@ function paginateChapterContent({
 
             // Handle horizontal divider (<hr> or ---)
             if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
-                // If page is already significantly filled (>= 68%), naturally break to fresh page
-                if (currentWeight >= targetBudget * 0.68) {
+                // If page is already significantly filled (>= 65%), naturally break to fresh page
+                if (currentWeight >= targetBudget * 0.65) {
                     if (currentPageBlocks.length > 0) {
                         finalPages.push(currentPageBlocks.join('\n\n'));
                         currentPageBlocks = [];
@@ -299,11 +304,8 @@ function paginateChapterContent({
                 continue;
             }
 
-            // Soft tolerance: allow a slight overflow (~150 chars or ~7-10%) if this block fits nicely
-            // rather than leaving the bottom half of the page awkward and empty.
-            const softTolerance = currentPageBlocks.length > 0 ? 150 : 0;
-
-            if (currentWeight + weight <= targetBudget + softTolerance) {
+            // Strict budget adherence: never allow spillover past target physical page budget
+            if (currentWeight + weight <= targetBudget) {
                 currentPageBlocks.push(block);
                 currentWeight += weight;
             } else {
@@ -931,30 +933,30 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex-1 flex flex-col">
                                 {/* Chapter Hero Header (Only on First Section) */}
                                 {page.isFirstSection && (
-                                    <header className="mb-8 text-center shrink-0">
+                                    <header className="mb-4 text-center shrink-0">
                                         <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider mb-2 border border-blue-100">
                                             {formatChapterLabel(page.chapterNo)}
                                         </span>
                                         <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
                                             {page.chapterTitle}
                                         </h2>
-                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-4 rounded-full" />
+                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-3 rounded-full" />
                                     </header>
                                 )}
 
                                 {/* Featured Chapter Image (Only on First Section if available) */}
                                 {page.isFirstSection && page.imageDirectUrl && (
-                                    <figure className="my-6 text-center break-inside-avoid shrink-0">
-                                        <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-xl">
+                                    <figure className="my-4 text-center break-inside-avoid shrink-0">
+                                        <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-lg">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={page.imageDirectUrl}
                                                 alt={page.chapterTitle}
-                                                className="w-full h-auto object-cover max-h-[340px]"
+                                                className="w-full h-auto object-cover max-h-[220px] chapter-hero-img mx-auto"
                                                 loading="lazy"
                                             />
                                         </div>
-                                        <figcaption className="mt-2.5 text-xs text-slate-500 italic">
+                                        <figcaption className="mt-1.5 text-xs text-slate-500 italic">
                                             ภาพประกอบ {formatChapterLabel(page.chapterNo)}: {page.chapterTitle}
                                         </figcaption>
                                     </figure>
@@ -1335,6 +1337,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     gap: 4px;
                 }
 
+                /* Constrain body images & figures so they never blow out page height */
+                .chapter-hero-img {
+                    max-height: 220px !important;
+                    object-fit: cover !important;
+                }
+                .book-body-content img,
+                .book-body-content figure img {
+                    max-height: 200px !important;
+                    width: auto !important;
+                    max-width: 100% !important;
+                    object-fit: contain !important;
+                    margin: 0 auto !important;
+                    display: block !important;
+                    border-radius: 8px;
+                }
+                .book-body-content figure {
+                    margin-top: 10px !important;
+                    margin-bottom: 10px !important;
+                }
+
                 /* Print specific styling */
                 @media print {
                     @page {
@@ -1367,8 +1389,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         margin: 0 !important;
                         width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
                         max-width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
-                        min-height: ${pageSize === 'a5' ? '208mm' : '295mm'} !important;
-                        padding: ${pageSize === 'a5' ? '12mm 14mm' : '16mm 20mm'} !important;
+                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        padding: ${pageSize === 'a5' ? '10mm 12mm' : '14mm 18mm'} !important;
                         box-sizing: border-box !important;
                         page-break-after: always !important;
                         break-after: page !important;
@@ -1377,6 +1400,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
+                        overflow: hidden !important;
                     }
                     .book-page-header,
                     .book-page-footer {
@@ -1384,16 +1408,24 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         flex-shrink: 0 !important;
                     }
                     .book-cover {
-                        min-height: ${pageSize === 'a5' ? '208mm' : '295mm'} !important;
+                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
-                        padding: ${pageSize === 'a5' ? '18mm 14mm' : '26mm 20mm'} !important;
+                        padding: ${pageSize === 'a5' ? '16mm 12mm' : '22mm 18mm'} !important;
                         box-sizing: border-box !important;
                     }
                     .break-inside-avoid, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
                         page-break-inside: avoid !important;
+                    }
+                    .chapter-hero-img {
+                        max-height: 200px !important;
+                    }
+                    .book-body-content img,
+                    .book-body-content figure img {
+                        max-height: 190px !important;
                     }
                 }
             `}</style>
