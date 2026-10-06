@@ -89,7 +89,10 @@ function getFullChapterHeader(chapterNo: number, title: string): string {
 function extractBlocks(text: string): string[] {
     if (!text || !text.trim()) return [];
     // Ensure block closing tags are followed by double newlines so each paragraph is an independent block
-    const normalized = text.replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote)>)\s*(?=<)/gi, '$1\n\n');
+    // Also ensure <hr> and --- horizontal rules are isolated as distinct blocks
+    const normalized = text
+        .replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote)>)\s*(?=<)/gi, '$1\n\n')
+        .replace(/(<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n))/gi, '\n\n$1\n\n');
     const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>|<figure\b[^>]*>[\s\S]*?<\/figure>)/gi;
     const tokens: string[] = [];
     let lastIndex = 0;
@@ -194,8 +197,8 @@ function paginateChapterContent({
     let cleaned = cleanContentBody(content, cleanTitle, chapterNo);
     if (!cleaned) return [];
 
-    // If author intentionally placed <hr> or ---, respect those as hard page breaks
-    const rawSections = cleaned.split(/<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n)/i);
+    // Explicit author pagebreaks: e.g. <!-- pagebreak -->, <!-- page-break -->, or <div class="page-break"></div>
+    const hardSections = cleaned.split(/<!--\s*page-?break\s*-->|<div[^>]*class="[^"]*page-break[^"]*"[^>]*><\/div>/i);
 
     // Calibrated weight and capacity configurations matching physical A4 & A5 dimensions:
     // A4 (210x297mm): Printable area with 16pt font (~35 lines) comfortably fits ~2000-2400 chars
@@ -203,9 +206,9 @@ function paginateChapterContent({
     const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.85 : 1.0);
     const baseBudget = pageSize === 'a4' ? 2200 : 1200;
     const normalBudget = Math.round(baseBudget * fontMultiplier);
-    const firstPageBase = pageSize === 'a4' ? 1600 : 850;
-    const imagePenalty = hasImage ? (pageSize === 'a4' ? 650 : 350) : 0;
-    const firstPageBudget = Math.round(Math.max(400, (firstPageBase - imagePenalty) * fontMultiplier));
+    const firstPageBase = pageSize === 'a4' ? 1850 : 1000;
+    const imagePenalty = hasImage ? (pageSize === 'a4' ? 450 : 250) : 0;
+    const firstPageBudget = Math.round(Math.max(500, (firstPageBase - imagePenalty) * fontMultiplier));
 
     function getBlockWeight(block: string): number {
         // Inline Images & Figures take substantial physical page height
@@ -220,12 +223,16 @@ function paginateChapterContent({
         if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
             return 180;
         }
+        // Horizontal divider line (<hr> or ---)
+        if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
+            return 80;
+        }
         return block.length;
     }
 
     const finalPages: string[] = [];
 
-    rawSections.forEach((section) => {
+    hardSections.forEach((section) => {
         const secTrimmed = section.trim();
         if (!secTrimmed) return;
 
@@ -264,6 +271,25 @@ function paginateChapterContent({
             const targetBudget = isFirstPage ? firstPageBudget : normalBudget;
             const remainingBudget = targetBudget - currentWeight;
 
+            // Handle horizontal divider (<hr> or ---)
+            if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
+                // If page is already significantly filled (>= 68%), naturally break to fresh page
+                if (currentWeight >= targetBudget * 0.68) {
+                    if (currentPageBlocks.length > 0) {
+                        finalPages.push(currentPageBlocks.join('\n\n'));
+                        currentPageBlocks = [];
+                        currentWeight = 0;
+                        isFirstPage = false;
+                    }
+                    continue; // Skip divider tag itself when breaking page
+                } else {
+                    // Page still has ample room: retain as inline decorative divider
+                    currentPageBlocks.push('<hr />');
+                    currentWeight += weight;
+                    continue;
+                }
+            }
+
             // Heading attachment guard: If current page ONLY contains headings, NEVER push page break!
             const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
 
@@ -273,8 +299,11 @@ function paginateChapterContent({
                 continue;
             }
 
-            // Check if block fits on current page
-            if (currentWeight + weight <= targetBudget) {
+            // Soft tolerance: allow a slight overflow (~150 chars or ~7-10%) if this block fits nicely
+            // rather than leaving the bottom half of the page awkward and empty.
+            const softTolerance = currentPageBlocks.length > 0 ? 150 : 0;
+
+            if (currentWeight + weight <= targetBudget + softTolerance) {
                 currentPageBlocks.push(block);
                 currentWeight += weight;
             } else {
@@ -940,6 +969,13 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                             h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
                                             h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-5 mb-2`} {...props} />,
                                             p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
+                                            hr: ({node, ...props}) => (
+                                                <div className="my-8 flex items-center justify-center gap-3 text-slate-300 select-none">
+                                                    <span className="w-16 h-px bg-slate-200" />
+                                                    <span className="text-xs text-slate-400 font-serif">❖</span>
+                                                    <span className="w-16 h-px bg-slate-200" />
+                                                </div>
+                                            ),
                                             ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
                                             ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
                                             blockquote: ({node, ...props}) => (
