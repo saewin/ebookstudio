@@ -3,7 +3,8 @@
 import { 
     Save, Sparkles, Send, RefreshCcw, Loader2, 
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
-    FileText, ArrowRight, ArrowLeft, Wand2, Zap 
+    FileText, ArrowRight, ArrowLeft, Wand2, Zap,
+    Image as ImageIcon
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -13,7 +14,8 @@ import {
     chatWithGhostwriter, 
     updateChapterContent,
     generateFullProfessionalChapter,
-    typesetChapterContent
+    typesetChapterContent,
+    updateChapterImage
 } from '@/lib/actions'
 import ReactMarkdown from 'react-markdown'
 
@@ -34,13 +36,20 @@ function WritingContent() {
         chapterNo: number
         keyTakeaways?: string
         keyTerminology?: string
-        projectId?: string 
+        projectId?: string
+        image1Url?: string
     } | null>(null)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
     const [generatingFull, setGeneratingFull] = useState<'gemini' | 'openrouter' | null>(null)
     const [aiProvider, setAiProvider] = useState<'gemini' | 'openrouter'>('gemini')
     const [typesetting, setTypesetting] = useState(false)
+
+    // Image Modal states
+    const [showImageModal, setShowImageModal] = useState(false)
+    const [imageUrlInput, setImageUrlInput] = useState('')
+    const [imageCaptionInput, setImageCaptionInput] = useState('')
+    const [savingImage, setSavingImage] = useState(false)
 
     // Chat states
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -304,6 +313,15 @@ function WritingContent() {
                         </button>
 
                         <button
+                            onClick={() => setShowImageModal(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-xs md:text-sm transition-colors cursor-pointer"
+                            title="แทรกรูปภาพในเนื้อหา หรือตั้งเป็นภาพหน้าปกประจำบท"
+                        >
+                            <ImageIcon size={15} className="text-blue-600" />
+                            <span>แทรกรูปภาพ</span>
+                        </button>
+
+                        <button
                             onClick={handleSave}
                             disabled={saving || typesetting}
                             className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors disabled:opacity-50 cursor-pointer"
@@ -337,6 +355,33 @@ function WritingContent() {
                         {hasChecklist ? <CheckCircle2 size={11} className="text-teal-600" /> : '○'} Action Checklist
                     </span>
                 </div>
+
+                {/* Chapter Featured Image Banner if available */}
+                {data?.image1Url && (
+                    <div className="bg-blue-50/70 border border-blue-100 rounded-lg px-3 py-2 flex items-center justify-between text-xs text-blue-900">
+                        <div className="flex items-center gap-2 truncate">
+                            <span className="font-semibold flex items-center gap-1 shrink-0">
+                                <ImageIcon size={13} className="text-blue-600" />
+                                ภาพหน้าปกประจำบท:
+                            </span>
+                            <span className="truncate max-w-xs md:max-w-md text-slate-600 font-mono text-[11px]">{data.image1Url}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <a href={data.image1Url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">ดูรูป</a>
+                            <button 
+                                onClick={async () => {
+                                    if (confirm('ต้องการลบภาพหน้าปกประจำบทนี้ใช่ไหม?')) {
+                                        await updateChapterImage(chapterId!, '');
+                                        setData(prev => prev ? { ...prev, image1Url: '' } : null);
+                                    }
+                                }}
+                                className="text-red-500 hover:text-red-700 cursor-pointer ml-1"
+                            >
+                                ลบ
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Editor Content Area */}
                 <div className="bg-white rounded-xl shadow-xs border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[500px]">
@@ -476,6 +521,114 @@ function WritingContent() {
                     </div>
                 </div>
             </div>
+
+            {/* Image Insertion Modal */}
+            {showImageModal && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm md:text-base">
+                                <ImageIcon size={18} className="text-blue-600" />
+                                แทรกรูปภาพ (Insert Image)
+                            </h3>
+                            <button
+                                onClick={() => setShowImageModal(false)}
+                                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    URL รูปภาพ (ลิงก์ตรง หรือ Google Drive)
+                                </label>
+                                <input
+                                    type="url"
+                                    value={imageUrlInput}
+                                    onChange={(e) => setImageUrlInput(e.target.value)}
+                                    placeholder="https://example.com/image.png หรือ ลิงก์แชร์ Google Drive"
+                                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                    คำอธิบายใต้ภาพ (Caption) <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={imageCaptionInput}
+                                    onChange={(e) => setImageCaptionInput(e.target.value)}
+                                    placeholder="เช่น แผนภาพแสดงกระบวนการทำงาน"
+                                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                />
+                            </div>
+
+                            {imageUrlInput.trim() && (
+                                <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
+                                    <span className="text-[10px] text-slate-400 block mb-1">ตัวอย่างภาพ:</span>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img 
+                                        src={imageUrlInput.trim()} 
+                                        alt="Preview" 
+                                        className="max-h-36 mx-auto rounded object-contain"
+                                        onError={(e) => {
+                                            (e.target as HTMLElement).style.display = 'none';
+                                        }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="pt-2 flex flex-col gap-2">
+                            <button
+                                onClick={() => {
+                                    if (!imageUrlInput.trim()) {
+                                        alert('กรุณากรอก URL รูปภาพ');
+                                        return;
+                                    }
+                                    const imgTag = `\n\n<figure class="my-6 text-center break-inside-avoid">\n  <img src="${imageUrlInput.trim()}" alt="${imageCaptionInput.trim() || 'ภาพประกอบ'}" class="max-w-xl w-full h-auto mx-auto rounded-xl border border-slate-200 shadow-sm" />\n  ${imageCaptionInput.trim() ? `<figcaption class="mt-2 text-xs text-slate-500 italic">${imageCaptionInput.trim()}</figcaption>` : ''}\n</figure>\n\n`;
+                                    setData(prev => prev ? { ...prev, content: (prev.content || '') + imgTag } : null);
+                                    setShowImageModal(false);
+                                    setImageUrlInput('');
+                                    setImageCaptionInput('');
+                                }}
+                                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <span>📥 แทรกลงในเนื้อหาบท (Inline Image)</span>
+                            </button>
+
+                            <button
+                                onClick={async () => {
+                                    if (!imageUrlInput.trim() || !chapterId) {
+                                        alert('กรุณากรอก URL รูปภาพ');
+                                        return;
+                                    }
+                                    setSavingImage(true);
+                                    const res = await updateChapterImage(chapterId, imageUrlInput.trim());
+                                    if (res.success) {
+                                        setData(prev => prev ? { ...prev, image1Url: imageUrlInput.trim() } : null);
+                                        alert('✨ ตั้งเป็นภาพหน้าปกประจำบทเรียบร้อยแล้ว!');
+                                        setShowImageModal(false);
+                                        setImageUrlInput('');
+                                        setImageCaptionInput('');
+                                    } else {
+                                        alert('เกิดข้อผิดพลาด: ' + res.error);
+                                    }
+                                    setSavingImage(false);
+                                }}
+                                disabled={savingImage}
+                                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {savingImage ? <Loader2 size={13} className="animate-spin text-blue-600" /> : null}
+                                <span>⭐ ตั้งเป็นภาพหน้าปกประจำบท (Featured Chapter Image)</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

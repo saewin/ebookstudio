@@ -459,6 +459,10 @@ export async function fetchChapterDetails(chapterId: string) {
         const keyTerminology = sanitizeBookContent(props['Key Terminology']?.rich_text?.[0]?.plain_text || '');
         const seriesRelation = props['Wang-Aksorn Series']?.relation || [];
         const projectId = seriesRelation[0]?.id || '';
+        const rawImgUrl = props['Image 1 URL']?.rich_text?.[0]?.plain_text || '';
+        const chapterImageFiles = props['Chapter Image']?.files || [];
+        const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || '';
+        const image1Url = rawImgUrl || chapterImage || '';
 
         return { 
             success: true, 
@@ -469,12 +473,33 @@ export async function fetchChapterDetails(chapterId: string) {
                 chapterNo, 
                 keyTakeaways, 
                 keyTerminology, 
-                projectId 
+                projectId,
+                image1Url
             } 
         };
     } catch (error) {
         console.error("Fetch Chapter Details Error:", error);
         return { success: false, error };
+    }
+}
+
+export async function updateChapterImage(chapterId: string, imageUrl: string) {
+    if (!chapterId) return { success: false, error: "No Chapter ID provided" };
+    try {
+        await notion.pages.update({
+            page_id: chapterId,
+            properties: {
+                "Image 1 URL": {
+                    rich_text: [{ text: { content: imageUrl.trim() } }]
+                }
+            }
+        });
+        revalidatePath('/writing');
+        revalidatePath('/export');
+        return { success: true };
+    } catch (error: any) {
+        console.error("Update Chapter Image Error:", error);
+        return { success: false, error: error.message };
     }
 }
 
