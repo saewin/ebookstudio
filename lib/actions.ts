@@ -781,7 +781,8 @@ export async function generateBriefingSuggestions(
     topic: string, 
     targetAudience: string, 
     tone: string,
-    provider: 'gemini' | 'openrouter' = 'gemini'
+    provider: 'gemini' | 'openrouter' = 'gemini',
+    chapterCount: number = 7
 ) {
     if (provider === 'gemini' && !getGeminiApiKey()) {
         return { success: false, error: "ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ" };
@@ -791,26 +792,28 @@ export async function generateBriefingSuggestions(
     }
 
     try {
+        const count = Math.max(3, Math.min(25, chapterCount || 7));
         const prompt = `คุณคือผู้เชี่ยวชาญการวางกลยุทธ์หนังสือ (Strategic Book Editor)
 ช่วยวางแผน Strategic Briefing สำหรับ E-book เล่มนี้:
 - ชื่อหนังสือ: "${topic}"
 - กลุ่มผู้อ่านเป้าหมาย: "${targetAudience}"
 - โทนการเล่า: "${tone}"
+- จำนวนบทที่ต้องการ: ${count} บท
 
-จงตอบเป็น JSON object ที่สั้น กระชับ ตรงประเด็น ทรงพลัง (ความยาวรวมไม่เกิน 400 คำ เพื่อความรวดเร็วและชัดเจน):
+จงตอบเป็น JSON object ที่สั้น กระชับ ตรงประเด็น ทรงพลัง:
 {
   "painPoints": "- ปัญหา 1\\n- ปัญหา 2\\n- ปัญหา 3",
   "transformation": "การเปลี่ยนแปลงที่ผู้อ่านจะได้รับใน 1-2 ประโยค",
   "coreMessage": "ใจความสำคัญแก่นแท้ของหนังสือ 1 ประโยค",
   "antiGoals": "- สิ่งที่หนังสือเล่มนี้ไม่ได้สอนหรือไม่ใช่เป้าหมาย",
   "roleOfBook": "บทบาทของหนังสือในธุรกิจ (เช่น Lead Magnet, Authority Builder)",
-  "draftStructure": "บทที่ 1: ...\\nบทที่ 2: ...\\nบทที่ 3: ...\\nบทที่ 4: ...\\nบทที่ 5: ..."
+  "draftStructure": "บทที่ 1: ...\\nบทที่ 2: ...\\n... จนครบ ${count} บทพอดี (ต้องเรียงลำดับทีละบรรทัดจนครบ ${count} บท)"
 }
 ตอบเฉพาะ JSON object เท่านั้น ห้ามใส่คำอธิบายอื่น`;
 
         const content = await executeLLMCompletion({
             messages: [{ role: 'user', content: prompt }],
-            maxTokens: 1000,
+            maxTokens: Math.max(1200, count * 150),
             temperature: 0.5,
             provider,
             jsonMode: true
@@ -831,7 +834,52 @@ export async function generateBriefingSuggestions(
         console.error("Generate Briefing Error:", error);
         return { success: false, error: error.message || "Failed to generate suggestions" };
     }
+}
 
+export async function generateChapterStructureOnly(
+    topic: string,
+    targetAudience: string,
+    tone: string,
+    chapterCount: number = 7,
+    provider: 'gemini' | 'openrouter' = 'gemini'
+) {
+    if (provider === 'gemini' && !getGeminiApiKey()) {
+        return { success: false, error: "ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ" };
+    }
+    if (provider === 'openrouter' && !process.env.OPENROUTER_API_KEY) {
+        return { success: false, error: "ยังไม่ได้กำหนด OPENROUTER_API_KEY ในระบบ" };
+    }
+
+    try {
+        const count = Math.max(3, Math.min(25, chapterCount || 7));
+        const prompt = `คุณคือผู้เชี่ยวชาญการวางโครงสร้างสารบัญหนังสือ (Book Structure Architect)
+ช่วยวางแผนโครงสร้างสารบัญสำหรับหนังสือเรื่อง: "${topic}"
+- ผู้อ่านเป้าหมาย: "${targetAudience}"
+- โทน: "${tone}"
+- จำนวนบทที่ต้องการ: ${count} บท
+
+กฎการสร้าง:
+1. ออกแบบกระบวนการเรียนรู้แบบมีขั้นมีตอน (Logical Progression / Journey from Pain to Solution & Mastery)
+2. เขียนรายชื่อบทเรียงลำดับทีละบรรทัด รูปแบบ:
+บทที่ 1: [ชื่อบทและจุดเน้นสำคัญ]
+บทที่ 2: [ชื่อบทและจุดเน้นสำคัญ]
+...
+จนครบ ${count} บทพอดี
+3. ห้ามใส่ข้อความเกริ่นนำหรือคำส่งท้าย ส่งเฉพาะรายชื่อบททีละบรรทัดเท่านั้น`;
+
+        const content = await executeLLMCompletion({
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: Math.max(1000, count * 120),
+            temperature: 0.6,
+            provider
+        });
+
+        const lines = (content || '').trim();
+        return { success: true, draftStructure: lines };
+    } catch (error: any) {
+        console.error("Generate Chapter Structure Error:", error);
+        return { success: false, error: error.message || "Failed to generate structure" };
+    }
 }
 
 export async function refreshChapters(projectId: string) {

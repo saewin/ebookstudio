@@ -77,7 +77,7 @@ export default async function StructurePage(props: PageProps) {
                                 </div>
                                 <p className="font-medium text-slate-600">ไม่พบข้อมูลบทเรียน (No Chapters Found)</p>
                                 <p className="text-sm">
-                                    เลือก Project อื่น หรือตรวจสอบการเชื่อมต่อ Relation ใน Notion
+                                    เลือกโปรเจกต์อื่น หรือคลิกปุ่ม "+ เพิ่มบทเรียน" ด้านล่างเพื่อเริ่มต้น
                                 </p>
                             </div>
                         ) : (
