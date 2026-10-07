@@ -37,121 +37,188 @@ export default function MockupModal({
             const ctx = canvas.getContext('2d')
             if (!ctx) throw new Error('Cannot get canvas context')
 
-            // 1. Background
-            if (bgTheme === 'dark') {
-                const grad = ctx.createRadialGradient(800, 600, 100, 800, 600, 900)
-                grad.addColorStop(0, '#1e293b')
-                grad.addColorStop(1, '#020617')
-                ctx.fillStyle = grad
-                ctx.fillRect(0, 0, 1600, 1200)
-            } else if (bgTheme === 'white') {
-                ctx.fillStyle = '#f8fafc'
-                ctx.fillRect(0, 0, 1600, 1200)
-            } else if (bgTheme === 'gradient') {
-                const grad = ctx.createLinearGradient(0, 0, 1600, 1200)
-                grad.addColorStop(0, '#0f172a')
-                grad.addColorStop(0.5, '#1e1b4b')
-                grad.addColorStop(1, '#312e81')
-                ctx.fillStyle = grad
-                ctx.fillRect(0, 0, 1600, 1200)
-            } else {
-                ctx.clearRect(0, 0, 1600, 1200)
-            }
-
-            // 2. Floor Shadow
-            ctx.save()
-            ctx.beginPath()
-            ctx.ellipse(800, 960, 360, 45, 0, 0, Math.PI * 2)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-            ctx.filter = 'blur(30px)'
-            ctx.fill()
-            ctx.restore()
-
-            // 3. Draw Spine & Pages
-            // Spine
-            ctx.save()
-            ctx.fillStyle = '#0f172a'
-            ctx.fillRect(520, 240, 60, 720)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
-            ctx.fillRect(520, 240, 10, 720)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
-            ctx.fillRect(570, 240, 10, 720)
-
-            // Spine text
-            ctx.save()
-            ctx.translate(555, 600)
-            ctx.rotate(-Math.PI / 2)
-            ctx.fillStyle = '#e2e8f0'
-            ctx.font = 'bold 22px sans-serif'
-            ctx.textAlign = 'center'
-            ctx.fillText(projectTitle.slice(0, 32), 0, 0)
-            ctx.restore()
-
-            // 4. Draw Front Cover
-            const coverW = 500
-            const coverH = 720
-            const coverX = 580
-            const coverY = 240
-
+            // Load Cover Image if available
+            let coverImg: HTMLImageElement | null = null
             if (frontCoverUrl) {
-                const img = new Image()
-                img.crossOrigin = 'anonymous'
-                await new Promise((resolve) => {
-                    img.onload = resolve
-                    img.onerror = resolve
-                    img.src = frontCoverUrl
-                })
-                ctx.drawImage(img, coverX, coverY, coverW, coverH)
-            } else {
-                // Fallback default cover template
-                ctx.fillStyle = '#090d16'
-                ctx.fillRect(coverX, coverY, coverW, coverH)
-                
-                // Borders
-                ctx.strokeStyle = 'rgba(217, 119, 6, 0.4)'
-                ctx.lineWidth = 2
-                ctx.strokeRect(coverX + 24, coverY + 24, coverW - 48, coverH - 48)
-
-                // Title
-                ctx.fillStyle = '#ffffff'
-                ctx.font = 'bold 36px serif'
-                ctx.textAlign = 'center'
-                ctx.fillText(projectTitle, coverX + coverW / 2, coverY + 280, coverW - 60)
-
-                // Author
-                ctx.fillStyle = '#94a3b8'
-                ctx.font = '20px sans-serif'
-                ctx.fillText(`เรียบเรียงโดย ${author}`, coverX + coverW / 2, coverY + 620)
+                try {
+                    const img = new Image()
+                    img.crossOrigin = 'anonymous'
+                    await new Promise((resolve) => {
+                        img.onload = () => resolve(true)
+                        img.onerror = () => resolve(false)
+                        img.src = frontCoverUrl
+                    })
+                    if (img.naturalWidth > 0) {
+                        coverImg = img
+                    }
+                } catch {
+                    coverImg = null
+                }
             }
 
-            // Cover Gloss & 3D Lighting gradient
-            const gloss = ctx.createLinearGradient(coverX, coverY, coverX + coverW, coverY)
-            gloss.addColorStop(0, 'rgba(255, 255, 255, 0.18)')
-            gloss.addColorStop(0.15, 'rgba(255, 255, 255, 0)')
-            gloss.addColorStop(0.85, 'rgba(0, 0, 0, 0)')
-            gloss.addColorStop(1, 'rgba(0, 0, 0, 0.25)')
-            ctx.fillStyle = gloss
-            ctx.fillRect(coverX, coverY, coverW, coverH)
+            const drawMockup = (useCoverImg: boolean) => {
+                ctx.clearRect(0, 0, 1600, 1200)
 
-            // Right Pages edge (thickness)
-            ctx.fillStyle = '#f1f5f9'
-            ctx.fillRect(coverX + coverW, coverY + 12, 35, coverH - 24)
-            // Lines on page edges
-            ctx.strokeStyle = '#cbd5e1'
-            ctx.lineWidth = 1
-            for (let i = coverY + 18; i < coverY + coverH - 24; i += 6) {
-                ctx.beginPath()
-                ctx.moveTo(coverX + coverW, i)
-                ctx.lineTo(coverX + coverW + 35, i)
-                ctx.stroke()
+                // 1. Background
+                if (bgTheme === 'dark') {
+                    const grad = ctx.createRadialGradient(800, 600, 100, 800, 600, 900)
+                    grad.addColorStop(0, '#1e293b')
+                    grad.addColorStop(1, '#020617')
+                    ctx.fillStyle = grad
+                    ctx.fillRect(0, 0, 1600, 1200)
+                } else if (bgTheme === 'white') {
+                    ctx.fillStyle = '#f8fafc'
+                    ctx.fillRect(0, 0, 1600, 1200)
+                } else if (bgTheme === 'gradient') {
+                    const grad = ctx.createLinearGradient(0, 0, 1600, 1200)
+                    grad.addColorStop(0, '#0f172a')
+                    grad.addColorStop(0.5, '#1e1b4b')
+                    grad.addColorStop(1, '#312e81')
+                    ctx.fillStyle = grad
+                    ctx.fillRect(0, 0, 1600, 1200)
+                }
+
+                // Helper to render front cover plate
+                const renderCoverPlate = (x: number, y: number, w: number, h: number) => {
+                    if (useCoverImg && coverImg) {
+                        ctx.drawImage(coverImg, x, y, w, h)
+                    } else {
+                        ctx.fillStyle = '#090d16'
+                        ctx.fillRect(x, y, w, h)
+                        ctx.strokeStyle = 'rgba(217, 119, 6, 0.4)'
+                        ctx.lineWidth = 2
+                        ctx.strokeRect(x + 24, y + 24, w - 48, h - 48)
+                        ctx.fillStyle = '#ffffff'
+                        ctx.font = 'bold 36px serif'
+                        ctx.textAlign = 'center'
+                        ctx.fillText(projectTitle, x + w / 2, y + 280, w - 60)
+                        ctx.fillStyle = '#94a3b8'
+                        ctx.font = '20px sans-serif'
+                        ctx.fillText(`เรียบเรียงโดย ${author}`, x + w / 2, y + 620)
+                    }
+                    // Gloss highlight
+                    const gloss = ctx.createLinearGradient(x, y, x + w, y)
+                    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.18)')
+                    gloss.addColorStop(0.15, 'rgba(255, 255, 255, 0)')
+                    gloss.addColorStop(0.85, 'rgba(0, 0, 0, 0)')
+                    gloss.addColorStop(1, 'rgba(0, 0, 0, 0.25)')
+                    ctx.fillStyle = gloss
+                    ctx.fillRect(x, y, w, h)
+                }
+
+                if (angle === 'front') {
+                    // Front Angle View
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.ellipse(800, 990, 320, 35, 0, 0, Math.PI * 2)
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+                    ctx.filter = 'blur(25px)'
+                    ctx.fill()
+                    ctx.restore()
+
+                    const coverW = 540
+                    const coverH = 760
+                    const coverX = 530
+                    const coverY = 220
+
+                    // Left spine bevel
+                    ctx.fillStyle = '#0f172a'
+                    ctx.fillRect(coverX - 18, coverY + 6, 18, coverH - 12)
+
+                    // Cover
+                    renderCoverPlate(coverX, coverY, coverW, coverH)
+
+                    // Right pages edge
+                    ctx.fillStyle = '#e2e8f0'
+                    ctx.fillRect(coverX + coverW, coverY + 10, 16, coverH - 20)
+                } else if (angle === 'flat') {
+                    // Flat / Isometric Laydown View
+                    ctx.save()
+                    ctx.translate(800, 600)
+                    ctx.scale(1, 0.72)
+                    ctx.rotate(-Math.PI / 10)
+
+                    // Contact shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+                    ctx.filter = 'blur(35px)'
+                    ctx.fillRect(-280, -360, 560, 780)
+                    ctx.filter = 'none'
+
+                    // Spine on left
+                    ctx.fillStyle = '#0f172a'
+                    ctx.fillRect(-320, -360, 45, 740)
+
+                    // Cover
+                    renderCoverPlate(-275, -360, 520, 740)
+
+                    // Bottom page thickness
+                    ctx.fillStyle = '#cbd5e1'
+                    ctx.fillRect(-275, 380, 520, 25)
+
+                    ctx.restore()
+                } else {
+                    // Standing 3D Angle View (Default)
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.ellipse(800, 960, 360, 45, 0, 0, Math.PI * 2)
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+                    ctx.filter = 'blur(30px)'
+                    ctx.fill()
+                    ctx.restore()
+
+                    // Spine
+                    ctx.save()
+                    ctx.fillStyle = '#0f172a'
+                    ctx.fillRect(520, 240, 60, 720)
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+                    ctx.fillRect(520, 240, 10, 720)
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+                    ctx.fillRect(570, 240, 10, 720)
+
+                    // Spine text
+                    ctx.translate(555, 600)
+                    ctx.rotate(-Math.PI / 2)
+                    ctx.fillStyle = '#e2e8f0'
+                    ctx.font = 'bold 22px sans-serif'
+                    ctx.textAlign = 'center'
+                    ctx.fillText(projectTitle.slice(0, 32), 0, 0)
+                    ctx.restore()
+
+                    // Front cover
+                    const coverW = 500
+                    const coverH = 720
+                    const coverX = 580
+                    const coverY = 240
+                    renderCoverPlate(coverX, coverY, coverW, coverH)
+
+                    // Right page thickness
+                    ctx.fillStyle = '#f1f5f9'
+                    ctx.fillRect(coverX + coverW, coverY + 12, 35, coverH - 24)
+                    ctx.strokeStyle = '#cbd5e1'
+                    ctx.lineWidth = 1
+                    for (let i = coverY + 18; i < coverY + coverH - 24; i += 6) {
+                        ctx.beginPath()
+                        ctx.moveTo(coverX + coverW, i)
+                        ctx.lineTo(coverX + coverW + 35, i)
+                        ctx.stroke()
+                    }
+                }
             }
 
-            ctx.restore()
+            // Draw with image first
+            drawMockup(true)
 
-            // Trigger Download
-            const dataUrl = canvas.toDataURL('image/png')
+            let dataUrl: string
+            try {
+                dataUrl = canvas.toDataURL('image/png')
+            } catch {
+                // If canvas was tainted by cross-origin image, redraw using vector design
+                drawMockup(false)
+                dataUrl = canvas.toDataURL('image/png')
+            }
+
             const link = document.createElement('a')
-            link.download = `3D-Mockup-${projectTitle.replace(/[/\\?%*:|"<>]/g, '-')}.png`
+            link.download = `3D-Mockup-${angle}-${projectTitle.replace(/[/\\?%*:|"<>]/g, '-')}.png`
             link.href = dataUrl
             document.body.appendChild(link)
             link.click()

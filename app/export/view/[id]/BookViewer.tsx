@@ -1352,7 +1352,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="table-of-contents"
                     data-page-num={tocPageNum}
                     data-chapter-full-header="สารบัญ (Table of Contents)"
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
+                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
                     <div>
@@ -1421,7 +1421,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             data-chapter-id={page.chapterId}
                             data-chapter-no={page.chapterNo}
                             data-chapter-full-header={page.fullHeader}
-                            className={`book-page book-content-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
+                            className={`book-page book-content-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
                                 viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-8'
                             } bg-white text-slate-900 ${
                                 pageSize === 'a4' ? 'p-8 md:p-14 lg:p-16' : 'p-6 md:p-8 lg:p-10'
@@ -1568,7 +1568,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="about-author"
                     data-page-num={aboutAuthorPageNumber}
                     data-chapter-full-header="เกี่ยวกับผู้เขียน (About the Author)"
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
+                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
                     style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
                     {/* Running Header */}

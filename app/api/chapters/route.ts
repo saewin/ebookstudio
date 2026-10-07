@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getChapters } from '@/lib/notion'
 import * as localDb from '@/lib/localDb'
+import { sanitizeBookContent } from '@/lib/sanitize'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,13 +38,17 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Chapter not found' }, { status: 404 })
         }
 
+        const cleanContent = content !== undefined ? sanitizeBookContent(content) : undefined
+        const cleanTakeaways = keyTakeaways !== undefined ? sanitizeBookContent(keyTakeaways) : undefined
+        const cleanTerminology = keyTerminology !== undefined ? sanitizeBookContent(keyTerminology) : undefined
+
         const updated = await localDb.saveChapter({
             ...existing,
-            ...(title !== undefined ? { title } : {}),
-            ...(content !== undefined ? { content } : {}),
-            ...(keyTakeaways !== undefined ? { keyTakeaways } : {}),
-            ...(keyTerminology !== undefined ? { keyTerminology } : {}),
-            hasContent: content ? Boolean(content.trim()) : existing.hasContent,
+            ...(title !== undefined ? { title: title.trim() } : {}),
+            ...(cleanContent !== undefined ? { content: cleanContent } : {}),
+            ...(cleanTakeaways !== undefined ? { keyTakeaways: cleanTakeaways } : {}),
+            ...(cleanTerminology !== undefined ? { keyTerminology: cleanTerminology } : {}),
+            hasContent: cleanContent !== undefined ? Boolean(cleanContent.trim()) : existing.hasContent,
         })
 
         return NextResponse.json({ success: true, chapter: updated })

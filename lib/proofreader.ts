@@ -28,7 +28,8 @@ export interface ProofreadReport {
 export async function proofreadBook(project: Project, chapters: Chapter[]): Promise<ProofreadReport> {
     // 1. Prepare chapter text excerpts (to fit token window gracefully while covering key content)
     let totalWords = 0
-    const chapterData = chapters.map(chap => {
+    const validChapters = chapters.filter(chap => chap.content && chap.content.trim().length > 0)
+    const chapterData = validChapters.map(chap => {
         const plain = (chap.content || '')
             .replace(/<[^>]*>/g, ' ')
             .replace(/\s+/g, ' ')
@@ -79,7 +80,7 @@ ${JSON.stringify(chapterData, null, 2)}
     try {
         const rawResponse = await callGeminiNative([
             { role: 'user', content: prompt }
-        ], 'gemini-2.5-flash')
+        ], 'gemini-2.5-flash', true)
 
         // Clean json string
         let cleaned = rawResponse.trim()
@@ -159,7 +160,7 @@ export async function applyProofreadFixes(projectId: string, fixes: { chapterId:
 
         chapFixes.forEach(fix => {
             if (fix.originalText && fix.suggestedText && content.includes(fix.originalText)) {
-                content = content.replace(fix.originalText, fix.suggestedText)
+                content = content.replaceAll(fix.originalText, fix.suggestedText)
                 hasChanges = true
             }
         })

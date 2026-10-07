@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { marked } from 'marked'
 import { Chapter, Project } from '@/lib/notion'
 import { CopyrightSettings, DEFAULT_COPYRIGHT_SETTINGS } from '@/app/export/view/[id]/BookViewer'
 
@@ -19,12 +20,16 @@ function escapeXml(unsafe: string): string {
         .replace(/'/g, '&apos;')
 }
 
-function cleanHtmlToXhtml(html: string): string {
-    if (!html) return ''
+async function parseAndCleanToXhtml(raw: string): Promise<string> {
+    if (!raw || !raw.trim()) return '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>'
+    // 1. Convert Markdown & preserve embedded HTML via marked
+    const html = await marked.parse(raw, { gfm: true, breaks: true })
+    
+    // 2. Strict XHTML cleanup
     let cleaned = html
         // Self-close void tags
-        .replace(/<hr\b([^>]*?)>/gi, '<hr$1 />')
-        .replace(/<br\b([^>]*?)>/gi, '<br$1 />')
+        .replace(/<hr\b([^>]*?)(?<!\/)>/gi, '<hr$1 />')
+        .replace(/<br\b([^>]*?)(?<!\/)>/gi, '<br$1 />')
         .replace(/<img\b([^>]*?)(?<!\/)>/gi, '<img$1 />')
         .replace(/<input\b([^>]*?)(?<!\/)>/gi, '<input$1 />')
         // Remove unescaped bare ampersands
@@ -145,14 +150,22 @@ img {
     if (frontCoverUrl) {
         try {
             let buffer: Buffer | null = null
-            if (frontCoverUrl.startsWith('/api/uploads/')) {
+            let trimmed = frontCoverUrl.trim()
+            if (trimmed.startsWith('/uploads/')) {
+                trimmed = '/api' + trimmed
+            }
+            if (trimmed.startsWith('/api/uploads/')) {
                 const fs = await import('fs/promises')
                 const path = await import('path')
-                const filename = decodeURIComponent(frontCoverUrl.replace('/api/uploads/', ''))
-                const filePath = path.join(process.cwd(), 'public', 'uploads', filename)
-                buffer = await fs.readFile(filePath)
-            } else if (frontCoverUrl.startsWith('http')) {
-                const res = await fetch(frontCoverUrl)
+                const { existsSync } = await import('fs')
+                const rawFile = trimmed.slice('/api/uploads/'.length)
+                const filename = decodeURIComponent(rawFile)
+                const filePath = path.join(process.cwd(), 'public', 'uploads', path.basename(filename))
+                if (existsSync(filePath)) {
+                    buffer = await fs.readFile(filePath)
+                }
+            } else if (trimmed.startsWith('http')) {
+                const res = await fetch(trimmed)
                 if (res.ok) {
                     const arr = await res.arrayBuffer()
                     buffer = Buffer.from(arr)
@@ -160,9 +173,10 @@ img {
             }
 
             if (buffer) {
-                if (frontCoverUrl.endsWith('.png')) coverImageMediaType = 'image/png'
-                else if (frontCoverUrl.endsWith('.webp')) coverImageMediaType = 'image/webp'
-                coverImagePath = 'images/cover.jpg'
+                if (trimmed.endsWith('.png')) coverImageMediaType = 'image/png'
+                else if (trimmed.endsWith('.webp')) coverImageMediaType = 'image/webp'
+                const ext = coverImageMediaType === 'image/png' ? 'png' : (coverImageMediaType === 'image/webp' ? 'webp' : 'jpg')
+                coverImagePath = `images/cover.${ext}`
                 zip.file(`OEBPS/${coverImagePath}`, buffer)
             }
         } catch (e) {
@@ -248,31 +262,76 @@ img {
     }
 
     // 6. Chapters XHTML
-    chapters.forEach((chap, idx) => {
+    for (let idx = 0; idx < chapters.length; idx++) {
+        const chap = chapters[idx]
         const fileId = `chapter_${idx + 1}`
         const fileName = `${fileId}.xhtml`
         manifestItems.push(`<item id="${fileId}" href="${fileName}" media-type="application/xhtml+xml"/>`)
         spineItems.push(`<itemref idref="${fileId}"/>`)
 
         const chapTitle = chap.title || `บทที่ ${chap.chapterNo}`
-        const bodyContent = cleanHtmlToXhtml(chap.content || '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>')
+        const bodyContent = await parseAndCleanToXhtml(chap.content || '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>')
+
+        // Handle Chapter Hero Image if present
+        let heroImageTag = ''
+        const chapImgUrl = chap.image1Url || chap.chapterImage
+        if (chapImgUrl) {
+            try {
+                let imgBuffer: Buffer | null = null
+                let imgType = 'image/jpeg'
+                let trimmedImg = chapImgUrl.trim()
+                if (trimmedImg.startsWith('/uploads/')) trimmedImg = '/api' + trimmedImg
+
+                if (trimmedImg.startsWith('/api/uploads/')) {
+                    const fs = await import('fs/promises')
+                    const path = await import('path')
+                    const { existsSync } = await import('fs')
+                    const rawFile = trimmedImg.slice('/api/uploads/'.length)
+                    const filename = decodeURIComponent(rawFile)
+                    const filePath = path.join(process.cwd(), 'public', 'uploads', path.basename(filename))
+                    if (existsSync(filePath)) {
+                        imgBuffer = await fs.readFile(filePath)
+                    }
+                } else if (trimmedImg.startsWith('http')) {
+                    const res = await fetch(trimmedImg)
+                    if (res.ok) {
+                        const arr = await res.arrayBuffer()
+                        imgBuffer = Buffer.from(arr)
+                    }
+                }
+
+                if (imgBuffer) {
+                    if (trimmedImg.endsWith('.png')) imgType = 'image/png'
+                    else if (trimmedImg.endsWith('.webp')) imgType = 'image/webp'
+                    const ext = imgType === 'image/png' ? 'png' : (imgType === 'image/webp' ? 'webp' : 'jpg')
+                    const imgRelPath = `images/chapter_${idx + 1}_hero.${ext}`
+                    const imgId = `chap_img_${idx + 1}`
+                    zip.file(`OEBPS/${imgRelPath}`, imgBuffer)
+                    manifestItems.push(`<item id="${imgId}" href="${imgRelPath}" media-type="${imgType}"/>`)
+                    heroImageTag = `<div style="text-align: center; margin: 1.5em 0;"><img src="${imgRelPath}" alt="${escapeXml(chapTitle)}" style="max-width: 100%; height: auto; border-radius: 8px;" /></div>`
+                }
+            } catch (err) {
+                console.warn(`Failed to embed chapter ${idx + 1} image:`, err)
+            }
+        }
 
         const chapXhtml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="th">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="th" lang="th">
 <head>
     <title>${escapeXml(chapTitle)}</title>
     <link rel="stylesheet" type="text/css" href="styles.css"/>
 </head>
 <body epub:type="bodymatter chapter">
     <h1 id="chapter-${chap.id}">${escapeXml(chapTitle)}</h1>
+    ${heroImageTag}
     <div class="chapter-content">
         ${bodyContent}
     </div>
 </body>
 </html>`
         zip.file(`OEBPS/${fileName}`, chapXhtml)
-    })
+    }
 
     // 7. Navigation Document (OEBPS/nav.xhtml - EPUB 3 Standard)
     const navItems = chapters.map((c, i) => {
