@@ -7,7 +7,8 @@ import {
     ExternalLink, BookMarked, Sparkles, Download, 
     Compass, Layout, FileSpreadsheet, ChevronLeft,
     ChevronRight, ArrowUp, List, HelpCircle,
-    Upload, Image as ImageIcon, Trash2, X
+    Upload, Image as ImageIcon, Trash2, X,
+    Shield, Palette, Clock, Check, Edit3, Sliders
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
@@ -23,6 +24,32 @@ interface BookViewerProps {
     project: Project | null;
     projectId: string;
 }
+
+export interface CopyrightSettings {
+    showCopyrightPage: boolean;
+    bookTitle: string;
+    author: string;
+    publisher: string;
+    typesetter: string;
+    edition: string;
+    pubYear: string;
+    isbn: string;
+    category: string;
+    legalNotice: string;
+}
+
+export const DEFAULT_COPYRIGHT_SETTINGS: CopyrightSettings = {
+    showCopyrightPage: true,
+    bookTitle: '',
+    author: 'Saewin',
+    publisher: 'Ebook Creator Studio Publishing',
+    typesetter: 'Saewin Publishing Engine (Standalone v2.0)',
+    edition: 'พิมพ์ครั้งที่ 1 (First Edition)',
+    pubYear: '2569 / 2026',
+    isbn: '978-616-XXXX-XX-X (e-Book)',
+    category: 'ธุรกิจและการบริหารจัดการ / นวัตกรรมและปัญญาประดิษฐ์',
+    legalNotice: 'สงวนลิขสิทธิ์ตามพระราชบัญญัติลิขสิทธิ์ พ.ศ. 2537 และฉบับแก้ไขเพิ่มเติม ห้ามนำส่วนหนึ่งส่วนใดของหนังสือเล่มนี้ไปลอกเลียนแบบ ทำซ้ำ ดัดแปลง ถ่ายเอกสาร เผยแพร่ หรือจัดเก็บในระบบการเรียกค้นข้อมูลใดๆ ก่อนได้รับอนุญาตเป็นลายลักษณ์อักษรจากผู้ถือลิขสิทธิ์ ยกเว้นเพื่อการศึกษาและการอ้างอิงเชิงวิชาการพร้อมระบุที่มาอย่างถูกต้อง',
+};
 
 interface BookPageSheet {
     pageId: string;
@@ -421,7 +448,16 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [isUploadingBackCover, setIsUploadingBackCover] = useState(false);
     const [showCoverManagerModal, setShowCoverManagerModal] = useState(false);
 
-    // Load persisted covers on mount
+    // Book Design Theme & Preset
+    const [themePreset, setThemePreset] = useState<'executive' | 'classic' | 'tech' | 'minimal'>('executive');
+
+    // Copyright & CIP Page Customization
+    const [copyrightSettings, setCopyrightSettings] = useState<CopyrightSettings>(DEFAULT_COPYRIGHT_SETTINGS);
+    const [draftCopyright, setDraftCopyright] = useState<CopyrightSettings>(DEFAULT_COPYRIGHT_SETTINGS);
+    const [showCopyrightModal, setShowCopyrightModal] = useState(false);
+    const [isSavingCopyright, setIsSavingCopyright] = useState(false);
+
+    // Load persisted covers and settings on mount
     useEffect(() => {
         if (!projectId) return;
         // 1. Instant check from localStorage
@@ -430,7 +466,22 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         if (localFront) setFrontCoverUrl(localFront);
         if (localBack) setBackCoverUrl(localBack);
 
-        // 2. Fetch from server API (persistent storage)
+        const localTheme = localStorage.getItem(`theme_${projectId}`);
+        if (localTheme && ['executive', 'classic', 'tech', 'minimal'].includes(localTheme)) {
+            setThemePreset(localTheme as any);
+        }
+
+        const localCopyright = localStorage.getItem(`copyright_${projectId}`);
+        if (localCopyright) {
+            try {
+                const parsed = JSON.parse(localCopyright);
+                setCopyrightSettings(prev => ({ ...prev, ...parsed }));
+            } catch (e) {
+                console.error('Failed to parse local copyright settings:', e);
+            }
+        }
+
+        // 2. Fetch covers from server API (persistent storage)
         fetch(`/api/projects/${projectId}/covers`)
             .then(res => res.json())
             .then(data => {
@@ -446,7 +497,64 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
             })
             .catch(err => console.error('Failed to load covers:', err));
+
+        // 3. Fetch project settings from server API (persistent storage)
+        fetch(`/api/projects/${projectId}/settings`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.theme && ['executive', 'classic', 'tech', 'minimal'].includes(data.theme)) {
+                        setThemePreset(data.theme);
+                        localStorage.setItem(`theme_${projectId}`, data.theme);
+                    }
+                    if (data.copyright) {
+                        setCopyrightSettings(prev => {
+                            const updated = { ...prev, ...data.copyright };
+                            localStorage.setItem(`copyright_${projectId}`, JSON.stringify(updated));
+                            return updated;
+                        });
+                    }
+                }
+            })
+            .catch(err => console.error('Failed to load project settings:', err));
     }, [projectId]);
+
+    const handleThemeChange = async (newTheme: 'executive' | 'classic' | 'tech' | 'minimal') => {
+        setThemePreset(newTheme);
+        localStorage.setItem(`theme_${projectId}`, newTheme);
+        try {
+            await fetch(`/api/projects/${projectId}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: newTheme }),
+            });
+        } catch (err: any) {
+            console.error('Failed to save theme setting:', err);
+        }
+    };
+
+    const handleSaveCopyrightSettings = async (newSettings: CopyrightSettings) => {
+        setIsSavingCopyright(true);
+        setCopyrightSettings(newSettings);
+        localStorage.setItem(`copyright_${projectId}`, JSON.stringify(newSettings));
+        try {
+            const res = await fetch(`/api/projects/${projectId}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ copyright: newSettings }),
+            });
+            const data = await res.json();
+            if (!data.success) {
+                alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลลิขสิทธิ์: ' + (data.error || 'Unknown error'));
+                return;
+            }
+            setShowCopyrightModal(false);
+        } catch (err: any) {
+            alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + (err.message || String(err)));
+        } finally {
+            setIsSavingCopyright(false);
+        }
+    };
 
     const handleUploadCover = async (file: File, type: 'front' | 'back') => {
         if (!file) return;
@@ -540,10 +648,25 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
     const cleanProjectTitle = projectTitle.replace(/^["']|["']$/g, '');
 
+    // Reading analytics: word count and estimated reading time
+    const bookStats = useMemo(() => {
+        let totalChars = 0;
+        let totalWords = 0;
+        chapters.forEach(c => {
+            const raw = (c.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+            totalChars += raw.length;
+            const words = raw.trim().split(/\s+/).filter(Boolean).length;
+            totalWords += Math.max(words, Math.round(raw.length / 4.5));
+        });
+        const readMinutes = Math.max(1, Math.ceil(totalWords / 200));
+        return { totalChars, totalWords, readMinutes };
+    }, [chapters]);
+
     // Compute exact continuous pagination and sub-pages
-    // Compute exact continuous pagination and sub-pages
-    const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber } = useMemo(() => {
-        let currentPage = 4; // Page 1: Cover, Page 2: Imprint, Page 3: TOC
+    const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber, showCopyright, tocPageNum } = useMemo(() => {
+        const show = copyrightSettings.showCopyrightPage;
+        const tocPage = show ? 3 : 2;
+        let currentPage = show ? 4 : 3; // Page 1: Cover, Page 2: Imprint (if enabled), Page 3 or 2: TOC
         const pages: BookPageSheet[] = [];
         const tocList: Array<{
             id: string;
@@ -624,8 +747,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             tableOfContents: tocList,
             totalPages: total,
             aboutAuthorPageNumber: aboutAuthorPage,
+            showCopyright: show,
+            tocPageNum: tocPage,
         };
-    }, [chapters, pageSize, fontSize]);
+    }, [chapters, pageSize, fontSize, copyrightSettings.showCopyrightPage]);
 
     // Active reading tracker via scroll position
     useEffect(() => {
@@ -723,20 +848,40 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 {cleanProjectTitle}
                             </h1>
                             <div className="flex items-center gap-2 text-xs text-slate-500">
-                                <span className="inline-flex items-center gap-1">
+                                <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
                                     <BookOpen size={12} className="text-blue-600" />
                                     {chapters.length} บท ({totalPages} หน้า)
                                 </span>
                                 <span>•</span>
-                                <span>{pageSize.toUpperCase()} Standard</span>
-                                <span>•</span>
-                                <span>ฟอนต์ {fontFamily === 'sarabun' ? 'Sarabun' : fontFamily}</span>
+                                <span className="inline-flex items-center gap-1 text-slate-600" title={`ความยาวประมาณ ${bookStats.totalWords.toLocaleString()} คำ (${bookStats.totalChars.toLocaleString()} ตัวอักษร)`}>
+                                    <Clock size={12} className="text-emerald-600" />
+                                    ~{bookStats.totalWords.toLocaleString()} คำ (~{bookStats.readMinutes} น.)
+                                </span>
+                                <span className="hidden sm:inline">•</span>
+                                <span className="hidden sm:inline">{pageSize.toUpperCase()}</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Middle: Formatting Controls */}
                     <div className="flex items-center flex-wrap gap-2 text-xs">
+                        {/* Theme Preset */}
+                        <div className="bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 flex items-center gap-1">
+                            <Palette size={13} className="text-slate-400" />
+                            <span className="text-slate-400">ธีม:</span>
+                            <select
+                                value={themePreset}
+                                onChange={(e) => handleThemeChange(e.target.value as any)}
+                                className="bg-transparent font-medium text-slate-700 focus:outline-none cursor-pointer"
+                                title="เลือกสไตล์ธีมสีและโทนของเล่ม"
+                            >
+                                <option value="executive">Executive (หรูหราทางการ)</option>
+                                <option value="classic">Classic (วรรณกรรมคลาสสิก)</option>
+                                <option value="tech">Tech (โมเดิร์นเทคโนโลยี)</option>
+                                <option value="minimal">Minimal (มินิมอลสบายตา)</option>
+                            </select>
+                        </div>
+
                         {/* View Mode Toggle */}
                         <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 flex items-center">
                             <button
@@ -844,6 +989,24 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             )}
                         </button>
 
+                        {/* Copyright & CIP Page Manager */}
+                        <button
+                            onClick={() => {
+                                setDraftCopyright(copyrightSettings);
+                                setShowCopyrightModal(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+                            title="ตั้งค่าข้อมูลลิขสิทธิ์และบรรณานุกรม CIP (หน้าที่ 2) และเปิด/ปิดการแสดงผล"
+                        >
+                            <Shield size={14} className="text-indigo-600" />
+                            <span>หน้าลิขสิทธิ์ / CIP</span>
+                            {copyrightSettings.showCopyrightPage ? (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="เปิดใช้งานหน้าลิขสิทธิ์" />
+                            ) : (
+                                <span className="text-[10px] text-slate-400 font-normal">(ปิด)</span>
+                            )}
+                        </button>
+
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={handlePrint}
@@ -866,7 +1029,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             </header>
 
             {/* Book Pages Container */}
-            <main className="flex-1 overflow-y-auto py-8 px-4 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible">
+            <main className={`book-viewer-main theme-${themePreset} flex-1 overflow-y-auto py-8 px-4 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible`}>
                 
                 {/* 1. FRONT COVER PAGE (Page 1) */}
                 <div 
@@ -968,53 +1131,135 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     )}
                 </div>
 
-                {/* 2. HALF-TITLE & IMPRINT / COPYRIGHT PAGE (Page 2) */}
-                <div 
-                    id="book-imprint"
-                    data-page-num="2"
-                    data-chapter-full-header="ข้อมูลลิขสิทธิ์ (Imprint)"
-                    className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
-                    style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
-                >
-                    <div className="pt-16 md:pt-24 text-center">
-                        <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-2 font-serif">
-                            {cleanProjectTitle}
-                        </h2>
-                        <div className="w-12 h-0.5 bg-slate-300 mx-auto mt-4 mb-2" />
-                    </div>
-
-                    <div className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto space-y-4 border-t border-slate-200 pt-8 pb-12 w-full">
-                        <div className="space-y-1">
-                            <p className="font-semibold text-slate-700">{cleanProjectTitle}</p>
-                            <p>ผู้เขียน / เรียบเรียง: Saewin</p>
-                            <p>จัดพิมพ์และเผยแพร่โดย: Ebook Creator Studio</p>
-                            <p>จัดรูปเล่ม: Saewin Automated Publishing Engine</p>
-                            <p>ปีที่พิมพ์: พุทธศักราช 2569 / ค.ศ. 2026</p>
+                {/* 2. HALF-TITLE & IMPRINT / COPYRIGHT & CIP PAGE (Page 2) */}
+                {showCopyright && (
+                    <div 
+                        id="book-imprint"
+                        data-page-num="2"
+                        data-chapter-full-header="ข้อมูลลิขสิทธิ์ & บรรณานุกรม (CIP)"
+                        className={`book-page relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-12 lg:p-16 flex flex-col justify-between`}
+                        style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
+                    >
+                        {/* Quick Edit Overlay Button (Screen Only) */}
+                        <div className="no-print absolute top-6 right-6 flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    setDraftCopyright(copyrightSettings);
+                                    setShowCopyrightModal(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer shadow-xs"
+                                title="คลิกเพื่อปรับแต่งข้อมูลลิขสิทธิ์ ผู้เขียน สำนักพิมพ์ หรือ ISBN"
+                            >
+                                <Edit3 size={13} />
+                                <span>แก้ไขข้อมูล CIP</span>
+                            </button>
                         </div>
 
-                        <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-400">
-                            <p className="font-medium text-slate-600 mb-1">สงวนลิขสิทธิ์ตามกฎหมาย</p>
-                            <p>
-                                ห้ามนำส่วนใดส่วนหนึ่งของหนังสือเล่มนี้ไปลอกเลียนแบบ ทำซ้ำ ถ่ายเอกสาร 
-                                บันทึก หรือจัดเก็บในระบบการเรียกค้นข้อมูลใดๆ โดยมิได้รับอนุญาตเป็นลายลักษณ์อักษรจากผู้จัดทำ
-                            </p>
+                        {/* Half-Title Section */}
+                        <div className="pt-6 md:pt-10 text-center">
+                            <span className="text-[11px] font-semibold tracking-widest text-slate-400 uppercase">
+                                Cataloging-in-Publication (CIP) & Colophon
+                            </span>
+                            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-2 font-serif">
+                                {copyrightSettings.bookTitle || cleanProjectTitle}
+                            </h2>
+                            {project?.audience && (
+                                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                                    {project.audience}
+                                </p>
+                            )}
+                            <div className="w-12 h-0.5 bg-slate-300 mx-auto mt-4 mb-2 theme-accent-rule" />
+                        </div>
+
+                        {/* Middle: National Library CIP Box + Colophon Grid */}
+                        <div className="max-w-xl mx-auto w-full my-auto space-y-6">
+                            {/* National Library of Thailand CIP Box */}
+                            <div className="border border-slate-300 rounded-lg p-5 md:p-6 bg-slate-50/70 text-slate-800 shadow-xs">
+                                <div className="text-center pb-3 border-b border-slate-200 mb-4">
+                                    <p className="font-semibold text-xs text-slate-900">
+                                        ข้อมูลทางบรรณานุกรมของสำนักหอสมุดแห่งชาติ
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-mono tracking-wide">
+                                        National Library of Thailand Cataloging-in-Publication Data
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2 text-xs font-mono leading-relaxed text-slate-700">
+                                    <p className="font-semibold text-slate-900">
+                                        {copyrightSettings.author || 'Saewin'}.
+                                    </p>
+                                    <p className="pl-4">
+                                        {copyrightSettings.bookTitle || cleanProjectTitle}. -- {copyrightSettings.edition || 'พิมพ์ครั้งที่ 1'}. -- กรุงเทพฯ : {copyrightSettings.publisher || 'Ebook Creator Studio'}, {copyrightSettings.pubYear || '2569'}.
+                                    </p>
+                                    <p className="pl-4 text-slate-600">
+                                        {totalPages} หน้า.
+                                    </p>
+                                    <p className="pl-4 text-slate-600 pt-1">
+                                        1. {copyrightSettings.category || 'การบริหารธุรกิจ / นวัตกรรมและเทคโนโลยี'}. I. ชื่อเรื่อง.
+                                    </p>
+                                    <p className="pt-2 font-bold text-slate-900 tracking-wider">
+                                        ISBN {copyrightSettings.isbn || '978-616-XXXX-XX-X (e-Book)'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Publishing & Editorial Colophon Table */}
+                            <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs text-slate-600 space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-slate-100">
+                                    <div>
+                                        <span className="text-slate-400 block text-[10px]">ผู้เขียน / เรียบเรียง:</span>
+                                        <strong className="text-slate-800">{copyrightSettings.author || 'Saewin'}</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-400 block text-[10px]">สำนักพิมพ์ / ผู้จัดจำหน่าย:</span>
+                                        <strong className="text-slate-800">{copyrightSettings.publisher || 'Ebook Creator Studio'}</strong>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-slate-100">
+                                    <div>
+                                        <span className="text-slate-400 block text-[10px]">ครั้งที่พิมพ์:</span>
+                                        <span className="text-slate-700">{copyrightSettings.edition || 'พิมพ์ครั้งที่ 1'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-400 block text-[10px]">ปีที่เผยแพร่:</span>
+                                        <span className="text-slate-700">{copyrightSettings.pubYear || '2569 / 2026'}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <span className="text-slate-400 block text-[10px]">จัดรูปเล่มและพิมพ์ดิจิทัล:</span>
+                                    <span className="text-slate-700">{copyrightSettings.typesetter || 'Saewin Publishing Engine'}</span>
+                                </div>
+                            </div>
+
+                            {/* Legal Notice */}
+                            <div className="text-[11px] text-slate-500 leading-relaxed border-t border-slate-200 pt-4 px-1">
+                                <p className="font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                                    <Shield size={12} className="text-indigo-600" />
+                                    <span>สงวนลิขสิทธิ์ตามพระราชบัญญัติลิขสิทธิ์</span>
+                                </p>
+                                <p className="text-justify text-slate-500 leading-relaxed">
+                                    {copyrightSettings.legalNotice || DEFAULT_COPYRIGHT_SETTINGS.legalNotice}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Running Footer Page 2 */}
+                        <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                            <span>{copyrightSettings.publisher || 'Ebook Creator Studio'}</span>
+                            <span className="text-slate-400 font-serif">❖</span>
+                            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                                หน้า 2
+                            </span>
                         </div>
                     </div>
+                )}
 
-                    {/* Running Footer Page 2 */}
-                    <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
-                        <span>Ebook Creator Studio</span>
-                        <span className="text-slate-400 font-serif">❖</span>
-                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
-                            หน้า 2
-                        </span>
-                    </div>
-                </div>
-
-                {/* 3. TABLE OF CONTENTS (สารบัญ - Page 3) */}
+                {/* 3. TABLE OF CONTENTS (สารบัญ - Page 3 or Page 2) */}
                 <div 
                     id="table-of-contents"
-                    data-page-num="3"
+                    data-page-num={tocPageNum}
                     data-chapter-full-header="สารบัญ (Table of Contents)"
                     className={`book-page ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
@@ -1023,7 +1268,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         <div className="text-center mb-10">
                             <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
                             <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">สารบัญ</h2>
-                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3" />
+                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3 theme-accent-rule" />
                         </div>
 
                         <div className="space-y-3.5 max-w-xl mx-auto w-full">
@@ -1065,12 +1310,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
                     </div>
 
-                    {/* Running Footer Page 3 */}
+                    {/* Running Footer Page 3 / Page 2 */}
                     <div className="book-page-footer mt-auto pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
                         <span>สารบัญ (Table of Contents)</span>
                         <span className="text-slate-400 font-serif">❖</span>
                         <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
-                            หน้า 3
+                            หน้า {tocPageNum}
                         </span>
                     </div>
                 </div>
@@ -1684,6 +1929,207 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 </div>
             )}
 
+            {/* Copyright & CIP Settings Modal */}
+            {showCopyrightModal && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print animate-in fade-in duration-200 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-6 my-auto max-h-[90vh] flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
+                            <div className="flex items-center gap-3 text-slate-900">
+                                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+                                    <Shield size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-base">ตั้งค่าหน้าข้อมูลลิขสิทธิ์ & บรรณานุกรม CIP (หน้าที่ 2)</h3>
+                                    <p className="text-xs text-slate-500">ปรับแต่งข้อมูลลิขสิทธิ์สากลและข้อมูลทางบรรณานุกรมหอสมุดแห่งชาติ</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowCopyrightModal(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Scrollable Form Body */}
+                        <div className="space-y-4 overflow-y-auto pr-1 flex-1 text-xs">
+                            {/* Enable / Disable Switch */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between">
+                                <div>
+                                    <label className="font-semibold text-slate-800 text-sm block">
+                                        แสดงหน้าข้อมูลลิขสิทธิ์ (Page 2) ในเล่ม
+                                    </label>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                        {draftCopyright.showCopyrightPage 
+                                            ? 'เปิดใช้งาน: แสดงข้อมูลลิขสิทธิ์และ CIP ในหน้าที่ 2 ก่อนสารบัญ' 
+                                            : 'ปิดใช้งาน: หน้าลิขสิทธิ์จะไม่ถูกพิมพ์ และหน้าสารบัญจะเลื่อนเป็นหน้าที่ 2 อัตโนมัติ'}
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={draftCopyright.showCopyrightPage}
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, showCopyrightPage: e.target.checked }))}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                </label>
+                            </div>
+
+                            {/* Book Title */}
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">
+                                    ชื่อหนังสือ (Title):
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={draftCopyright.bookTitle} 
+                                    placeholder={cleanProjectTitle}
+                                    onChange={(e) => setDraftCopyright(prev => ({ ...prev, bookTitle: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">ปล่อยว่างเพื่อใช้ชื่อโปรเจกต์ปัจจุบัน</p>
+                            </div>
+
+                            {/* 2-Column: Author & Publisher */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        ผู้เขียน / นามปากกา (Author):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.author} 
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, author: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        สำนักพิมพ์ / ผู้เผยแพร่ (Publisher):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.publisher} 
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, publisher: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 2-Column: Edition & Year */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        ครั้งที่พิมพ์ (Edition):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.edition} 
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, edition: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        ปีที่พิมพ์ (Publication Year):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.pubYear} 
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, pubYear: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 2-Column: ISBN & Category */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        รหัสสากล ISBN (e-Book):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.isbn} 
+                                        placeholder="978-616-XXXX-XX-X (e-Book)"
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, isbn: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block font-semibold text-slate-700 mb-1">
+                                        หมวดหมู่บรรณานุกรม (CIP Category):
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        value={draftCopyright.category} 
+                                        onChange={(e) => setDraftCopyright(prev => ({ ...prev, category: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Typesetter */}
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">
+                                    ผู้จัดรูปเล่ม & อาร์ตเวิร์ก (Typesetter / Layout):
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={draftCopyright.typesetter} 
+                                    onChange={(e) => setDraftCopyright(prev => ({ ...prev, typesetter: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs"
+                                />
+                            </div>
+
+                            {/* Legal Notice */}
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">
+                                    ข้อความประกาศสงวนลิขสิทธิ์ตามกฎหมาย (Legal Notice):
+                                </label>
+                                <textarea 
+                                    rows={3}
+                                    value={draftCopyright.legalNotice} 
+                                    onChange={(e) => setDraftCopyright(prev => ({ ...prev, legalNotice: e.target.value }))}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs leading-relaxed"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer Actions */}
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setDraftCopyright({ ...DEFAULT_COPYRIGHT_SETTINGS, bookTitle: cleanProjectTitle })}
+                                className="text-xs text-slate-500 hover:text-slate-800 underline transition-colors cursor-pointer"
+                            >
+                                คืนค่าเริ่มต้น (Reset Default)
+                            </button>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCopyrightModal(false)}
+                                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isSavingCopyright}
+                                    onClick={() => handleSaveCopyrightSettings(draftCopyright)}
+                                    className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm shadow-indigo-500/20 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                    <Check size={14} />
+                                    <span>{isSavingCopyright ? 'กำลังบันทึก...' : 'บันทึกและปรับใช้'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style jsx global>{`
                 /* Screen page simulation */
                 .page-a4 {
@@ -1709,6 +2155,56 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p:first-of-type {
                     text-indent: 0 !important;
+                }
+
+                /* ==================== THEME PRESETS ==================== */
+                /* 1. Executive Pro (Navy & Gold - Luxury Corporate) */
+                .theme-executive {
+                    --theme-accent: #b45309;
+                }
+                .theme-executive .theme-accent-rule {
+                    background-color: #b45309 !important;
+                }
+                .theme-executive .book-page-header {
+                    border-bottom-color: #cbd5e1;
+                }
+
+                /* 2. Classic Literary (Charcoal & Crimson - Warm Bookish) */
+                .theme-classic {
+                    --theme-accent: #991b1b;
+                }
+                .theme-classic .page-sheet {
+                    background-color: #fdfbf7 !important;
+                }
+                .theme-classic .theme-accent-rule {
+                    background-color: #991b1b !important;
+                }
+                .theme-classic .cross-ref-badge {
+                    border-color: #fca5a5 !important;
+                    background-color: #fef2f2 !important;
+                    color: #991b1b !important;
+                }
+
+                /* 3. Tech & Modern (Slate & Indigo - Startup) */
+                .theme-tech {
+                    --theme-accent: #4f46e5;
+                }
+                .theme-tech .theme-accent-rule {
+                    background-color: #4f46e5 !important;
+                }
+                .theme-tech .book-content-page h2 {
+                    letter-spacing: -0.025em;
+                }
+
+                /* 4. Warm Minimal (Charcoal & Sage - Muted Elegance) */
+                .theme-minimal {
+                    --theme-accent: #059669;
+                }
+                .theme-minimal .theme-accent-rule {
+                    background-color: #059669 !important;
+                }
+                .theme-minimal .book-page-header {
+                    border-bottom-color: #f4f4f5;
                 }
 
                 /* Continuous Section & Box Flow Styles */
