@@ -5,6 +5,7 @@ import ChapterList from './ChapterList'
 import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
 import BulkAddChapter from './BulkAddChapter'
+import SyncNotionButton from './SyncNotionButton'
 import { revalidatePath } from 'next/cache'
 
 // Status Mapping Imported from constants
@@ -53,16 +54,8 @@ export default async function StructurePage(props: PageProps) {
                         <ProjectSelector projects={projects} activeProjectId={activeProjectId} />
                     </div>
 
-                    <div className="flex gap-2 pb-1">
-                        <form action={async () => {
-                            'use server';
-                            revalidatePath('/structure')
-                        }}>
-                            <button className="bg-primary text-primary-foreground hover:opacity-90 px-4 py-2 rounded-md font-medium transition-colors shadow-sm shadow-blue-200 flex items-center gap-2">
-                                <RefreshCcw size={16} />
-                                Sync ข้อมูล
-                            </button>
-                        </form>
+                    <div className="flex items-center gap-2 pb-1">
+                        <SyncNotionButton />
                         <BulkAddChapter projectId={activeProjectId} />
                     </div>
                 </div>

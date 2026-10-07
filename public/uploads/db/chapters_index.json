@@ -1,0 +1,362 @@
+[
+  {
+    "id": "301e19eb-e8da-81a5-b7c5-ffcadd54d701",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 0,
+    "title": "บทนำ (Introduction)",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:06:00.000Z"
+  },
+  {
+    "id": "3f1e19eb-e8da-819b-b65e-f99135635243",
+    "projectId": "3f1e19eb-e8da-810d-a80e-e52903079f60",
+    "chapterNo": 1,
+    "title": "บทที่ 1: ปลดล็อกศักยภาพ AI พลิกโฉมร้านค้าบน Marketplace",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-06T02:10:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81f5-90a6-eafeb875e347",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 1,
+    "title": "บทที่ 1: กับดักของเจ้าของธุรกิจ: ทำไมยิ่งโต ยิ่งเหนื่อย และยิ่งไม่มีเวลา",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-05T14:26:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-8166-89a2-f99b07a41ad3",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 1,
+    "title": "ทำไม AI Agents ถึงเป็น Game-Changer สำหรับ SME",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-06T07:01:00.000Z"
+  },
+  {
+    "id": "2f4e19eb-e8da-8167-94e6-df7bde431e27",
+    "projectId": "",
+    "chapterNo": 1,
+    "title": "บทที่ 1: เปลี่ยนแนวคิด: จากคนลงมือทำสู่ผู้นำองค์กร และความสำคัญของการสร้าง Lead",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:54:00.000Z"
+  },
+  {
+    "id": "2f0e19eb-e8da-8174-86b3-f73e74e4655d",
+    "projectId": "",
+    "chapterNo": 1,
+    "title": "บทที่ 1: ทำไม 'รายชื่อลูกค้า' ยังสำคัญยิ่งในยุค AI?",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:30:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-81cc-b303-de0db75103e0",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 1,
+    "title": "บทนำ (Introduction)",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:51:00.000Z"
+  },
+  {
+    "id": "3f1e19eb-e8da-81ba-a2d8-e1f4d4392052",
+    "projectId": "3f1e19eb-e8da-810d-a80e-e52903079f60",
+    "chapterNo": 2,
+    "title": "บทที่ 2: ใช้ AI สร้างข้อความขายและรูปภาพสินค้าสะกดใจลูกค้า",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-06T02:10:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81b3-8139-dd3b0efc9cb1",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 2,
+    "title": "บทที่ 2: Mindset ของประธานยุค AI: มองเทคโนโลยีเป็น 'ทีมงาน' ไม่ใช่ 'เครื่องมือ'",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-05T14:39:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-8169-bedd-c2b28a363330",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 2,
+    "title": "AI Agents คืออะไร? และทำงานอย่างไร?",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-06T07:42:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-81bd-b35a-c3b83aa504e6",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 2,
+    "title": "บทที่ 1: จุดประกายความคิด: จากมนุษย์ลงมือทำ สู่ผู้นำขับเคลื่อนด้วย AI",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:51:00.000Z"
+  },
+  {
+    "id": "3f1e19eb-e8da-816a-8ae0-f7022820f514",
+    "projectId": "3f1e19eb-e8da-810d-a80e-e52903079f60",
+    "chapterNo": 3,
+    "title": "บทที่ 3: ระบบอัตโนมัติ AI ตอบแชทและปิดการขาย 24 ชั่วโมง",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-06T02:10:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81c5-9a05-ced39e734b9c",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 3,
+    "title": "บทที่ 3: ค้นหาจุดรั่วไหล: ระบุงาน Routine ในธุรกิจที่คุณควรเลิกทำทันที",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-05T15:26:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-81eb-bd6b-f49396037406",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 3,
+    "title": "วิเคราะห์ธุรกิจของคุณ: โอกาสทองในการใช้ AI Agents",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T01:41:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-81b7-a62c-d5636265cd94",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 3,
+    "title": "บทที่ 2: ทำความเข้าใจ Lead Generation: สร้างสายป่านธุรกิจให้แข็งแกร่ง",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:51:00.000Z"
+  },
+  {
+    "id": "3f1e19eb-e8da-818f-b2c9-c47d1dcac9bb",
+    "projectId": "3f1e19eb-e8da-810d-a80e-e52903079f60",
+    "chapterNo": 4,
+    "title": "บทที่ 4: วิเคราะห์ข้อมูลและปรับกลยุทธ์ร้านค้าด้วย AI Data",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-06T02:10:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81d1-bcb0-feb1d0252c04",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 4,
+    "title": "บทที่ 4: สร้าง AI Co-Pilot ส่วนตัว: ผู้ช่วยอัจฉริยะสำหรับงานบริหารและตัดสินใจ",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-06T01:23:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-810c-bf10-c04fd6e634bf",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 4,
+    "title": "เลือก AI Agents ที่ใช่: เครื่องมือที่เหมาะสมกับธุรกิจของคุณ",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T01:42:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-8132-8130-e21742285626",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 4,
+    "title": "บทที่ 3: วิเคราะห์กลุ่มเป้าหมาย: รากฐานสำคัญของการสร้าง Lead ที่มีคุณภาพ",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:50:00.000Z"
+  },
+  {
+    "id": "3f1e19eb-e8da-81ee-b56b-f5dbf729acdb",
+    "projectId": "3f1e19eb-e8da-810d-a80e-e52903079f60",
+    "chapterNo": 5,
+    "title": "บทที่ 5: กรณีศึกษาและแผนปฏิบัติการจริงเพื่อความสำเร็จ",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-06T02:10:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-8170-a205-df2407c5d28e",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 5,
+    "title": "บทที่ 5: ปฏิวัติงานขายและการตลาดด้วย AI: หาเงินง่ายขึ้นโดยใช้แรงน้อยลง",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-06T02:01:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-81d1-9a5f-df8872f86c0d",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 5,
+    "title": "วางแผนการนำ AI Agents มาใช้: ขั้นตอนสู่ความสำเร็จ",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:01:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-81b6-953d-c697a5cb612b",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 5,
+    "title": "บทที่ 4: AI มาแล้วจ้า! AI กับการสร้าง Lead Generation: แนะนำเครื่องมือและแพลตฟอร์ม",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:51:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-8104-8bd1-ed1a9f7d4a03",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 6,
+    "title": "บทที่ 6: ระบบบริการลูกค้าและหลังบ้านอัตโนมัติ: ทำงาน 24 ชั่วโมงโดยไม่ต้องจ้างคนเพิ่ม",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-10-06T02:06:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-8164-b9ab-e7a9989f2013",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 6,
+    "title": "Case Study: SME ที่ประสบความสำเร็จด้วย AI Agents",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:02:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-813a-a038-fb6f2d8e9292",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 6,
+    "title": "บทที่ 5: สร้างคอนเทนต์ทรงพลังด้วย AI: ดึงดูดลูกค้าตั้งแต่แรกเห็น",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:51:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81ef-a979-d1c3e0e60cca",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 7,
+    "title": "บทที่ 7: คู่มือสั่งการ AI (Prompt Engineering) ฉบับเจ้าของธุรกิจ",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-05T14:13:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-81f1-98b5-d2db3f4f3bda",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 7,
+    "title": "ปัญหาที่พบบ่อยและวิธีแก้ไขเมื่อใช้ AI Agents",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:02:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-8107-84f7-ddd0c2c1002b",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 7,
+    "title": "บทที่ 6: เจาะโซเชียลมีเดียด้วย AI: สร้าง Lead จากทุกมุมโลก",
+    "status": "Approved",
+    "hasContent": true,
+    "updatedAt": "2026-02-07T18:50:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-8124-9b47-f0a537170cfb",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 8,
+    "title": "บทที่ 8: พาองค์กรเปลี่ยนผ่าน: วิธีนำทีมงานก้าวสู่ยุค AI โดยปราศจากการต่อต้าน",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-05T14:13:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-81e1-be9e-e9de342cc9a2",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 8,
+    "title": "อนาคตของ SME กับ AI Agents: เตรียมพร้อมสำหรับยุคต่อไป",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:03:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-8147-8b6d-cb498bdb8a32",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 8,
+    "title": "บทที่ 7: อีเมล Marketing อัจฉริยะ: ใช้ AI สร้างแคมเปญที่ใช่ ในเวลาที่เหมาะสม",
+    "status": "Idea",
+    "hasContent": false,
+    "updatedAt": "2026-02-07T18:56:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-81c3-b4d8-decb4a9fafb4",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 9,
+    "title": "บทที่ 9: ตัวชี้วัดความสำเร็จ: คำนวณเวลาและกำไรที่คืนกลับมาหลังใช้ AI",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-05T14:13:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-8157-ab1d-ce584424e03a",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 9,
+    "title": "เคล็ดลับการ Scaling Up ธุรกิจด้วย AI Agents อย่างยั่งยืน",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:03:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-8143-a886-d5df2b4b98eb",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 9,
+    "title": "บทที่ 8: วัดผลและปรับปรุงด้วย AI: พัฒนากลยุทธ์ Lead Generation ให้ก้าวนำ",
+    "status": "Idea",
+    "hasContent": false,
+    "updatedAt": "2026-02-07T18:52:00.000Z"
+  },
+  {
+    "id": "3f0e19eb-e8da-811c-8f16-ff3a60dd5ec4",
+    "projectId": "3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5",
+    "chapterNo": 10,
+    "title": "บทที่ 10: ก้าวสู่อิสรภาพที่แท้จริง: เมื่อ AI คืนชีวิตให้คุณเป็นประธานบริษัทอย่างสมบูรณ์แบบ",
+    "status": "To Do",
+    "hasContent": false,
+    "updatedAt": "2026-10-05T14:13:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-814d-a6fb-d3fde1f89675",
+    "projectId": "300e19eb-e8da-81ad-ba7e-e24e41b60acf",
+    "chapterNo": 10,
+    "title": "เริ่มต้นวันนี้: ลงมือทำทันทีเพื่ออนาคตที่สดใส",
+    "status": "Reviewing",
+    "hasContent": true,
+    "updatedAt": "2026-02-08T02:04:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-81c2-86aa-ed043b952c39",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 10,
+    "title": "บทที่ 9: Case Study: ตัวอย่างความสำเร็จของการใช้ AI ในการสร้าง Lead Generation",
+    "status": "Idea",
+    "hasContent": false,
+    "updatedAt": "2026-02-07T18:52:00.000Z"
+  },
+  {
+    "id": "300e19eb-e8da-81ce-b6bc-d0209725318a",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 11,
+    "title": "บทที่ 10: ก้าวสู่ยุคใหม่: AI ในฐานะผู้ช่วยของคุณ สู่การเป็นประธานบริษัทที่ชาญฉลาด",
+    "status": "Idea",
+    "hasContent": false,
+    "updatedAt": "2026-02-07T18:52:00.000Z"
+  },
+  {
+    "id": "2eee19eb-e8da-8102-835c-cc7ceff935d4",
+    "projectId": "2eee19eb-e8da-813e-91a1-d1d9bb32d2ea",
+    "chapterNo": 12,
+    "title": "ประวัติผู้เขียน (Author Bio)",
+    "status": "Idea",
+    "hasContent": false,
+    "updatedAt": "2026-02-07T18:52:00.000Z"
+  }
+]

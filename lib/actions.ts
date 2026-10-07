@@ -1,81 +1,44 @@
 'use server'
 
-import { Client } from '@notionhq/client'
 import { revalidatePath } from 'next/cache'
-import { getChapters, getProject, notionQuery } from '@/lib/notion'
+import * as localDb from './localDb'
+import { getChapters, getProject } from '@/lib/notion'
 import { 
     MASTER_AUTHOR_PERSONA, 
     buildProfessionalChapterPrompt, 
     buildGhostwriterSystemPrompt, 
     BookProjectContext 
 } from '@/lib/prompts/authorPersona'
-
-const notion = new Client({
-    auth: process.env.NOTION_API_KEY,
-})
-
-import { CHAPTERS_DB_ID, SERIES_DB_ID, statusMapping } from './constants';
+import { statusMapping } from './constants';
 import { sanitizeBookContent } from './sanitize';
 
 function getGeminiApiKey(): string | undefined {
     return process.env.GEMINI_API_KEY;
 }
 
-// function bulkCreateChapters at line 14
+// function bulkCreateChapters
 export async function bulkCreateChapters(projectId: string, chapterTitles: string[]) {
-    if (!CHAPTERS_DB_ID) return { success: false, error: "Chapters DB ID not configured" };
     if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
-        // Safety Check: Check if chapters already exist to avoid duplicates (e.g. from N8N race condition)
-        // We do a quick query.
-        // Safety Check: Check if chapters already exist to avoid duplicates
-        // We do a quick query using notionQuery helper
-        const existingChapters = await notionQuery(CHAPTERS_DB_ID, {
-            property: 'Wang-Aksorn Series',
-            relation: { contains: projectId }
-        });
-
-        if (existingChapters.results.length > 0) {
+        const existingChapters = await localDb.getChapters(projectId);
+        if (existingChapters.length > 0) {
             console.warn(`Chapters already exist for project ${projectId}. Skipping bulk creation to prevent duplicates.`);
             return { success: false, error: "Chapters already exist" };
         }
 
         console.log(`Bulk creating ${chapterTitles.length} chapters for project ${projectId}...`);
-
-        // Create all chapters in parallel
-        await Promise.all(chapterTitles.map((title, index) =>
-            notion.pages.create({
-                parent: { database_id: CHAPTERS_DB_ID! },
-                properties: {
-                    "Chapter Title": {
-                        title: [{ text: { content: title } }],
-                    },
-                    "Chapter No.": {
-                        number: index + 1,
-                    },
-
-                    "Wang-Aksorn Series": {
-                        relation: [{ id: projectId }]
-                    },
-                    "Status": {
-                        select: { name: "To Do" }
-                    }
-                },
-            })
-        ));
+        await localDb.bulkCreateChapters(projectId, chapterTitles);
 
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Bulk Create Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function createBriefing(projectName: string, persona: string, tone: string, goal: string, extraInfo?: any) {
-    if (!SERIES_DB_ID) throw new Error("Series DB ID not configured");
-
     try {
         let fullDescription = goal;
 
@@ -90,26 +53,14 @@ export async function createBriefing(projectName: string, persona: string, tone:
             if (extraInfo.draftStructure) fullDescription += `=== Draft Structure ===\n${extraInfo.draftStructure}\n`;
         }
 
-        const response = await notion.pages.create({
-            parent: { database_id: SERIES_DB_ID },
-            properties: {
-                "Book Title": {
-                    title: [{ text: { content: projectName } }],
-                },
-                "Theme/Topic": {
-                    rich_text: [{ text: { content: fullDescription.substring(0, 2000) } }],
-                },
-                "Target audience": {
-                    rich_text: [{ text: { content: persona } }],
-                },
-                "Tone Of Voice": {
-                    select: { name: tone }
-                },
-                "Status": {
-                    select: { name: "Idea" }
-                }
-            },
-        })
+        const project = await localDb.saveProject({
+            title: projectName,
+            theme: fullDescription,
+            audience: persona,
+            tone: tone || 'Professional',
+            status: 'Idea',
+            extraInfo: extraInfo || {},
+        });
 
         // If Draft Structure exists, create chapters immediately!
         if (extraInfo?.draftStructure) {
@@ -119,197 +70,133 @@ export async function createBriefing(projectName: string, persona: string, tone:
                 .map((l: string) => l.replace(/^[-*•\d\.]+\s+/, '').replace(/^[-*•]\s*/, '')); // Clean leading bullets
 
             if (lines.length > 0) {
-                console.log(`[createBriefing] Auto-creating ${lines.length} chapters for new project ${response.id}`);
-                const bulkResult = await bulkCreateChapters(response.id, lines);
+                console.log(`[createBriefing] Auto-creating ${lines.length} chapters for new project ${project.id}`);
+                const bulkResult = await bulkCreateChapters(project.id, lines);
                 if (!bulkResult.success) {
-                    console.warn(`[createBriefing] Chapters skipped (likely already exist): ${bulkResult.error}`);
+                    console.warn(`[createBriefing] Chapters skipped: ${bulkResult.error}`);
                 }
             }
         }
 
-        revalidatePath('/briefing')
-        return { success: true, id: response.id }
-    } catch (error) {
-        console.error("Notion Create Error:", error)
-        return { success: false, error }
+        revalidatePath('/briefing');
+        revalidatePath('/');
+        return { success: true, id: project.id };
+    } catch (error: any) {
+        console.error("Create Briefing Error:", error);
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function deleteProject(projectId: string) {
-    if (!projectId) return { success: false, error: "No Project ID provided" }
+    if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
         console.log(`Deleting Project ${projectId} and its chapters...`);
-
-        // 1. Fetch all chapters associated with this project
-        const chapters = await getChapters(projectId);
-
-        // 2. Archive all chapters (Cascade Delete)
-        if (chapters.length > 0) {
-            console.log(`Archiving ${chapters.length} chapters...`);
-            await Promise.all(chapters.map(chapter =>
-                notion.pages.update({ page_id: chapter.id, archived: true })
-            ));
-        }
-
-        // 3. Archive the project itself
-        await notion.pages.update({
-            page_id: projectId,
-            archived: true,
-        });
-
+        await localDb.deleteProject(projectId);
         revalidatePath('/structure');
+        revalidatePath('/');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Delete Project Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
-// function reorderChapters implementation
-
 export async function reorderChapters(orderedIds: string[]) {
-    if (!orderedIds || orderedIds.length === 0) return { success: false, error: "No IDs provided" }
+    if (!orderedIds || orderedIds.length === 0) return { success: false, error: "No IDs provided" };
 
     try {
-        // We need to update each chapter's "Chapter No." based on its index + 1
-        // Notion API has rate limits (3 requests per second on average), so we should be careful.
-        // We can use Promise.all but with a small delay or concurrency limit if list is long.
-        // For < 20 chapters, Promise.all is probably fine.
-
-        const updates = orderedIds.map((id, index) => {
-            return notion.pages.update({
-                page_id: id,
-                properties: {
-                    "Chapter No.": {
-                        number: index + 1
-                    }
-                }
-            })
-        })
-
-        await Promise.all(updates)
-        revalidatePath('/structure')
-        return { success: true }
-    } catch (error) {
+        await localDb.reorderChapters(orderedIds);
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error: any) {
         console.error("Reorder Chapters Error:", error);
-        return { success: false, error }
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function deleteChapter(chapterId: string) {
-    if (!chapterId) return { success: false, error: "No Chapter ID" }
+    if (!chapterId) return { success: false, error: "No Chapter ID" };
     try {
-        await notion.pages.update({ page_id: chapterId, archived: true })
-        revalidatePath('/structure')
-        return { success: true }
-    } catch (error) {
+        await localDb.deleteChapter(chapterId);
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error: any) {
         console.error("Delete Chapter Error:", error);
-        return { success: false, error }
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function renameChapter(chapterId: string, newTitle: string) {
-    if (!chapterId) return { success: false, error: "No Chapter ID" }
+    if (!chapterId) return { success: false, error: "No Chapter ID" };
     try {
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: { "Chapter Title": { title: [{ text: { content: newTitle } }] } }
-        })
-        revalidatePath('/structure')
-        return { success: true }
-    } catch (error) {
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({ ...ch, title: newTitle });
+        }
+        revalidatePath('/structure');
+        return { success: true };
+    } catch (error: any) {
         console.error("Rename Chapter Error:", error);
-        return { success: false, error }
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function renameProject(projectId: string, newTitle: string) {
-    if (!projectId) return { success: false, error: "No Project ID" }
+    if (!projectId) return { success: false, error: "No Project ID" };
     try {
-        await notion.pages.update({
-            page_id: projectId,
-            properties: { "Book Title": { title: [{ text: { content: newTitle } }] } }
-        })
-        revalidatePath('/structure')
-        return { success: true }
-    } catch (error) {
+        const p = await localDb.getProject(projectId);
+        if (p) {
+            await localDb.saveProject({ ...p, title: newTitle });
+        }
+        revalidatePath('/structure');
+        revalidatePath('/');
+        return { success: true };
+    } catch (error: any) {
         console.error("Rename Project Error:", error);
-        return { success: false, error }
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function triggerExport(projectId: string) {
-    if (!projectId) return { success: false, error: "No Project ID provided" }
+    if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
-        await notion.pages.update({
-            page_id: projectId,
-            properties: {
-                "Status": {
-                    select: { name: "Publish" }
-                }
-            }
-        });
+        const p = await localDb.getProject(projectId);
+        if (p) {
+            await localDb.saveProject({ ...p, status: "Publish" });
+        }
         revalidatePath('/export');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Export Trigger Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function createChapter(projectId: string, title: string, chapterNo: number) {
-    if (!CHAPTERS_DB_ID) return { success: false, error: "Missing Notion Config" };
     if (!projectId) return { success: false, error: "Missing Project ID (Series Linkage)" };
 
     try {
-        // 1. DUPLICATE CHECK: Ensure this chapter number doesn't already exist for this project
-        const existing = await notionQuery(CHAPTERS_DB_ID, {
-            and: [
-                {
-                    property: 'Wang-Aksorn Series',
-                    relation: { contains: projectId }
-                },
-                {
-                    property: 'Chapter No.',
-                    number: { equals: chapterNo }
-                }
-            ]
-        });
-
-        if (existing.results.length > 0) {
-            console.warn(`Chapter ${chapterNo} already exists for project ${projectId}. Skipping creation.`);
+        const existing = await localDb.getChapters(projectId);
+        if (existing.some(c => c.chapterNo === chapterNo)) {
+            console.warn(`Chapter ${chapterNo} already exists for project ${projectId}.`);
             return { success: false, error: `Chapter ${chapterNo} already exists.` };
         }
 
         console.log(`Creating Chapter "${title}" for Project ${projectId}`);
-
-        // 2. SERIES LINKAGE: Create with explicit relation
-        await notion.pages.create({
-            parent: { database_id: CHAPTERS_DB_ID! },
-            properties: {
-                "Chapter Title": {
-                    title: [{ text: { content: title } }],
-                },
-                "Chapter No.": {
-                    number: chapterNo,
-                },
-                "Status": {
-                    select: { name: "To Do" }
-                },
-                "Wang-Aksorn Series": {
-                    relation: [
-                        { id: projectId } // Explicitly linking to the Series
-                    ]
-                }
-            },
+        await localDb.saveChapter({
+            projectId,
+            title,
+            chapterNo,
+            status: "To Do",
+            content: '',
         });
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Create Chapter Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -323,17 +210,14 @@ export async function triggerGhostwriter(
     try {
         console.log(`Triggering AI Chapter Generation for Chapter ${chapterId} with provider: ${provider}`);
 
-        // Step 1: Update Notion Status to Drafting
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Status": {
-                    select: { name: "Drafting" }
-                }
-            }
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                status: "Drafting",
+            });
+        }
 
-        // Step 2: Directly execute full professional chapter generation
         const res = await generateFullProfessionalChapter(chapterId, projectId, provider);
         if (!res.success) {
             console.error("AI Chapter Generation failed:", res.error);
@@ -355,19 +239,15 @@ export async function updateChapterTitle(chapterId: string, newTitle: string) {
     if (!chapterId || !newTitle) return { success: false, error: "Missing ID or Title" };
 
     try {
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Chapter Title": {
-                    title: [{ text: { content: newTitle } }],
-                },
-            },
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({ ...ch, title: newTitle });
+        }
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Update Title Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -375,19 +255,15 @@ export async function updateChapterNumber(chapterId: string, newNumber: number) 
     if (!chapterId || newNumber === undefined) return { success: false, error: "Missing ID or Number" };
 
     try {
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Chapter No.": {
-                    number: newNumber,
-                },
-            },
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({ ...ch, chapterNo: newNumber });
+        }
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Update Number Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -395,19 +271,15 @@ export async function triggerAgentA(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
-        await notion.pages.update({
-            page_id: projectId,
-            properties: {
-                "Status": {
-                    select: { name: "Generating Content" }
-                }
-            }
-        });
+        const p = await localDb.getProject(projectId);
+        if (p) {
+            await localDb.saveProject({ ...p, status: "Generating Content" });
+        }
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Trigger Agent A Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -417,7 +289,6 @@ export async function triggerBookBinder(projectId: string) {
     try {
         let webhookUrl = process.env.N8N_BOOK_BINDER_WEBHOOK || '';
 
-        // If the URL is missing or looks like a placeholder, use the hardcoded fallback
         if (!webhookUrl || !webhookUrl.startsWith('http')) {
             webhookUrl = 'https://flow.supralawyer.com/webhook/book-binder-v2';
         }
@@ -443,157 +314,81 @@ export async function triggerBookBinder(projectId: string) {
     }
 }
 
-// ... existing code
-
 export async function fetchChapterDetails(chapterId: string) {
     if (!chapterId) return { success: false, error: "No Chapter ID provided" };
 
     try {
-        const response = await notion.pages.retrieve({ page_id: chapterId }) as any;
-        const props = response.properties;
-        const title = props['Chapter Title']?.title?.[0]?.plain_text || 'Untitled';
-        const richText = props['Content(HTML)']?.rich_text || [];
-        const content = sanitizeBookContent(richText.map((t: any) => t.plain_text).join(''));
-        const chapterNo = props['Chapter No.']?.number || 0;
-        const keyTakeaways = sanitizeBookContent(props['Key Takeaways']?.rich_text?.[0]?.plain_text || '');
-        const keyTerminology = sanitizeBookContent(props['Key Terminology']?.rich_text?.[0]?.plain_text || '');
-        const seriesRelation = props['Wang-Aksorn Series']?.relation || [];
-        const projectId = seriesRelation[0]?.id || '';
-        const rawImgUrl = props['Image 1 URL']?.rich_text?.[0]?.plain_text || '';
-        const chapterImageFiles = props['Chapter Image']?.files || [];
-        const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || '';
-        const image1Url = rawImgUrl || chapterImage || '';
+        const chapter = await localDb.getChapter(chapterId);
+        if (!chapter) return { success: false, error: "Chapter not found" };
 
         return { 
             success: true, 
             data: { 
-                id: chapterId,
-                title, 
-                content, 
-                chapterNo, 
-                keyTakeaways, 
-                keyTerminology, 
-                projectId,
-                image1Url
+                id: chapter.id,
+                title: chapter.title, 
+                content: chapter.content, 
+                chapterNo: chapter.chapterNo, 
+                keyTakeaways: chapter.keyTakeaways, 
+                keyTerminology: chapter.keyTerminology, 
+                projectId: chapter.projectId,
+                image1Url: chapter.image1Url || chapter.chapterImage || ''
             } 
         };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Fetch Chapter Details Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
 export async function updateChapterImage(chapterId: string, imageUrl: string) {
     if (!chapterId) return { success: false, error: "No Chapter ID provided" };
     try {
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Image 1 URL": {
-                    rich_text: [{ text: { content: imageUrl.trim() } }]
-                }
-            }
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                image1Url: imageUrl.trim(),
+            });
+        }
         revalidatePath('/writing');
         revalidatePath('/export');
         return { success: true };
     } catch (error: any) {
         console.error("Update Chapter Image Error:", error);
-        return { success: false, error: error.message };
+        return { success: false, error: error?.message || error };
     }
 }
-
-
 
 export async function fetchAllProjectChapters(projectId: string) {
     if (!projectId) return { success: false, error: "No Project ID provided" };
 
     try {
-        const response = await notionQuery(CHAPTERS_DB_ID!, {
-            property: 'Wang-Aksorn Series',
-            relation: {
-                contains: projectId,
-            },
-        }, [
-            {
-                property: 'Chapter No.',
-                direction: 'ascending',
-            },
-        ]);
-
-        const chapters = response.results.map((page: any) => {
-            const props = page.properties;
-            const title = props['Chapter Title']?.title?.[0]?.plain_text || 'Untitled';
-            const chapterNo = props['Chapter No.']?.number || 0;
-
-            // For export, we need the full content.
-            const richText = props['Content(HTML)']?.rich_text || [];
-            const content = richText.map((t: any) => t.plain_text).join('');
-
-            const image1Url = props['Image 1 URL']?.rich_text?.[0]?.plain_text || '';
-            const image2Url = props['Image 2 URL']?.rich_text?.[0]?.plain_text || '';
-            const image3Url = props['Image 3 URL']?.rich_text?.[0]?.plain_text || '';
-            const imagePrompt = props['Image Prompt']?.rich_text?.[0]?.plain_text || props['Image_Prompt_1']?.rich_text?.[0]?.plain_text || '';
-            const chapterImageFiles = props['Chapter Image']?.files || [];
-            const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || '';
-            const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || '';
-            const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || '';
-
-            return {
-                id: page.id,
-                title,
-                chapterNo,
-                content,
-                image1Url,
-                image2Url,
-                image3Url,
-                imagePrompt,
-                chapterImage,
-                keyTakeaways,
-                keyTerminology,
-            };
-        });
-
+        const chapters = await localDb.getChapters(projectId);
         return { success: true, data: chapters };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Fetch All Chapters Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
-
-// ... existing code
-
-// ... existing code
 
 export async function updateChapterContent(chapterId: string, newContent: string) {
     if (!chapterId || !newContent) return { success: false, error: "Missing ID or Content" };
 
     try {
-        // Build Notion blocks from HTML is complex, but for now we are using a single text property "Content(HTML)"
-        // Note: Notion text limits are 2000 chars per block, but rich_text property is different.
-        // We will split content into chunks of 2000 characters to be safe for rich_text array.
-
-        const cleanContent = sanitizeBookContent(newContent);
-        const chunks = [];
-        for (let i = 0; i < cleanContent.length; i += 1900) {
-            chunks.push({
-                text: { content: cleanContent.substring(i, i + 1900) }
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                content: newContent,
+                hasContent: Boolean(newContent.trim()),
+                status: ch.status === 'To Do' ? 'Reviewing' : ch.status,
             });
         }
-
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Content(HTML)": {
-                    rich_text: chunks
-                },
-            },
-        });
-        revalidatePath('/writing'); // Revalidate the writing page
+        revalidatePath('/writing');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Update Content Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -925,30 +720,18 @@ export async function generateFullProfessionalChapter(
         const finalTakeaways = sanitizeBookContent(parsed.keyTakeaways || "");
         const finalTerminology = sanitizeBookContent(parsed.keyTerminology || "");
 
-        // Helper chunk for Notion rich_text 2000 char limit
-        const chunkText = (str: string) => {
-            const arr = [];
-            for (let i = 0; i < str.length; i += 1900) {
-                arr.push({ text: { content: str.substring(i, i + 1900) } });
-            }
-            return arr;
-        };
-
-        // 5. Update Notion
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Content(HTML)": {
-                    rich_text: chunkText(finalContent)
-                },
-                "Key Takeaways": {
-                    rich_text: chunkText(finalTakeaways)
-                },
-                "Status": {
-                    select: { name: "Reviewing" }
-                }
-            }
-        });
+        // 5. Update Local DB
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                content: finalContent,
+                keyTakeaways: finalTakeaways,
+                keyTerminology: finalTerminology,
+                status: "Reviewing",
+                hasContent: true,
+            });
+        }
 
         revalidatePath('/writing');
         revalidatePath('/structure');
@@ -1051,19 +834,18 @@ export async function resetChapterStatus(chapterId: string) {
     if (!chapterId) return { success: false, error: "No Chapter ID provided" };
 
     try {
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Status": {
-                    select: { name: "To Do" }
-                }
-            }
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                status: "To Do",
+            });
+        }
         revalidatePath('/structure');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Reset Chapter Status Error:", error);
-        return { success: false, error };
+        return { success: false, error: error?.message || error };
     }
 }
 
@@ -1156,28 +938,17 @@ ${rawContent}
         const finalTakeaways = sanitizeBookContent(parsed.keyTakeaways || "");
         const finalTerminology = sanitizeBookContent(parsed.keyTerminology || "");
 
-        const chunkText = (str: string) => {
-            const arr = [];
-            for (let i = 0; i < str.length; i += 1900) {
-                arr.push({ text: { content: str.substring(i, i + 1900) } });
-            }
-            return arr;
-        };
-
-        await notion.pages.update({
-            page_id: chapterId,
-            properties: {
-                "Content(HTML)": {
-                    rich_text: chunkText(finalContent)
-                },
-                "Key Takeaways": {
-                    rich_text: chunkText(finalTakeaways)
-                },
-                "Status": {
-                    select: { name: "Reviewing" }
-                }
-            }
-        });
+        const ch = await localDb.getChapter(chapterId);
+        if (ch) {
+            await localDb.saveChapter({
+                ...ch,
+                content: finalContent,
+                keyTakeaways: finalTakeaways,
+                keyTerminology: finalTerminology,
+                status: "Reviewing",
+                hasContent: true,
+            });
+        }
 
         revalidatePath('/writing');
         revalidatePath('/structure');

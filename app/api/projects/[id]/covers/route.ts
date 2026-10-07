@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { readFile, writeFile, mkdir } from 'fs/promises';
+import * as localDb from '@/lib/localDb';
 
 const COVERS_FILE_PATH = path.join(process.cwd(), 'public', 'uploads', 'project-covers.json');
 
@@ -81,6 +82,20 @@ export async function POST(
 
         allCovers[projectId] = updated;
         await saveAllCovers(allCovers);
+
+        // Keep localDb in sync
+        try {
+            const proj = await localDb.getProject(projectId);
+            if (proj) {
+                await localDb.saveProject({
+                    ...proj,
+                    coverImageUrl: updated.frontCoverUrl,
+                    backCoverUrl: updated.backCoverUrl,
+                });
+            }
+        } catch (dbErr) {
+            console.warn('Could not sync cover into localDb:', dbErr);
+        }
 
         return NextResponse.json({
             success: true,

@@ -1,20 +1,26 @@
-import { Client } from '@notionhq/client'
+import * as localDb from './localDb';
+export type { Chapter, Project } from './localDb';
 
-const notion = new Client({
-    auth: process.env.NOTION_API_KEY,
-})
+// Re-export localDb functions as primary data source (100% Standalone)
+export async function getChapters(projectId?: string): Promise<localDb.Chapter[]> {
+    return localDb.getChapters(projectId);
+}
 
-// Database IDs
-import { CHAPTERS_DB_ID, SERIES_DB_ID } from './constants';
-import { sanitizeBookContent } from './sanitize';
+export async function getProjects(): Promise<localDb.Project[]> {
+    return localDb.getProjects();
+}
 
-const DATABASE_ID = CHAPTERS_DB_ID;
+export async function getProject(projectId: string): Promise<localDb.Project | null> {
+    return localDb.getProject(projectId);
+}
 
-// Helper for native fetch (Bypassing broken Client methods)
+export async function getChapterContent(id: string): Promise<string> {
+    return localDb.getChapterContent(id);
+}
+
+// Optional helper kept for Notion migration or legacy sync if API key is present
 export async function notionQuery(dbId: string, filter?: any, sorts?: any[]) {
     if (!process.env.NOTION_API_KEY) throw new Error("Missing NOTION_API_KEY");
-
-    console.log(`📡 Querying Notion DB: ${dbId}`);
 
     const res = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`, {
         method: 'POST',
@@ -36,170 +42,4 @@ export async function notionQuery(dbId: string, filter?: any, sorts?: any[]) {
     }
 
     return await res.json();
-}
-
-export type Chapter = {
-    id: string
-    title: string
-    chapterNo: number
-    status: string
-    content: string
-    hasContent?: boolean
-    image1Url?: string
-    image2Url?: string
-    image3Url?: string
-    imagePrompt?: string
-    chapterImage?: string
-    keyTakeaways?: string
-    keyTerminology?: string
-}
-
-export async function getChapters(projectId?: string): Promise<Chapter[]> {
-    if (!DATABASE_ID) return []
-
-    try {
-        const sorts = [
-            {
-                property: 'Chapter No.',
-                direction: 'ascending',
-            },
-        ];
-
-        let filter: any = undefined;
-        if (projectId) {
-            filter = {
-                property: 'Wang-Aksorn Series',
-                relation: {
-                    contains: projectId,
-                },
-            };
-        }
-
-        // Use native fetch helper
-        const response = await notionQuery(DATABASE_ID!, filter, sorts);
-
-        return response.results.map((page: any) => {
-            const props = page.properties
-            // Handle Rollup or direct values safely
-            const chapterNo = props['Chapter No.']?.number || 0
-
-            const hasContent = (props['Content(HTML)']?.rich_text?.length || 0) > 0
-            const image1Url = props['Image 1 URL']?.rich_text?.[0]?.plain_text || ''
-            const image2Url = props['Image 2 URL']?.rich_text?.[0]?.plain_text || ''
-            const image3Url = props['Image 3 URL']?.rich_text?.[0]?.plain_text || ''
-            const imagePrompt = props['Image Prompt']?.rich_text?.[0]?.plain_text || props['Image_Prompt_1']?.rich_text?.[0]?.plain_text || ''
-            const chapterImageFiles = props['Chapter Image']?.files || []
-            const chapterImage = chapterImageFiles[0]?.file?.url || chapterImageFiles[0]?.external?.url || ''
-            const keyTakeaways = props['Key Takeaways']?.rich_text?.[0]?.plain_text || ''
-            const keyTerminology = props['Key Terminology']?.rich_text?.[0]?.plain_text || ''
-
-            return {
-                id: page.id,
-                title: props['Chapter Title']?.title[0]?.plain_text || 'Untitled',
-                chapterNo: chapterNo,
-                status: props['Status']?.select?.name || 'Draft',
-                hasContent: hasContent,
-                content: sanitizeBookContent(props['Content(HTML)']?.rich_text?.map((t: any) => t.plain_text).join('') || ''),
-                image1Url,
-                image2Url,
-                image3Url,
-                imagePrompt,
-                chapterImage,
-                keyTakeaways: sanitizeBookContent(keyTakeaways),
-                keyTerminology: sanitizeBookContent(keyTerminology),
-            }
-        })
-    } catch (error) {
-        console.error('Error fetching chapters:', error)
-        return []
-    }
-}
-
-export type Project = {
-    id: string
-    title: string
-    status: string
-    theme: string
-    audience: string
-    tone?: string
-    coverImageUrl?: string | null
-    lastEditedTime: string
-}
-
-export async function getProjects(): Promise<Project[]> {
-    try {
-        const sorts = [
-            {
-                timestamp: 'last_edited_time',
-                direction: 'descending',
-            },
-        ];
-
-        // Use native fetch helper
-        const response = await notionQuery(SERIES_DB_ID, undefined, sorts);
-
-        return response.results.map((page: any) => {
-            const props = page.properties
-            const coverFiles = props['Cover Image']?.files || []
-            const coverImageUrl = coverFiles[0]?.file?.url || coverFiles[0]?.external?.url || page.cover?.file?.url || page.cover?.external?.url || null
-
-            return {
-                id: page.id,
-                title: props['Book Title']?.title[0]?.plain_text || 'Untitled Project',
-                status: props['Status']?.select?.name || 'Planning',
-                theme: props['Theme/Topic']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
-                audience: props['Target audience']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
-                tone: props['Tone Of Voice']?.select?.name || 'Professional',
-                coverImageUrl,
-                lastEditedTime: page.last_edited_time
-            }
-        })
-    } catch (error) {
-        console.error('Error fetching projects:', error)
-        return []
-    }
-}
-
-export async function getProject(projectId: string): Promise<Project | null> {
-    try {
-        if (!process.env.NOTION_API_KEY) throw new Error("Missing NOTION_API_KEY");
-        const res = await fetch(`https://api.notion.com/v1/pages/${projectId}`, {
-            headers: {
-                'Authorization': `Bearer ${process.env.NOTION_API_KEY}`,
-                'Notion-Version': '2022-06-28'
-            }
-        });
-        if (!res.ok) return null;
-        const page: any = await res.json();
-        const props = page.properties;
-        const coverFiles = props['Cover Image']?.files || [];
-        const coverImageUrl = coverFiles[0]?.file?.url || coverFiles[0]?.external?.url || page.cover?.file?.url || page.cover?.external?.url || null;
-
-        return {
-            id: page.id,
-            title: props['Book Title']?.title?.[0]?.plain_text || 'Untitled Project',
-            status: props['Status']?.select?.name || 'Planning',
-            theme: props['Theme/Topic']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
-            audience: props['Target audience']?.rich_text?.map((t: any) => t.plain_text).join('') || '',
-            tone: props['Tone Of Voice']?.select?.name || 'Professional',
-            coverImageUrl,
-            lastEditedTime: page.last_edited_time
-        };
-    } catch (error) {
-        console.error('Error fetching single project:', error);
-        return null;
-    }
-}
-
-export async function getChapterContent(id: string): Promise<string> {
-    try {
-        const response = await notion.pages.retrieve({ page_id: id }) as any
-        const props = response.properties
-        const richText = props['Content(HTML)']?.rich_text || []
-        const raw = richText.map((t: any) => t.plain_text).join('')
-        return sanitizeBookContent(raw)
-    } catch (error) {
-        console.error('Error fetching chapter content:', error)
-        return ''
-    }
 }
