@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown'
 // @ts-ignore
 import rehypeRaw from 'rehype-raw'
 import { Chapter } from '@/lib/notion'
+import { sanitizeBookContent } from '@/lib/sanitize'
 
 interface QuickEditModalProps {
     isOpen: boolean
@@ -191,7 +192,7 @@ export default function QuickEditModal({
                         ) : (
                             <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl max-h-[420px] overflow-y-auto prose prose-sm max-w-none text-slate-800">
                                 <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                    {content}
+                                    {sanitizeBookContent(content)}
                                 </ReactMarkdown>
                             </div>
                         )}

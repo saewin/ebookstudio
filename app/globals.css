@@ -220,6 +220,36 @@ body {
   margin-bottom: 0.75em !important;
 }
 
+/* Safety Net: Neutralize accidental <pre><code> code blocks inside callout boxes */
+.war-story-box pre,
+.case-study-box pre,
+.key-terms-box pre,
+.action-checklist pre {
+  background: transparent !important;
+  color: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  white-space: normal !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.war-story-box pre code,
+.case-study-box pre code,
+.key-terms-box pre code,
+.action-checklist pre code {
+  background: transparent !important;
+  color: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  white-space: normal !important;
+}
+
 /* Continuous Section & Box Flow Styles */
 .war-story-box.box-split-next::before {
   content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;

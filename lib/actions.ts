@@ -621,8 +621,9 @@ ${chapterContent.substring(0, 7000)}
 
 คำสั่งพิเศษสำหรับการตอบ:
 1. ตอบเป็นภาษาไทยเสมอ ในฐานะ Senior Consultant & IT/E-commerce Veteran (25 ปี)
-2. เมื่อผู้ใช้ขอให้ปรับปรุง, เพิ่มเคส, สอดแทรก War Story หรือสรุป ให้ตอบเสนอเนื้อหาที่มีคุณภาพสูงพร้อมใช้งาน
-3. ถ้าเป็นโค้ด HTML หรือบล็อกพิเศษ (เช่น <div class="war-story-box">, <div class="case-study-box">, <div class="key-terms-box">, <div class="action-checklist">) ให้ใส่ใน Markdown code block เพื่อให้ผู้ใช้กด Copy ไปวางในเนื้อหาได้ง่าย
+3. ถ้าเป็นโค้ด HTML หรือบล็อกพิเศษ (เช่น <div class="war-story-box">, <div class="case-study-box">, <div class="key-terms-box">, <div class="action-checklist">):
+   - ให้ใส่ใน Markdown code block (\`\`\`html ... \`\`\`)
+   - กฎเหล็กป้องกัน Code Block สีดำ: ห้ามใส่ย่อหน้าหรือเคาะวรรคนำหน้าแท็กภายในบล็อกเด็ดขาด (ห้ามมี indentation 2-4 spaces ก่อนแท็ก <p> หรือแท็กใดๆ) ให้ทุกบรรทัดชิดซ้ายสุด (0 spaces)
 4. อธิบายเหตุผลเบื้องหลังสั้นกระชับว่าส่วนที่เสริมนี้ช่วยแก้ปัญหาหรือเพิ่มคุณค่าอย่างไรตามมุมมอง System Analysis & Direct Marketing
 `;
 

@@ -5,7 +5,7 @@ import {
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
     Image as ImageIcon, Upload, Link as LinkIcon,
-    Eye, Edit3
+    Eye, Edit3, Copy, Plus
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -18,12 +18,76 @@ import {
     typesetChapterContent,
     updateChapterImage
 } from '@/lib/actions'
+import { sanitizeBookContent } from '@/lib/sanitize'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 
 interface ChatMessage {
     role: 'user' | 'assistant'
     content: string
+}
+
+function ChatCodeBlock({ 
+    codeString, 
+    className, 
+    onInsert 
+}: { 
+    codeString: string; 
+    className?: string; 
+    onInsert: (cleanCode: string) => void 
+}) {
+    const [copied, setCopied] = useState(false);
+    const cleanCode = sanitizeBookContent(codeString);
+    const isHtmlBlock = cleanCode.includes('<div class="') || cleanCode.includes('<p>') || cleanCode.includes('class=');
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(cleanCode);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="my-2.5 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden shadow-xs not-prose text-left">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800 text-[11px] text-slate-300 border-b border-slate-700">
+                <span className="font-mono text-slate-400">
+                    {className ? className.replace('language-', '') : 'code'}
+                </span>
+                <div className="flex items-center gap-1.5">
+                    {isHtmlBlock && (
+                        <button
+                            type="button"
+                            onClick={() => onInsert(cleanCode)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] transition-colors cursor-pointer"
+                            title="แทรกต่อท้ายเนื้อหาบทนี้ทันทีโดยไม่ต้อง Copy"
+                        >
+                            <Plus size={11} />
+                            <span>แทรกลงบท</span>
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-[11px] transition-colors cursor-pointer"
+                    >
+                        {copied ? (
+                            <>
+                                <CheckCircle2 size={11} className="text-emerald-400" />
+                                <span className="text-emerald-400">คัดลอกแล้ว</span>
+                            </>
+                        ) : (
+                            <>
+                                <Copy size={11} />
+                                <span>คัดลอกโค้ด</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+            <pre className="p-3 text-xs text-slate-100 font-mono overflow-x-auto leading-relaxed bg-transparent m-0">
+                <code>{cleanCode}</code>
+            </pre>
+        </div>
+    );
 }
 
 function WritingContent() {
@@ -159,7 +223,9 @@ function WritingContent() {
     async function handleSave() {
         if (!chapterId || !data) return
         setSaving(true)
-        const result = await updateChapterContent(chapterId, data.content)
+        const cleaned = sanitizeBookContent(data.content || '')
+        setData(prev => prev ? { ...prev, content: cleaned } : null)
+        const result = await updateChapterContent(chapterId, cleaned)
         if (result.success) {
             // Success
         } else {
@@ -240,7 +306,10 @@ function WritingContent() {
         setLoading(true)
         const res = await fetchChapterDetails(chapterId)
         if (res.success && res.data) {
-            setData(res.data)
+            setData({
+                ...res.data,
+                content: sanitizeBookContent(res.data.content || '')
+            })
         } else {
             setError(res.error as string || 'Failed to load chapter')
         }
@@ -544,7 +613,7 @@ function WritingContent() {
                     ) : (
                         <div className="w-full h-full p-8 md:p-12 overflow-y-auto prose prose-slate max-w-none text-slate-800 font-serif leading-relaxed">
                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                                {(data?.content || '').replace(/src=(["'])\/uploads\//gi, 'src=$1/api/uploads/')}
+                                {sanitizeBookContent(data?.content || '').replace(/src=(["'])\/uploads\//gi, 'src=$1/api/uploads/')}
                             </ReactMarkdown>
                         </div>
                     )}
@@ -639,7 +708,34 @@ function WritingContent() {
                                         msg.content
                                     ) : (
                                         <div className="prose prose-sm prose-slate max-w-none">
-                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                            <ReactMarkdown
+                                                components={{
+                                                    code: ({ className, children, ...props }: any) => {
+                                                        const codeString = String(children).replace(/\n$/, '');
+                                                        const isMultiline = codeString.includes('\n') || (className && className.startsWith('language-'));
+                                                        if (isMultiline) {
+                                                            return (
+                                                                <ChatCodeBlock 
+                                                                    codeString={codeString}
+                                                                    className={className} 
+                                                                    onInsert={(cleanCode) => {
+                                                                        setData(prev => {
+                                                                            if (!prev) return null;
+                                                                            const current = prev.content || '';
+                                                                            const newContent = current.trim() ? `${current.trim()}\n\n${cleanCode}\n` : cleanCode;
+                                                                            return { ...prev, content: newContent };
+                                                                        });
+                                                                        alert('✨ แทรกบล็อกลงในหน้าเขียนเรียบร้อยแล้ว!');
+                                                                    }}
+                                                                />
+                                                            );
+                                                        }
+                                                        return <code className={className} {...props}>{children}</code>;
+                                                    }
+                                                }}
+                                            >
+                                                {msg.content}
+                                            </ReactMarkdown>
                                         </div>
                                     )}
                                 </div>
