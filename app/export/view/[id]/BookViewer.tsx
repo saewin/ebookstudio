@@ -8,7 +8,8 @@ import {
     Compass, Layout, FileSpreadsheet, ChevronLeft,
     ChevronRight, ArrowUp, List, HelpCircle,
     Upload, Image as ImageIcon, Trash2, X,
-    Shield, Palette, Clock, Check, Edit3, Sliders
+    Shield, Palette, Clock, Check, Edit3, Sliders,
+    Search, Camera, Wand2, RefreshCw
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
@@ -17,6 +18,9 @@ import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import { Chapter, Project } from '@/lib/notion'
 import { sanitizeBookContent } from '@/lib/sanitize'
+import ProofreadModal from './ProofreadModal'
+import MockupModal from './MockupModal'
+import QuickEditModal from './QuickEditModal'
 
 interface BookViewerProps {
     chapters: Chapter[];
@@ -448,6 +452,25 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [isUploadingBackCover, setIsUploadingBackCover] = useState(false);
     const [showCoverManagerModal, setShowCoverManagerModal] = useState(false);
 
+    // Chapters local reactive state
+    const [localChapters, setLocalChapters] = useState<Chapter[]>(chapters);
+    useEffect(() => {
+        setLocalChapters(chapters);
+    }, [chapters]);
+
+    // EPUB Exporter state
+    const [isExportingEpub, setIsExportingEpub] = useState(false);
+
+    // AI Proofreader state
+    const [showProofreadModal, setShowProofreadModal] = useState(false);
+
+    // 3D Mockup state
+    const [showMockupModal, setShowMockupModal] = useState(false);
+
+    // Inline Quick-Edit state
+    const [quickEditChapter, setQuickEditChapter] = useState<Chapter | null>(null);
+    const [showQuickEditModal, setShowQuickEditModal] = useState(false);
+
     // Book Design Theme & Preset
     const [themePreset, setThemePreset] = useState<'executive' | 'classic' | 'tech' | 'minimal'>('executive');
 
@@ -456,6 +479,43 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [draftCopyright, setDraftCopyright] = useState<CopyrightSettings>(DEFAULT_COPYRIGHT_SETTINGS);
     const [showCopyrightModal, setShowCopyrightModal] = useState(false);
     const [isSavingCopyright, setIsSavingCopyright] = useState(false);
+
+    const handleDownloadEpub = () => {
+        setIsExportingEpub(true);
+        const link = document.createElement('a');
+        link.href = `/api/projects/${projectId}/epub`;
+        link.download = `${cleanProjectTitle}.epub`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => setIsExportingEpub(false), 2000);
+    };
+
+    const handleFixesApplied = (appliedFixes: { chapterId: string; originalText: string; suggestedText: string }[]) => {
+        setLocalChapters(prev => {
+            return prev.map(chap => {
+                let c = chap.content || '';
+                appliedFixes.forEach(fix => {
+                    if (fix.chapterId === chap.id && fix.originalText && fix.suggestedText) {
+                        c = c.replace(fix.originalText, fix.suggestedText);
+                    }
+                });
+                return { ...chap, content: c };
+            });
+        });
+    };
+
+    const handleOpenQuickEdit = (chapterId: string) => {
+        const target = localChapters.find(c => c.id === chapterId);
+        if (target) {
+            setQuickEditChapter(target);
+            setShowQuickEditModal(true);
+        }
+    };
+
+    const handleQuickEditSuccess = (updatedChapter: Chapter) => {
+        setLocalChapters(prev => prev.map(c => c.id === updatedChapter.id ? updatedChapter : c));
+    };
 
     // Load persisted covers and settings on mount
     useEffect(() => {
@@ -652,7 +712,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const bookStats = useMemo(() => {
         let totalChars = 0;
         let totalWords = 0;
-        chapters.forEach(c => {
+        localChapters.forEach(c => {
             const raw = (c.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
             totalChars += raw.length;
             const words = raw.trim().split(/\s+/).filter(Boolean).length;
@@ -660,7 +720,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         });
         const readMinutes = Math.max(1, Math.ceil(totalWords / 200));
         return { totalChars, totalWords, readMinutes };
-    }, [chapters]);
+    }, [localChapters]);
 
     // Compute exact continuous pagination and sub-pages
     const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber, showCopyright, tocPageNum } = useMemo(() => {
@@ -676,7 +736,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             pageNumber: number;
         }> = [];
 
-        chapters.forEach((chap) => {
+        localChapters.forEach((chap) => {
             const cleanTitle = cleanChapterTitle(chap.title);
             const fullHeader = getFullChapterHeader(chap.chapterNo, chap.title);
             const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
@@ -750,7 +810,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             showCopyright: show,
             tocPageNum: tocPage,
         };
-    }, [chapters, pageSize, fontSize, copyrightSettings.showCopyrightPage]);
+    }, [localChapters, pageSize, fontSize, copyrightSettings.showCopyrightPage]);
 
     // Active reading tracker via scroll position
     useEffect(() => {
@@ -775,7 +835,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     setActiveChapterTitle(fullTitle);
                 }
                 if (chapId) {
-                    const idx = chapters.findIndex(c => c.id === chapId);
+                    const idx = localChapters.findIndex(c => c.id === chapId);
                     if (idx !== -1) setActiveChapterIndex(idx);
                 }
             }
@@ -784,12 +844,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         window.addEventListener('scroll', handleScroll, { passive: true });
         handleScroll();
         return () => window.removeEventListener('scroll', handleScroll);
-    }, [chapters, allBookPages]);
+    }, [localChapters, allBookPages]);
 
     const handleNavigateChapter = (direction: 'prev' | 'next') => {
         const nextIdx = direction === 'prev' ? activeChapterIndex - 1 : activeChapterIndex + 1;
-        if (nextIdx >= 0 && nextIdx < chapters.length) {
-            const targetChapter = chapters[nextIdx];
+        if (nextIdx >= 0 && nextIdx < localChapters.length) {
+            const targetChapter = localChapters[nextIdx];
             const targetEl = document.getElementById(`chapter-${targetChapter.id}`);
             if (targetEl) {
                 targetEl.scrollIntoView({ behavior: 'smooth' });
@@ -850,7 +910,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                                 <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
                                     <BookOpen size={12} className="text-blue-600" />
-                                    {chapters.length} บท ({totalPages} หน้า)
+                                    {localChapters.length} บท ({totalPages} หน้า)
                                 </span>
                                 <span>•</span>
                                 <span className="inline-flex items-center gap-1 text-slate-600" title={`ความยาวประมาณ ${bookStats.totalWords.toLocaleString()} คำ (${bookStats.totalChars.toLocaleString()} ตัวอักษร)`}>
@@ -974,6 +1034,37 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         >
                             <FileText size={14} className="text-blue-600" />
                             {isExporting ? 'กำลังส่งออก...' : 'Google Docs'}
+                        </button>
+
+                        {/* EPUB 3.0 Exporter */}
+                        <button
+                            onClick={handleDownloadEpub}
+                            disabled={isExportingEpub}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="ดาวน์โหลดไฟล์ EPUB 3.0 มาตรฐานสากล สำหรับวางจำหน่ายบน Meb, Ookbee, Apple Books"
+                        >
+                            <Download size={14} className={`text-purple-600 ${isExportingEpub ? 'animate-bounce' : ''}`} />
+                            <span>{isExportingEpub ? 'กำลังสร้าง EPUB...' : 'EPUB 3.0'}</span>
+                        </button>
+
+                        {/* AI Proofreader & Quality Audit */}
+                        <button
+                            onClick={() => setShowProofreadModal(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors shadow-xs cursor-pointer"
+                            title="AI ตรวจทานคำผิด พิสูจน์อักษร และประเมินคะแนนความพร้อมเผยแพร่"
+                        >
+                            <Search size={14} className="text-rose-600" />
+                            <span>ตรวจทาน AI</span>
+                        </button>
+
+                        {/* 3D Book Mockup Studio */}
+                        <button
+                            onClick={() => setShowMockupModal(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shadow-xs cursor-pointer"
+                            title="สร้างภาพจำลองปก 3 มิติ (3D Mockup) คมชัดสูง 1600x1200 สำหรับทำการตลาดและสื่อโฆษณา"
+                        >
+                            <Camera size={14} className="text-indigo-600" />
+                            <span>3D Mockup</span>
                         </button>
 
                         {/* Direct Cover Manager Button (Front & Back Cover from Computer) */}
@@ -1351,10 +1442,20 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex-1 flex flex-col">
                                 {/* Chapter Hero Header (Only on First Section) */}
                                 {page.isFirstSection && (
-                                    <header className="mb-4 text-center shrink-0">
-                                        <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider mb-2 border border-blue-100">
-                                            {formatChapterLabel(page.chapterNo)}
-                                        </span>
+                                    <header className="mb-4 text-center shrink-0 relative group">
+                                        <div className="flex items-center justify-center gap-2 mb-2">
+                                            <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-100">
+                                                {formatChapterLabel(page.chapterNo)}
+                                            </span>
+                                            <button
+                                                onClick={() => handleOpenQuickEdit(page.chapterId)}
+                                                className="no-print opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-blue-600 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-full shadow-xs cursor-pointer"
+                                                title="แก้ไขเนื้อหาและขัดเกลาด้วย AI ในบทนี้ทันที"
+                                            >
+                                                <Edit3 size={11} />
+                                                <span>แก้ไขบทนี้</span>
+                                            </button>
+                                        </div>
                                         <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
                                             {page.chapterTitle}
                                         </h2>
@@ -1405,7 +1506,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     >
                                         {transformCrossReferences(
                                             cleanContentBody(page.content, page.isFirstSection ? page.chapterTitle : undefined, page.chapterNo), 
-                                            chapters
+                                            localChapters
                                         )}
                                     </ReactMarkdown>
                                 </div>
@@ -1638,7 +1739,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     {/* Next Chapter */}
                     <button
                         onClick={() => handleNavigateChapter('next')}
-                        disabled={activeChapterIndex >= chapters.length - 1}
+                        disabled={activeChapterIndex >= localChapters.length - 1}
                         className="p-1.5 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-colors flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer"
                         title="บทถัดไป"
                     >
@@ -2129,6 +2230,36 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     </div>
                 </div>
             )}
+
+            {/* AI Proofreader Quality Audit Modal */}
+            <ProofreadModal
+                isOpen={showProofreadModal}
+                onClose={() => setShowProofreadModal(false)}
+                projectId={projectId}
+                projectTitle={cleanProjectTitle}
+                onFixesApplied={handleFixesApplied}
+            />
+
+            {/* 3D Book Mockup Studio Modal */}
+            <MockupModal
+                isOpen={showMockupModal}
+                onClose={() => setShowMockupModal(false)}
+                projectTitle={cleanProjectTitle}
+                frontCoverUrl={frontCoverUrl}
+                author={copyrightSettings.author || 'Saewin'}
+                themePreset={themePreset}
+            />
+
+            {/* Inline Quick-Edit & AI Polish Modal */}
+            <QuickEditModal
+                isOpen={showQuickEditModal}
+                chapter={quickEditChapter}
+                onClose={() => {
+                    setShowQuickEditModal(false);
+                    setQuickEditChapter(null);
+                }}
+                onSaveSuccess={handleQuickEditSuccess}
+            />
 
             <style jsx global>{`
                 /* Screen page simulation */

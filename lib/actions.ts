@@ -393,18 +393,20 @@ export async function updateChapterContent(chapterId: string, newContent: string
 }
 
 // Unified LLM caller supporting both Google Gemini API (Free tier from Google AI Studio) and OpenRouter
-async function executeLLMCompletion({
+export async function executeLLMCompletion({
     messages,
     maxTokens = 3000,
     temperature = 0.7,
     provider = 'gemini',
     jsonMode = false,
+    model,
 }: {
     messages: Array<{ role: string; content: string }>;
     maxTokens?: number;
     temperature?: number;
     provider?: 'gemini' | 'openrouter';
     jsonMode?: boolean;
+    model?: string;
 }): Promise<string> {
     const geminiKey = getGeminiApiKey();
     const openrouterKey = process.env.OPENROUTER_API_KEY;
@@ -466,11 +468,14 @@ async function executeLLMCompletion({
         throw new Error('ยังไม่ได้กำหนด GEMINI_API_KEY ในระบบ');
     }
 
-    const candidateModels = [
-        'gemini-3.5-flash-lite',
+    const candidateModels = Array.from(new Set([
+        ...(model ? [model] : []),
+        'gemini-2.5-flash',
+        'gemini-1.5-flash',
         'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
         'gemini-3.8-flash'
-    ];
+    ]));
 
     const systemInstruction = messages.find(m => m.role === 'system')?.content;
     const contents = messages
@@ -532,6 +537,25 @@ async function executeLLMCompletion({
     }
 
     throw lastGeminiError || new Error('Google Gemini API ไม่สามารถให้บริการได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
+}
+
+export async function callGeminiNative(
+    messages: Array<{ role: string; content: string }>,
+    modelName: string = 'gemini-2.5-flash',
+    jsonMode: boolean = false
+): Promise<string> {
+    const hasGemini = !!getGeminiApiKey();
+    const hasOpenRouter = !!process.env.OPENROUTER_API_KEY;
+    const provider = hasGemini ? 'gemini' : (hasOpenRouter ? 'openrouter' : 'gemini');
+
+    return executeLLMCompletion({
+        messages,
+        provider,
+        maxTokens: 4000,
+        temperature: 0.7,
+        jsonMode,
+        model: modelName
+    });
 }
 
 
