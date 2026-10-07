@@ -6,7 +6,8 @@ import {
     BookOpen, Layers, CheckCircle2, Lightbulb, 
     ExternalLink, BookMarked, Sparkles, Download, 
     Compass, Layout, FileSpreadsheet, ChevronLeft,
-    ChevronRight, ArrowUp, List, HelpCircle
+    ChevronRight, ArrowUp, List, HelpCircle,
+    Upload, Image as ImageIcon, Trash2, X
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
@@ -413,6 +414,109 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [showPrintModal, setShowPrintModal] = useState(false);
     const [dontShowPrintModalAgain, setDontShowPrintModalAgain] = useState(false);
 
+    // Front and Back Cover Custom Images (Stored on persistent VPS storage & localStorage)
+    const [frontCoverUrl, setFrontCoverUrl] = useState<string | null>(null);
+    const [backCoverUrl, setBackCoverUrl] = useState<string | null>(null);
+    const [isUploadingFrontCover, setIsUploadingFrontCover] = useState(false);
+    const [isUploadingBackCover, setIsUploadingBackCover] = useState(false);
+    const [showCoverManagerModal, setShowCoverManagerModal] = useState(false);
+
+    // Load persisted covers on mount
+    useEffect(() => {
+        if (!projectId) return;
+        // 1. Instant check from localStorage
+        const localFront = localStorage.getItem(`cover_front_${projectId}`);
+        const localBack = localStorage.getItem(`cover_back_${projectId}`);
+        if (localFront) setFrontCoverUrl(localFront);
+        if (localBack) setBackCoverUrl(localBack);
+
+        // 2. Fetch from server API (persistent storage)
+        fetch(`/api/projects/${projectId}/covers`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.frontCoverUrl) {
+                        setFrontCoverUrl(data.frontCoverUrl);
+                        localStorage.setItem(`cover_front_${projectId}`, data.frontCoverUrl);
+                    }
+                    if (data.backCoverUrl) {
+                        setBackCoverUrl(data.backCoverUrl);
+                        localStorage.setItem(`cover_back_${projectId}`, data.backCoverUrl);
+                    }
+                }
+            })
+            .catch(err => console.error('Failed to load covers:', err));
+    }, [projectId]);
+
+    const handleUploadCover = async (file: File, type: 'front' | 'back') => {
+        if (!file) return;
+        if (type === 'front') setIsUploadingFrontCover(true);
+        else setIsUploadingBackCover(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const uploadRes = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+            });
+            const uploadData = await uploadRes.json();
+
+            if (!uploadData.success || !uploadData.url) {
+                alert('เกิดข้อผิดพลาดในการอัปโหลด: ' + (uploadData.error || 'Unknown error'));
+                return;
+            }
+
+            const newUrl = uploadData.url;
+
+            if (type === 'front') {
+                setFrontCoverUrl(newUrl);
+                localStorage.setItem(`cover_front_${projectId}`, newUrl);
+                await fetch(`/api/projects/${projectId}/covers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ frontCoverUrl: newUrl }),
+                });
+            } else {
+                setBackCoverUrl(newUrl);
+                localStorage.setItem(`cover_back_${projectId}`, newUrl);
+                await fetch(`/api/projects/${projectId}/covers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backCoverUrl: newUrl }),
+                });
+            }
+        } catch (err: any) {
+            alert('เกิดข้อผิดพลาดในการบันทึกภาพปก: ' + (err.message || String(err)));
+        } finally {
+            if (type === 'front') setIsUploadingFrontCover(false);
+            else setIsUploadingBackCover(false);
+        }
+    };
+
+    const handleRemoveCover = async (type: 'front' | 'back') => {
+        if (!confirm(`ต้องการลบภาพ${type === 'front' ? 'ปกหน้า' : 'ปกหลัง'} และกลับไปใช้ดีไซน์เริ่มต้นใช่ไหม?`)) return;
+
+        if (type === 'front') {
+            setFrontCoverUrl(null);
+            localStorage.removeItem(`cover_front_${projectId}`);
+            await fetch(`/api/projects/${projectId}/covers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ frontCoverUrl: null }),
+            });
+        } else {
+            setBackCoverUrl(null);
+            localStorage.removeItem(`cover_back_${projectId}`);
+            await fetch(`/api/projects/${projectId}/covers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backCoverUrl: null }),
+            });
+        }
+    };
+
     // Active reading state for floating status bar
     const [activePageNum, setActivePageNum] = useState<number>(1);
     const [activeChapterIndex, setActiveChapterIndex] = useState<number>(0);
@@ -727,6 +831,19 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             {isExporting ? 'กำลังส่งออก...' : 'Google Docs'}
                         </button>
 
+                        {/* Direct Cover Manager Button (Front & Back Cover from Computer) */}
+                        <button
+                            onClick={() => setShowCoverManagerModal(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+                            title="จัดการภาพหน้าปกและปกหลัง (อัปโหลดจากเครื่องคอมได้โดยตรง ไม่ต้องผ่าน Notion)"
+                        >
+                            <ImageIcon size={14} className="text-amber-600" />
+                            <span>ภาพปกหน้า/หลัง</span>
+                            {(frontCoverUrl || backCoverUrl) && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="มีการใช้งานภาพปกแบบกำหนดเอง" />
+                            )}
+                        </button>
+
                         <div className="flex items-center gap-1">
                             <button
                                 onClick={handlePrint}
@@ -756,43 +873,99 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="book-cover"
                     data-page-num="1"
                     data-chapter-full-header="หน้าปก (Cover)"
-                    className={`book-page book-cover relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white overflow-hidden flex flex-col justify-between`}
+                    className={`book-page book-cover relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white overflow-hidden flex flex-col justify-between ${frontCoverUrl ? 'has-custom-cover !p-0' : ''}`}
                     style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
-                    {/* Cover Background Graphic / Decorative borders */}
-                    <div className="absolute inset-0 bg-radial from-slate-800/40 via-slate-950 to-black pointer-events-none" />
-                    <div className="absolute inset-6 border border-amber-400/30 pointer-events-none rounded-sm" />
-                    <div className="absolute inset-8 border border-amber-400/10 pointer-events-none rounded-sm" />
+                    {frontCoverUrl ? (
+                        // Custom Full-Bleed Front Cover Image from computer
+                        <div className="absolute inset-0 w-full h-full group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img 
+                                src={frontCoverUrl} 
+                                alt="Front Cover" 
+                                className="w-full h-full object-cover" 
+                            />
+                            {/* Non-print control overlay */}
+                            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 no-print opacity-90 group-hover:opacity-100 transition-opacity bg-slate-900/80 backdrop-blur-sm p-1.5 rounded-xl border border-white/20 shadow-lg">
+                                <label className="cursor-pointer px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                                    <Upload size={13} />
+                                    <span>{isUploadingFrontCover ? 'กำลังอัปโหลด...' : 'เปลี่ยนภาพปกหน้า'}</span>
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        className="hidden" 
+                                        disabled={isUploadingFrontCover}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleUploadCover(file, 'front');
+                                        }}
+                                    />
+                                </label>
+                                <button
+                                    onClick={() => handleRemoveCover('front')}
+                                    className="p-1.5 text-slate-300 hover:text-rose-300 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                                    title="ลบภาพปก ใช้ดีไซน์มาตรฐาน"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        // Default Template Layout with Prominent Direct Upload Button
+                        <>
+                            {/* Cover Background Graphic / Decorative borders */}
+                            <div className="absolute inset-0 bg-radial from-slate-800/40 via-slate-950 to-black pointer-events-none" />
+                            <div className="absolute inset-6 border border-amber-400/30 pointer-events-none rounded-sm" />
+                            <div className="absolute inset-8 border border-amber-400/10 pointer-events-none rounded-sm" />
 
-                    {/* Top Tag */}
-                    <div className="relative z-10 pt-16 px-12 text-center">
-                        <span className="inline-block px-3 py-1 bg-amber-400/10 text-amber-300 border border-amber-400/30 rounded-full text-xs font-medium tracking-widest uppercase mb-4">
-                            {project?.theme ? 'EBOOK EDITION' : 'SPECIAL PUBLICATION'}
-                        </span>
-                        <p className="text-xs text-slate-400 tracking-[0.3em] uppercase">Saewin</p>
-                    </div>
+                            {/* Top Tag & Upload CTA */}
+                            <div className="relative z-10 pt-12 md:pt-16 px-8 md:px-12 text-center flex flex-col items-center">
+                                <div className="flex items-center justify-between w-full mb-4">
+                                    <span className="inline-block px-3 py-1 bg-amber-400/10 text-amber-300 border border-amber-400/30 rounded-full text-xs font-medium tracking-widest uppercase">
+                                        {project?.theme ? 'EBOOK EDITION' : 'SPECIAL PUBLICATION'}
+                                    </span>
+                                    {/* Direct Upload Button from Computer (Non-print) */}
+                                    <label className="no-print cursor-pointer px-3 py-1.5 bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-md transition-all hover:scale-105">
+                                        <Upload size={13} />
+                                        <span>{isUploadingFrontCover ? 'กำลังอัปโหลด...' : '📷 ใส่ภาพปกหน้า (จากเครื่อง)'}</span>
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            disabled={isUploadingFrontCover}
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleUploadCover(file, 'front');
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                                <p className="text-xs text-slate-400 tracking-[0.3em] uppercase">Saewin</p>
+                            </div>
 
-                    {/* Center Title & Subtitle */}
-                    <div className="relative z-10 px-12 text-center my-auto">
-                        <div className="w-12 h-1 bg-amber-400 mx-auto mb-8 rounded-full" />
-                        <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-6 leading-tight drop-shadow-sm font-serif">
-                            {cleanProjectTitle}
-                        </h1>
-                        <p className="text-base md:text-lg text-slate-300 max-w-lg mx-auto leading-relaxed font-light">
-                            {project?.audience ? `คู่มือสำหรับ: ${project.audience}` : 'ยกระดับองค์ความรู้สู่ความสำเร็จในยุคดิจิทัล'}
-                        </p>
-                    </div>
+                            {/* Center Title & Subtitle */}
+                            <div className="relative z-10 px-8 md:px-12 text-center my-auto">
+                                <div className="w-12 h-1 bg-amber-400 mx-auto mb-8 rounded-full" />
+                                <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white mb-6 leading-tight drop-shadow-sm font-serif">
+                                    {cleanProjectTitle}
+                                </h1>
+                                <p className="text-base md:text-lg text-slate-300 max-w-lg mx-auto leading-relaxed font-light">
+                                    {project?.audience ? `คู่มือสำหรับ: ${project.audience}` : 'ยกระดับองค์ความรู้สู่ความสำเร็จในยุคดิจิทัล'}
+                                </p>
+                            </div>
 
-                    {/* Bottom Author & Year */}
-                    <div className="relative z-10 pb-16 px-12 text-center">
-                        <div className="w-16 h-px bg-slate-700 mx-auto mb-4" />
-                        <p className="text-sm font-medium text-slate-200 tracking-wider">
-                            เรียบเรียงโดย Saewin
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">
-                            BANGKOK • 2026
-                        </p>
-                    </div>
+                            {/* Bottom Author & Year */}
+                            <div className="relative z-10 pb-12 md:pb-16 px-8 md:px-12 text-center">
+                                <div className="w-16 h-px bg-slate-700 mx-auto mb-4" />
+                                <p className="text-sm font-medium text-slate-200 tracking-wider">
+                                    เรียบเรียงโดย Saewin
+                                </p>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    BANGKOK • 2026
+                                </p>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* 2. HALF-TITLE & IMPRINT / COPYRIGHT PAGE (Page 2) */}
@@ -1101,34 +1274,90 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="back-cover"
                     data-page-num={totalPages}
                     data-chapter-full-header="ปกหลัง (Back Cover)"
-                    className={`book-page book-cover ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white p-8 md:p-16 lg:p-20 flex flex-col justify-between relative overflow-hidden`}
+                    className={`book-page book-cover relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white overflow-hidden flex flex-col justify-between ${backCoverUrl ? 'has-custom-cover !p-0' : ''}`}
                     style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
                 >
-                    <div className="absolute inset-0 bg-radial from-slate-900/30 via-slate-950 to-black pointer-events-none" />
-                    
-                    <div className="relative z-10 pt-10">
-                        <span className="text-xs text-amber-400/80 tracking-widest uppercase block mb-3 font-semibold">Synopsis</span>
-                        <h3 className="text-2xl md:text-3xl font-bold font-serif text-white mb-6 leading-snug">
-                            {cleanProjectTitle}
-                        </h3>
-                        <p className="text-slate-300 text-sm md:text-base leading-relaxed mb-6 max-w-xl">
-                            คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยีและระบบที่จับต้องได้จริง 
-                            ออกแบบมาสำหรับผู้ที่ต้องการความก้าวหน้าและการเติบโตอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน
-                        </p>
-                    </div>
-
-                    <div className="relative z-10 pb-8 border-t border-slate-800 pt-8 flex items-end justify-between">
-                        <div>
-                            <p className="text-xs text-slate-400">Published by</p>
-                            <p className="text-sm font-bold text-white">Saewin</p>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">STANDARD EDITION</span>
-                            <div className="font-mono text-xs text-slate-400 border border-slate-700 px-3 py-1 rounded bg-slate-900/50">
-                                ISBN 978-0-00000-000-0
+                    {backCoverUrl ? (
+                        // Custom Full-Bleed Back Cover Image from computer
+                        <div className="absolute inset-0 w-full h-full group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img 
+                                src={backCoverUrl} 
+                                alt="Back Cover" 
+                                className="w-full h-full object-cover" 
+                            />
+                            {/* Non-print control overlay */}
+                            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 no-print opacity-90 group-hover:opacity-100 transition-opacity bg-slate-900/80 backdrop-blur-sm p-1.5 rounded-xl border border-white/20 shadow-lg">
+                                <label className="cursor-pointer px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                                    <Upload size={13} />
+                                    <span>{isUploadingBackCover ? 'กำลังอัปโหลด...' : 'เปลี่ยนภาพปกหลัง'}</span>
+                                    <input 
+                                        type="file" 
+                                        accept="image/*" 
+                                        className="hidden" 
+                                        disabled={isUploadingBackCover}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) handleUploadCover(file, 'back');
+                                        }}
+                                    />
+                                </label>
+                                <button
+                                    onClick={() => handleRemoveCover('back')}
+                                    className="p-1.5 text-slate-300 hover:text-rose-300 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                                    title="ลบภาพปกหลัง ใช้ดีไซน์มาตรฐาน"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        // Default Template Layout with Prominent Direct Upload Button
+                        <div className="relative z-10 p-8 md:p-16 lg:p-20 flex flex-col justify-between h-full">
+                            <div className="absolute inset-0 bg-radial from-slate-900/30 via-slate-950 to-black pointer-events-none -z-10" />
+                            
+                            <div className="pt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <span className="text-xs text-amber-400/80 tracking-widest uppercase block font-semibold">Synopsis</span>
+                                    {/* Direct Upload Button from Computer (Non-print) */}
+                                    <label className="no-print cursor-pointer px-3 py-1.5 bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-md transition-all hover:scale-105">
+                                        <Upload size={13} />
+                                        <span>{isUploadingBackCover ? 'กำลังอัปโหลด...' : '📷 ใส่ภาพปกหลัง (จากเครื่อง)'}</span>
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            disabled={isUploadingBackCover}
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleUploadCover(file, 'back');
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                                <h3 className="text-2xl md:text-3xl font-bold font-serif text-white mb-6 leading-snug">
+                                    {cleanProjectTitle}
+                                </h3>
+                                <p className="text-slate-300 text-sm md:text-base leading-relaxed mb-6 max-w-xl">
+                                    คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยีและระบบที่จับต้องได้จริง 
+                                    ออกแบบมาสำหรับผู้ที่ต้องการความก้าวหน้าและการเติบโตอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน
+                                </p>
+                            </div>
+
+                            <div className="pb-4 border-t border-slate-800 pt-8 flex items-end justify-between">
+                                <div>
+                                    <p className="text-xs text-slate-400">Published by</p>
+                                    <p className="text-sm font-bold text-white">Saewin</p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">STANDARD EDITION</span>
+                                    <div className="font-mono text-xs text-slate-400 border border-slate-700 px-3 py-1 rounded bg-slate-900/50">
+                                        ISBN 978-0-00000-000-0
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
             </main>
@@ -1268,6 +1497,188 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     เข้าใจแล้ว, เปิดหน้าต่างพิมพ์ PDF
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Direct Cover Manager Modal (Front & Back Covers from Computer) */}
+            {showCoverManagerModal && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print animate-in fade-in duration-200 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-6 my-auto">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                            <div className="flex items-center gap-3 text-slate-900">
+                                <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
+                                    <ImageIcon size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-900 text-base">จัดการภาพหน้าปกและปกหลัง (Custom Covers)</h3>
+                                    <p className="text-xs text-slate-500">เลือกไฟล์จากคอมพิวเตอร์ของคุณได้โดยตรง ไม่ต้องผ่าน Notion</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowCoverManagerModal(false)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* 2-Column Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            {/* Front Cover Card */}
+                            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                                            <span>ภาพหน้าปก (Front Cover)</span>
+                                        </h4>
+                                        {frontCoverUrl ? (
+                                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-medium px-2 py-0.5 rounded-full">
+                                                มีภาพกำหนดเอง
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] bg-slate-200 text-slate-600 font-medium px-2 py-0.5 rounded-full">
+                                                ดีไซน์มาตรฐาน
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">แสดงเป็นหน้าแรก (Page 1) ของ E-Book</p>
+
+                                    {/* Preview Frame */}
+                                    <div className="w-full aspect-[1/1.414] max-h-56 bg-slate-900 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center relative mb-3 shadow-inner">
+                                        {frontCoverUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img 
+                                                src={frontCoverUrl} 
+                                                alt="Front Cover Preview" 
+                                                className="w-full h-full object-cover" 
+                                            />
+                                        ) : (
+                                            <div className="text-center p-4">
+                                                <ImageIcon size={32} className="mx-auto text-slate-500 mb-2 opacity-50" />
+                                                <p className="text-xs text-slate-400">ยังไม่มีภาพปกแบบกำหนดเอง</p>
+                                                <p className="text-[10px] text-slate-500 mt-1">จะใช้ปกแบบ Dark Luxury อัตโนมัติ</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                                    <label className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm">
+                                        <Upload size={14} />
+                                        <span>{isUploadingFrontCover ? 'กำลังอัปโหลด...' : (frontCoverUrl ? 'เปลี่ยนภาพปกหน้า' : 'อัปโหลดภาพปกหน้า')}</span>
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            disabled={isUploadingFrontCover}
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleUploadCover(file, 'front');
+                                            }}
+                                        />
+                                    </label>
+
+                                    {frontCoverUrl && (
+                                        <button
+                                            onClick={() => handleRemoveCover('front')}
+                                            className="w-full py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                        >
+                                            <Trash2 size={13} />
+                                            <span>ลบภาพ (กลับไปใช้ดีไซน์เริ่มต้น)</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Back Cover Card */}
+                            <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                                            <span>ภาพปกหลัง (Back Cover)</span>
+                                        </h4>
+                                        {backCoverUrl ? (
+                                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-medium px-2 py-0.5 rounded-full">
+                                                มีภาพกำหนดเอง
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] bg-slate-200 text-slate-600 font-medium px-2 py-0.5 rounded-full">
+                                                ดีไซน์มาตรฐาน
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">แสดงเป็นหน้าสุดท้ายของ E-Book</p>
+
+                                    {/* Preview Frame */}
+                                    <div className="w-full aspect-[1/1.414] max-h-56 bg-slate-900 rounded-lg overflow-hidden border border-slate-200 flex items-center justify-center relative mb-3 shadow-inner">
+                                        {backCoverUrl ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img 
+                                                src={backCoverUrl} 
+                                                alt="Back Cover Preview" 
+                                                className="w-full h-full object-cover" 
+                                            />
+                                        ) : (
+                                            <div className="text-center p-4">
+                                                <ImageIcon size={32} className="mx-auto text-slate-500 mb-2 opacity-50" />
+                                                <p className="text-xs text-slate-400">ยังไม่มีภาพปกหลัง</p>
+                                                <p className="text-[10px] text-slate-500 mt-1">จะใช้ปกหลังสรุปย่อ (Synopsis)</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                                    <label className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm">
+                                        <Upload size={14} />
+                                        <span>{isUploadingBackCover ? 'กำลังอัปโหลด...' : (backCoverUrl ? 'เปลี่ยนภาพปกหลัง' : 'อัปโหลดภาพปกหลัง')}</span>
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            disabled={isUploadingBackCover}
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleUploadCover(file, 'back');
+                                            }}
+                                        />
+                                    </label>
+
+                                    {backCoverUrl && (
+                                        <button
+                                            onClick={() => handleRemoveCover('back')}
+                                            className="w-full py-1.5 px-3 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                        >
+                                            <Trash2 size={13} />
+                                            <span>ลบภาพ (กลับไปใช้ดีไซน์เริ่มต้น)</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Tips & Guidance */}
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 text-xs text-blue-900 flex items-start gap-2.5">
+                            <span className="text-base leading-none">💡</span>
+                            <div className="space-y-1">
+                                <p className="font-semibold text-blue-950">คำแนะนำขนาดไฟล์และสัดส่วนภาพปก:</p>
+                                <p className="text-blue-800">
+                                    แนะนำใช้ภาพแนวตั้งสัดส่วน <strong>1 : 1.414 (A4)</strong> ความละเอียด <strong>1414 × 2000 px</strong> หรือ <strong>2480 × 3508 px (300 DPI)</strong> ไฟล์นามสกุล JPG, PNG หรือ WebP ภาพจะถูกแสดงผลแบบ Full-Bleed พอดีหน้ากระดาษและบันทึกถาวรบนเซิร์ฟเวอร์
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex justify-end pt-2 border-t border-slate-100">
+                            <button
+                                onClick={() => setShowCoverManagerModal(false)}
+                                className="px-5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                            >
+                                เสร็จสิ้น / ปิดหน้าต่าง
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1415,6 +1826,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         justify-content: space-between !important;
                         padding: ${pageSize === 'a5' ? '16mm 12mm' : '22mm 18mm'} !important;
                         box-sizing: border-box !important;
+                    }
+                    .book-cover.has-custom-cover {
+                        padding: 0 !important;
                     }
                     .break-inside-avoid, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
