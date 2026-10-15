@@ -53,6 +53,26 @@ export default async function Home() {
         />
       </div>
 
+      {/* Financial Tools Suite Banner */}
+      <div className="rounded-xl border border-blue-200 bg-white p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            ✨ 4-in-1 Institutional Financial Tools
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">
+            ชุดเครื่องมือวางแผนการเงิน & จำลองพอร์ตระดับสถาบัน (Monte Carlo & Payoff Lab)
+          </h2>
+          <p className="text-sm text-slate-600">
+            ประกอบด้วย 1) Retire Rich Planner · 2) Institutional Portfolio Simulator (Global Waterfall) · 3) Structured Note Simulator (12 รูปแบบ) · 4) Quant Dashboard
+          </p>
+        </div>
+        <Link href="/financial-tools" className="shrink-0">
+          <button className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 shadow-xs cursor-pointer">
+            เปิดใช้งาน Financial Tools <ArrowRight size={16} />
+          </button>
+        </Link>
+      </div>
+
       {/* Recent Projects Section */}
       <div className="space-y-6 pt-4">
         <div className="flex items-center justify-between">

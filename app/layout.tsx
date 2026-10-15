@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter, Sarabun } from 'next/font/google'
 import './globals.css'
-import Link from 'next/link'
-import { LayoutDashboard, FileText, ListOrdered, PenTool, Image as ImageIcon, Settings, User, LogOut, BookUp, GraduationCap } from 'lucide-react'
+import { User, LogOut } from 'lucide-react'
+import SidebarNav from './SidebarNav'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const sarabun = Sarabun({
@@ -13,8 +13,8 @@ const sarabun = Sarabun({
 })
 
 export const metadata: Metadata = {
-  title: 'Ebook Creator Studio',
-  description: 'AI-Assisted Professional Ebook Production',
+  title: 'Ebook Creator Studio & Financial Tools',
+  description: 'AI-Assisted Professional Ebook Production & Institutional Financial Simulation Suite',
 }
 
 export default function RootLayout({
@@ -26,10 +26,10 @@ export default function RootLayout({
     <html lang="th">
       <body className={`${inter.variable} ${sarabun.variable} font-sans flex h-screen overflow-hidden bg-background text-foreground antialiased`}>
         {/* Sidebar - White & Blue */}
-        <aside className="w-64 border-r border-border bg-white flex flex-col shrink-0">
+        <aside className="w-64 border-r border-border bg-white flex flex-col shrink-0 no-print">
 
           {/* Brand */}
-          <div className="p-8 pb-8">
+          <div className="p-8 pb-6">
             <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
               <span className="w-8 h-8 bg-primary text-white flex items-center justify-center rounded-sm text-sm font-bold">E</span>
               Studio
@@ -37,27 +37,7 @@ export default function RootLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 space-y-8 overflow-y-auto">
-            <div>
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 px-3">การผลิต (Production)</div>
-              <div className="space-y-0.5">
-                <NavLink href="/" icon={LayoutDashboard} label="แดชบอร์ด" active />
-                <NavLink href="/briefing" icon={FileText} label="ห้องบรีฟงาน" />
-                <NavLink href="/structure" icon={ListOrdered} label="กระดานโครงสร้าง" />
-                <NavLink href="/writing" icon={PenTool} label="โต๊ะเขียนงาน" />
-                <NavLink href="/gallery" icon={ImageIcon} label="แกลเลอรี่ภาพ" />
-                <NavLink href="/export" icon={BookUp} label="โรงงานประกอบเล่ม" />
-                <NavLink href="/course-builder" icon={GraduationCap} label="สร้างบทเรียน" />
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3 px-3">ระบบ (System)</div>
-              <div className="space-y-0.5">
-                <NavLink href="/settings" icon={Settings} label="ตั้งค่า" />
-              </div>
-            </div>
-          </nav>
+          <SidebarNav />
 
           {/* User Profile */}
           <div className="p-4 border-t border-border">
@@ -75,8 +55,8 @@ export default function RootLayout({
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 relative">
-          <div className="max-w-7xl mx-auto p-12">
+        <main className="flex-1 overflow-y-auto bg-white relative">
+          <div className="max-w-7xl mx-auto p-6 md:p-10">
             {children}
           </div>
         </main>
@@ -85,17 +65,3 @@ export default function RootLayout({
   )
 }
 
-function NavLink({ href, icon: Icon, label, active }: { href: string, icon: any, label: string, active?: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={`group flex items-center px-3 py-2 rounded-md transition-all duration-200 ${active
-        ? 'bg-blue-50 text-blue-700 font-medium'
-        : 'text-slate-500 hover:text-blue-700 hover:bg-blue-50/50'
-        }`}
-    >
-      <Icon size={16} className={`mr-3 ${active ? 'text-blue-700' : 'text-slate-400 group-hover:text-blue-700'}`} />
-      <span className="text-sm">{label}</span>
-    </Link>
-  )
-}
