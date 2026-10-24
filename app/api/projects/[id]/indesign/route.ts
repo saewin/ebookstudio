@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as localDb from '@/lib/localDb'
 import { getProject, getChapters } from '@/lib/notion'
-import { generateIcmlBuffer, generateWordDocBuffer } from '@/lib/indesignGenerator'
+import { generateBookIdmlBuffer, generateInDesignWordDoc } from '@/lib/indesignGenerator'
 
 export async function GET(
     req: NextRequest,
@@ -13,7 +13,7 @@ export async function GET(
             return NextResponse.json({ success: false, error: 'Missing projectId' }, { status: 400 })
         }
 
-        const format = (req.nextUrl.searchParams.get('format') || 'icml').toLowerCase()
+        const format = (req.nextUrl.searchParams.get('format') || 'idml').toLowerCase()
 
         // 1. Fetch Project
         let project = await localDb.getProject(projectId)
@@ -30,21 +30,29 @@ export async function GET(
             chapters = await getChapters(projectId)
         }
 
-        // 3. Load Project Settings
-        const extraInfo = project.extraInfo || {}
-        const copyrightSettings = extraInfo.copyright || undefined
-
         const safeTitle = (project.title || 'ebook')
             .replace(/[/\\?%*:|"<>]/g, '-')
             .trim()
             .slice(0, 60)
 
+        const payload = {
+            title: project.title || 'Ebook',
+            subtitle: project.targetAudience || '',
+            author: project.extraInfo?.copyright?.authorName || 'Saewin',
+            audience: project.targetAudience || '',
+            publisher: project.extraInfo?.copyright?.publisherName || 'Selfpreneur Publishing',
+            chapters: (chapters || []).map((c: any) => ({
+                chapterNo: c.chapterNo || 1,
+                title: c.title || '',
+                content: c.content || '',
+                keyTerminology: c.keyTerminology || '',
+                keyTakeaways: c.keyTakeaways || '',
+            })),
+        }
+
         if (format === 'doc' || format === 'word') {
-            const docBuffer = await generateWordDocBuffer({
-                project,
-                chapters,
-                copyrightSettings
-            })
+            const docHtml = generateInDesignWordDoc(payload)
+            const docBuffer = Buffer.from('\uFEFF' + docHtml, 'utf-8')
             const filename = `${safeTitle}_InDesign.doc`
             const encodedFilename = encodeURIComponent(filename)
 
@@ -52,32 +60,29 @@ export async function GET(
                 status: 200,
                 headers: {
                     'Content-Type': 'application/msword; charset=utf-8',
-                    'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
+                    'Content-Disposition': `attachment; filename="ebook_indesign.doc"; filename*=UTF-8''${encodedFilename}`,
                     'Content-Length': docBuffer.length.toString(),
                     'Access-Control-Allow-Origin': '*',
-                    'Cache-Control': 'no-cache'
-                }
+                    'Cache-Control': 'no-cache',
+                },
             })
         }
 
-        // Default: Adobe InDesign / InCopy Markup (.icml)
-        const icmlBuffer = await generateIcmlBuffer({
-            project,
-            chapters,
-            copyrightSettings
-        })
-        const filename = `${safeTitle}_InDesign.icml`
+        // Default ('idml' or 'icml'): Native Adobe InDesign Markup Document (.idml)
+        // Opens directly via File > Open (Cmd+O) or double-click in Adobe InDesign!
+        const idmlBuffer = await generateBookIdmlBuffer(payload)
+        const filename = `${safeTitle}_InDesign.idml`
         const encodedFilename = encodeURIComponent(filename)
 
-        return new NextResponse(icmlBuffer as any, {
+        return new NextResponse(idmlBuffer as any, {
             status: 200,
             headers: {
-                'Content-Type': 'application/xml; charset=utf-8',
-                'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
-                'Content-Length': icmlBuffer.length.toString(),
+                'Content-Type': 'application/vnd.adobe.indesign-idml-package',
+                'Content-Disposition': `attachment; filename="ebook_indesign.idml"; filename*=UTF-8''${encodedFilename}`,
+                'Content-Length': idmlBuffer.length.toString(),
                 'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-cache'
-            }
+                'Cache-Control': 'no-cache',
+            },
         })
     } catch (error: any) {
         console.error('Error generating InDesign export:', error)

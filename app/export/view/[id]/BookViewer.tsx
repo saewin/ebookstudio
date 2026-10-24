@@ -460,7 +460,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
     // EPUB & Adobe InDesign Exporter state
     const [isExportingEpub, setIsExportingEpub] = useState(false);
-    const [isExportingInDesign, setIsExportingInDesign] = useState<'icml' | 'doc' | null>(null);
+    const [isExportingInDesign, setIsExportingInDesign] = useState<'idml' | 'doc' | null>(null);
 
     // AI Proofreader state
     const [showProofreadModal, setShowProofreadModal] = useState(false);
@@ -492,7 +492,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         setTimeout(() => setIsExportingEpub(false), 2000);
     };
 
-    const handleDownloadInDesign = (format: 'icml' | 'doc') => {
+    const handleDownloadInDesign = (format: 'idml' | 'doc') => {
         setIsExportingInDesign(format);
         const link = document.createElement('a');
         link.href = `/api/projects/${projectId}/indesign?format=${format}`;
@@ -1059,15 +1059,15 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <span>{isExportingEpub ? 'กำลังสร้าง EPUB...' : 'EPUB 3.0'}</span>
                         </button>
 
-                        {/* Adobe InDesign (.icml) Exporter */}
+                        {/* Adobe InDesign (.idml) Exporter */}
                         <button
-                            onClick={() => handleDownloadInDesign('icml')}
-                            disabled={isExportingInDesign === 'icml'}
+                            onClick={() => handleDownloadInDesign('idml')}
+                            disabled={isExportingInDesign === 'idml'}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-fuchsia-800 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-300 rounded-lg transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
-                            title="ส่งออกไฟล์ Adobe InDesign / InCopy (.icml) พร้อม Paragraph Styles สำหรับกด File > Place (Cmd+D) ในโปรแกรม Adobe InDesign เพื่อปรับแก้จัดหน้าต่อได้ทันที"
+                            title="ส่งออกไฟล์ Adobe InDesign Markup (.idml) เปิดได้โดยตรงผ่านเมนู File > Open (Cmd+O) ในโปรแกรม Adobe InDesign เพื่อปรับแก้จัดหน้าต่อได้ทันที"
                         >
                             <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-fuchsia-900 text-fuchsia-200 text-[10px] font-bold">Id</span>
-                            <span>{isExportingInDesign === 'icml' ? 'กำลังสร้าง .icml...' : 'InDesign (.icml)'}</span>
+                            <span>{isExportingInDesign === 'idml' ? 'กำลังสร้าง .idml...' : 'InDesign (.idml)'}</span>
                         </button>
 
                         {/* Word / InDesign Style-Mapped (.doc) Exporter */}
