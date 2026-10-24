@@ -458,8 +458,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         setLocalChapters(chapters);
     }, [chapters]);
 
-    // EPUB Exporter state
+    // EPUB & Adobe InDesign Exporter state
     const [isExportingEpub, setIsExportingEpub] = useState(false);
+    const [isExportingInDesign, setIsExportingInDesign] = useState<'icml' | 'doc' | null>(null);
 
     // AI Proofreader state
     const [showProofreadModal, setShowProofreadModal] = useState(false);
@@ -489,6 +490,17 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         link.click();
         document.body.removeChild(link);
         setTimeout(() => setIsExportingEpub(false), 2000);
+    };
+
+    const handleDownloadInDesign = (format: 'icml' | 'doc') => {
+        setIsExportingInDesign(format);
+        const link = document.createElement('a');
+        link.href = `/api/projects/${projectId}/indesign?format=${format}`;
+        link.download = `${cleanProjectTitle}_InDesign.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => setIsExportingInDesign(null), 2000);
     };
 
     const handleFixesApplied = (appliedFixes: { chapterId: string; originalText: string; suggestedText: string }[]) => {
@@ -1045,6 +1057,28 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         >
                             <Download size={14} className={`text-purple-600 ${isExportingEpub ? 'animate-bounce' : ''}`} />
                             <span>{isExportingEpub ? 'กำลังสร้าง EPUB...' : 'EPUB 3.0'}</span>
+                        </button>
+
+                        {/* Adobe InDesign (.icml) Exporter */}
+                        <button
+                            onClick={() => handleDownloadInDesign('icml')}
+                            disabled={isExportingInDesign === 'icml'}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-fuchsia-800 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-300 rounded-lg transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="ส่งออกไฟล์ Adobe InDesign / InCopy (.icml) พร้อม Paragraph Styles สำหรับกด File > Place (Cmd+D) ในโปรแกรม Adobe InDesign เพื่อปรับแก้จัดหน้าต่อได้ทันที"
+                        >
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-fuchsia-900 text-fuchsia-200 text-[10px] font-bold">Id</span>
+                            <span>{isExportingInDesign === 'icml' ? 'กำลังสร้าง .icml...' : 'InDesign (.icml)'}</span>
+                        </button>
+
+                        {/* Word / InDesign Style-Mapped (.doc) Exporter */}
+                        <button
+                            onClick={() => handleDownloadInDesign('doc')}
+                            disabled={isExportingInDesign === 'doc'}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="ส่งออกไฟล์ Word (.doc) ผูก Heading & Body Styles สำหรับแก้ไขใน Word หรือนำเข้า Adobe InDesign"
+                        >
+                            <FileText size={14} className="text-sky-600" />
+                            <span>{isExportingInDesign === 'doc' ? 'กำลังสร้าง .doc...' : 'Word / Id (.doc)'}</span>
                         </button>
 
                         {/* AI Proofreader & Quality Audit */}
