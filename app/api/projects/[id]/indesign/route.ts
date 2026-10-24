@@ -1,7 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
+import path from 'path'
+import { readFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import * as localDb from '@/lib/localDb'
 import { getProject, getChapters } from '@/lib/notion'
 import { generateBookIdmlBuffer, generateInDesignWordDoc } from '@/lib/indesignGenerator'
+
+async function resolveImageToBase64(imageUrl?: string | null): Promise<string | undefined> {
+    if (!imageUrl || typeof imageUrl !== 'string') return undefined
+    const trimmed = imageUrl.trim()
+    if (!trimmed) return undefined
+
+    // 1. Data URI (data:image/jpeg;base64,...)
+    const dataUriMatch = trimmed.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/)
+    if (dataUriMatch && dataUriMatch[1]) {
+        return dataUriMatch[1].replace(/\s+/g, '')
+    }
+
+    // 2. Local uploaded file (/uploads/... or /api/uploads/...)
+    if (trimmed.startsWith('/uploads/') || trimmed.startsWith('/api/uploads/')) {
+        const filename = path.basename(trimmed.split('?')[0])
+        const localPath = path.join(process.cwd(), 'public', 'uploads', filename)
+        if (existsSync(localPath)) {
+            const buf = await readFile(localPath)
+            return buf.toString('base64')
+        }
+    }
+
+    // 3. Remote HTTP/HTTPS image URL
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        try {
+            const res = await fetch(trimmed, { signal: AbortSignal.timeout(6000) })
+            if (res.ok) {
+                const arr = await res.arrayBuffer()
+                return Buffer.from(arr).toString('base64')
+            }
+        } catch {
+            // Fall back to default illustration
+        }
+    }
+
+    return undefined
+}
 
 export async function GET(
     req: NextRequest,
@@ -36,19 +76,32 @@ export async function GET(
             .slice(0, 60)
 
         const projAny = project as any
+        const coverImageBase64 = await resolveImageToBase64(projAny.coverImageUrl)
+        const resolvedChapters = await Promise.all(
+            (chapters || []).map(async (c: any) => {
+                const imgUrl = c.image1Url || c.chapterImage || ''
+                const imageBase64 = await resolveImageToBase64(imgUrl)
+                return {
+                    chapterNo: c.chapterNo || 1,
+                    title: c.title || '',
+                    content: c.content || '',
+                    image1Url: imgUrl,
+                    imageBase64,
+                    keyTerminology: c.keyTerminology || '',
+                    keyTakeaways: c.keyTakeaways || '',
+                }
+            })
+        )
+
         const payload = {
             title: project.title || 'Ebook',
             subtitle: projAny.targetAudience || projAny.audience || '',
             author: projAny.extraInfo?.copyright?.authorName || 'Saewin',
             audience: projAny.targetAudience || projAny.audience || '',
             publisher: projAny.extraInfo?.copyright?.publisherName || 'Selfpreneur Publishing',
-            chapters: (chapters || []).map((c: any) => ({
-                chapterNo: c.chapterNo || 1,
-                title: c.title || '',
-                content: c.content || '',
-                keyTerminology: c.keyTerminology || '',
-                keyTakeaways: c.keyTakeaways || '',
-            })),
+            isbn: projAny.extraInfo?.copyright?.isbn || '',
+            coverImageBase64,
+            chapters: resolvedChapters,
         }
 
         if (format === 'doc' || format === 'word') {

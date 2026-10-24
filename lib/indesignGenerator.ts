@@ -31,6 +31,9 @@ export interface InDesignBookPayload {
     audience?: string;
     publisher?: string;
     isbn?: string;
+    coverImageBase64?: string;
+    authorBio?: string;
+    backCoverSynopsis?: string;
     chapters: InDesignChapter[];
 }
 
@@ -590,7 +593,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
             'uCovImg',
             'uCovLink',
             'Front_Cover_Illustration.jpg',
-            CHAPTER_ILLUSTRATIONS_BASE64[0],
+            book.coverImageBase64 || CHAPTER_ILLUSTRATIONS_BASE64[0],
             75,
             52,
             335,
@@ -718,7 +721,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
             storyIds.push(hdrStoryId);
             const hdrXml = buildParaXml(
                 'RunningHeader',
-                `เป็นประธานบริษัทด้วย AI  |  บทที่ ${ch.chapterNo}: ${plan.cleanTitle.slice(0, 26)}   —   หน้า ${pageNum}`
+                `${cleanTitle.slice(0, 28)}  |  บทที่ ${ch.chapterNo}: ${plan.cleanTitle.slice(0, 26)}   —   หน้า ${pageNum}`
             );
             zip.file(`Stories/Story_${hdrStoryId}.xml`, buildStoryFileXml(hdrStoryId, `Header ${pageNum}`, hdrXml));
 
