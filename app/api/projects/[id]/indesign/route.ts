@@ -35,12 +35,13 @@ export async function GET(
             .trim()
             .slice(0, 60)
 
+        const projAny = project as any
         const payload = {
             title: project.title || 'Ebook',
-            subtitle: project.targetAudience || '',
-            author: project.extraInfo?.copyright?.authorName || 'Saewin',
-            audience: project.targetAudience || '',
-            publisher: project.extraInfo?.copyright?.publisherName || 'Selfpreneur Publishing',
+            subtitle: projAny.targetAudience || projAny.audience || '',
+            author: projAny.extraInfo?.copyright?.authorName || 'Saewin',
+            audience: projAny.targetAudience || projAny.audience || '',
+            publisher: projAny.extraInfo?.copyright?.publisherName || 'Selfpreneur Publishing',
             chapters: (chapters || []).map((c: any) => ({
                 chapterNo: c.chapterNo || 1,
                 title: c.title || '',
