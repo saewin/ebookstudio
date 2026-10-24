@@ -2,6 +2,7 @@ import path from 'path';
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { sanitizeBookContent } from './sanitize';
+import { COMPLETE_CEO_AI_BOOK_CHAPTERS } from './chapterIllustrations';
 
 export interface Project {
     id: string;
@@ -211,11 +212,25 @@ export async function getChapter(chapterId: string): Promise<Chapter | null> {
         if (!existsSync(filePath)) return null;
         const raw = await readFile(filePath, 'utf-8');
         const chapter: Chapter = JSON.parse(raw);
+
+        const isCeoAiBook =
+            chapter.projectId === 'b82062c4-ca4b-494c-84b4-327eca23a58f' ||
+            chapter.projectId === '3f0e19eb-e8da-8144-a9b1-cc5fd119c3b5';
+        const fallback = isCeoAiBook
+            ? COMPLETE_CEO_AI_BOOK_CHAPTERS.find(c => c.chapterNo === chapter.chapterNo)
+            : undefined;
+
+        const mergedContent = (chapter.content && chapter.content.trim().length > 100)
+            ? chapter.content
+            : (fallback?.content || chapter.content || '');
+
         return {
             ...chapter,
-            content: sanitizeBookContent(chapter.content || ''),
-            keyTakeaways: sanitizeBookContent(chapter.keyTakeaways || ''),
-            keyTerminology: sanitizeBookContent(chapter.keyTerminology || ''),
+            content: sanitizeBookContent(mergedContent),
+            hasContent: Boolean(mergedContent && mergedContent.trim().length > 0),
+            image1Url: chapter.image1Url || fallback?.image1Url || '',
+            keyTakeaways: sanitizeBookContent(chapter.keyTakeaways || fallback?.keyTakeaways || ''),
+            keyTerminology: sanitizeBookContent(chapter.keyTerminology || fallback?.keyTerminology || ''),
         };
     } catch (error) {
         console.error(`Error loading chapter ${chapterId}:`, error);

@@ -239,7 +239,7 @@
     "chapterNo": 7,
     "title": "บทที่ 7: คู่มือสั่งการ AI (Prompt Engineering) ฉบับเจ้าของธุรกิจ",
     "status": "To Do",
-    "hasContent": false,
+    "hasContent": true,
     "updatedAt": "2026-10-05T14:13:00.000Z"
   },
   {
@@ -266,7 +266,7 @@
     "chapterNo": 8,
     "title": "บทที่ 8: พาองค์กรเปลี่ยนผ่าน: วิธีนำทีมงานก้าวสู่ยุค AI โดยปราศจากการต่อต้าน",
     "status": "To Do",
-    "hasContent": false,
+    "hasContent": true,
     "updatedAt": "2026-10-05T14:13:00.000Z"
   },
   {
@@ -293,7 +293,7 @@
     "chapterNo": 9,
     "title": "บทที่ 9: ตัวชี้วัดความสำเร็จ: คำนวณเวลาและกำไรที่คืนกลับมาหลังใช้ AI",
     "status": "To Do",
-    "hasContent": false,
+    "hasContent": true,
     "updatedAt": "2026-10-05T14:13:00.000Z"
   },
   {
@@ -320,7 +320,7 @@
     "chapterNo": 10,
     "title": "บทที่ 10: ก้าวสู่อิสรภาพที่แท้จริง: เมื่อ AI คืนชีวิตให้คุณเป็นประธานบริษัทอย่างสมบูรณ์แบบ",
     "status": "To Do",
-    "hasContent": false,
+    "hasContent": true,
     "updatedAt": "2026-10-05T14:13:00.000Z"
   },
   {
@@ -358,5 +358,113 @@
     "status": "Idea",
     "hasContent": false,
     "updatedAt": "2026-02-07T18:52:00.000Z"
+  },
+  {
+    "id": "41fa9ca3-4d97-4fbd-93d0-68df1606f9b1",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 1,
+    "title": "บทที่ 1: กับดักเจ้าของธุรกิจ: ทำไมคุณถึงยุ่งแต่ไม่รวย",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.866Z"
+  },
+  {
+    "id": "0a87f0ff-9b68-458b-9b4d-60f2cb98724e",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 2,
+    "title": "บทที่ 2: เปลี่ยนมุมมอง: จากผู้ปฏิบัติการสู่ประธานบริษัทตัวจริง",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.874Z"
+  },
+  {
+    "id": "adbf107c-267c-4d14-8677-895a260227ca",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 3,
+    "title": "บทที่ 3: ทำความรู้จัก AI พาร์ทเนอร์ผู้ช่วยมือหนึ่งที่ไม่เคยหลับใหล",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "a9de5c5c-ead2-47b4-a560-f90a703ffdf6",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 4,
+    "title": "บทที่ 4: คืนเวลาที่ 1: ปลดล็อกงานเอกสารและอีเมลด้วย Generative AI",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "9b077622-487f-41e1-a5f7-12af3dbb13bf",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 5,
+    "title": "บทที่ 5: คืนเวลาที่ 2: ระบบการตลาดและการขายให้ทำงานแบบ Autopilot",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "2e22580a-cfda-49a6-b015-34bde8822036",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 6,
+    "title": "บทที่ 6: คืนชีวิต: สร้างระบบงานอัตโนมัติให้ธุรกิจรันได้เองโดยไม่มีคุณ",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "d398501e-3fbd-4e1d-af73-9385c8e9bbe9",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 7,
+    "title": "บทที่ 7: คืนกำไร: ลดต้นทุนและเพิ่มประสิทธิภาพด้วยการวิเคราะห์ข้อมูล",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "fe60ab76-6f43-4d48-a5b6-978095896450",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 8,
+    "title": "บทที่ 8: ยกระดับทีมงาน: เปลี่ยนพนักงานประจำให้เป็นหัวหน้าทีม AI",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "3e002baa-86d5-456d-ae38-8931829c2fce",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 9,
+    "title": "บทที่ 9: สร้างวัฒนธรรมองค์กรแห่งนวัตกรรมและการใช้เทคโนโลยี",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "de9c291a-0102-45cb-8798-5b0e832905e5",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 10,
+    "title": "บทที่ 10: ความเสี่ยงและจริยธรรมในการนำ AI มาใช้ในธุรกิจ",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "e7f9cf5d-09d7-41be-a539-52aa6e6cfebb",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 11,
+    "title": "บทที่ 11: กรณีศึกษา: ธุรกิจไทยที่ประสบความสำเร็จในการใช้ AI คืนกำไร",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
+  },
+  {
+    "id": "95d9aefb-d088-42b9-8799-24e17735a002",
+    "projectId": "b82062c4-ca4b-494c-84b4-327eca23a58f",
+    "chapterNo": 12,
+    "title": "บทที่ 12: ก้าวแรกสู่อนาคต: แผนปฏิบัติการ 30 วันพลิกโฉมธุรกิจของคุณ",
+    "status": "Published",
+    "hasContent": true,
+    "updatedAt": "2026-10-24T09:22:33.875Z"
   }
 ]
