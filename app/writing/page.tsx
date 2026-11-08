@@ -5,7 +5,7 @@ import {
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
     Image as ImageIcon, Upload, Link as LinkIcon,
-    Eye, Edit3, Copy, Plus
+    Eye, Edit3, Copy, Plus, Maximize2, Minimize2
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -111,8 +111,9 @@ function WritingContent() {
     const [aiProvider, setAiProvider] = useState<'gemini' | 'openrouter'>('gemini')
     const [typesetting, setTypesetting] = useState(false)
 
-    // Editor view mode & cursor
+    // Editor view mode, full screen & cursor
     const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit')
+    const [isFullScreen, setIsFullScreen] = useState(false)
     const [cursorPos, setCursorPos] = useState<number | null>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -319,6 +320,17 @@ function WritingContent() {
     useEffect(() => {
         loadChapter()
     }, [chapterId])
+
+    useEffect(() => {
+        if (!isFullScreen) return
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && !showImageModal) {
+                setIsFullScreen(false)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isFullScreen, showImageModal])
 
     const handleSendMessage = async () => {
         if (!chatInput.trim() || chatLoading) return;
@@ -561,45 +573,112 @@ function WritingContent() {
                 )}
 
                 {/* Editor Content Area with Live Preview Switcher */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[500px]">
+                <div className={
+                    isFullScreen
+                        ? "fixed inset-0 z-40 bg-white flex flex-col overflow-hidden"
+                        : "bg-white rounded-xl shadow-xs border border-slate-200 flex-1 flex flex-col overflow-hidden min-h-[500px]"
+                }>
                     {/* Editor Header Bar */}
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50/70">
-                        <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-xs font-medium">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg text-xs font-medium">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditorMode('edit')}
+                                    className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        editorMode === 'edit' 
+                                            ? 'bg-white text-blue-700 shadow-xs font-semibold' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <Edit3 size={13} />
+                                    <span>✍️ เขียน / แก้ไข</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setEditorMode('preview')}
+                                    className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        editorMode === 'preview' 
+                                            ? 'bg-white text-blue-700 shadow-xs font-semibold' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <Eye size={13} />
+                                    <span>👁️ ดูตัวอย่างจัดหน้าจริง</span>
+                                </button>
+                            </div>
+
+                            {/* Full Screen Expand/Collapse Button right next to Preview Button */}
                             <button
                                 type="button"
-                                onClick={() => setEditorMode('edit')}
-                                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                                    editorMode === 'edit' 
-                                        ? 'bg-white text-blue-700 shadow-xs font-semibold' 
-                                        : 'text-slate-600 hover:text-slate-900'
+                                onClick={() => setIsFullScreen(prev => !prev)}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                                    isFullScreen
+                                        ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-xs'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/60 shadow-xs'
                                 }`}
+                                title={isFullScreen ? 'ย่อกลับขนาดปกติ (Esc)' : 'ขยายเต็มจอ (Full Screen)'}
                             >
-                                <Edit3 size={13} />
-                                <span>✍️ เขียน / แก้ไข</span>
+                                {isFullScreen ? (
+                                    <>
+                                        <Minimize2 size={14} />
+                                        <span>ย่อหน้าจอ</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Maximize2 size={14} />
+                                        <span className="hidden sm:inline">ขยายเต็มจอ</span>
+                                    </>
+                                )}
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => setEditorMode('preview')}
-                                className={`px-3 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                                    editorMode === 'preview' 
-                                        ? 'bg-white text-blue-700 shadow-xs font-semibold' 
-                                        : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                            >
-                                <Eye size={13} />
-                                <span>👁️ ดูตัวอย่างจัดหน้าจริง</span>
-                            </button>
+
+                            {isFullScreen && (
+                                <div className="hidden md:flex items-center gap-2 ml-2 pl-3 border-l border-slate-200">
+                                    <span className="text-[11px] font-bold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full uppercase">
+                                        Chapter {data?.chapterNo}
+                                    </span>
+                                    <span className="text-xs font-serif font-semibold text-slate-800 truncate max-w-md lg:max-w-xl">
+                                        {data?.title}
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
-                        <span className="text-[11px] text-slate-400 hidden sm:inline">
-                            {editorMode === 'edit' ? 'วางเคอร์เซอร์ตรงจุดที่ต้องการ แล้วกด "แทรกรูปภาพ" ได้ทันที' : 'แสดงภาพและกล่องข้อความเหมือนในเล่ม Ebook'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 hidden xl:inline">
+                                {editorMode === 'edit' ? 'วางเคอร์เซอร์ตรงจุดที่ต้องการ แล้วกด "แทรกรูปภาพ" ได้ทันที' : 'แสดงภาพและกล่องข้อความเหมือนในเล่ม Ebook'}
+                            </span>
+
+                            {isFullScreen && (
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={openImageModal}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
+                                    >
+                                        <ImageIcon size={13} className="text-blue-600" />
+                                        <span>แทรกรูปภาพ</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSave}
+                                        disabled={saving || typesetting}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-xs transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                                    >
+                                        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                        <span>บันทึก</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {editorMode === 'edit' ? (
                         <textarea
                             ref={textareaRef}
-                            className="w-full h-full p-8 md:p-12 resize-none focus:outline-none focus:ring-0 font-serif text-base md:text-lg leading-relaxed text-slate-800"
+                            className={`w-full flex-1 resize-none focus:outline-none focus:ring-0 font-serif text-base md:text-lg leading-relaxed text-slate-800 ${
+                                isFullScreen ? 'p-8 md:py-12 md:px-20 lg:px-32 xl:px-48' : 'h-full p-8 md:p-12'
+                            }`}
                             value={data?.content || ''}
                             onChange={(e) => setData(prev => prev ? { ...prev, content: e.target.value } : null)}
                             onPaste={handleTextareaPaste}
@@ -611,7 +690,9 @@ function WritingContent() {
                             placeholder="เริ่มเขียนเนื้อหาที่นี่ หรือกดปุ่ม 'เขียนเต็มบท (Veteran Framework)' ด้านบน... (สามารถกด Cmd+V เพื่อวางรูปภาพได้ทันที)"
                         />
                     ) : (
-                        <div className="w-full h-full p-8 md:p-12 overflow-y-auto prose prose-slate max-w-none text-slate-800 font-serif leading-relaxed">
+                        <div className={`w-full flex-1 overflow-y-auto prose prose-slate max-w-none text-slate-800 font-serif leading-relaxed ${
+                            isFullScreen ? 'p-8 md:py-12 md:px-20 lg:px-32 xl:px-48 prose-lg' : 'h-full p-8 md:p-12'
+                        }`}>
                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                 {sanitizeBookContent(data?.content || '').replace(/src=(["'])\/uploads\//gi, 'src=$1/api/uploads/')}
                             </ReactMarkdown>
