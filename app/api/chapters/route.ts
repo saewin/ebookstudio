@@ -24,10 +24,56 @@ export async function GET(request: Request) {
     }
 }
 
+export async function POST(request: Request) {
+    try {
+        const body = await request.json()
+        const { projectId, chapterNo, title, status, content, keyTakeaways, keyTerminology } = body
+
+        if (!projectId || !title || chapterNo === undefined) {
+            return NextResponse.json(
+                { error: 'Missing required fields: projectId, chapterNo, title' },
+                { status: 400 }
+            )
+        }
+
+        const existingList = await localDb.getChapters(projectId)
+        const duplicate = existingList.find((c) => c.chapterNo === Number(chapterNo))
+        if (duplicate) {
+            return NextResponse.json(
+                { error: `Chapter ${chapterNo} already exists`, chapter: duplicate },
+                { status: 409 }
+            )
+        }
+
+        const cleanContent = content !== undefined ? sanitizeBookContent(content) : ''
+        const cleanTakeaways = keyTakeaways !== undefined ? sanitizeBookContent(keyTakeaways) : ''
+        const cleanTerminology = keyTerminology !== undefined ? sanitizeBookContent(keyTerminology) : ''
+
+        const created = await localDb.saveChapter({
+            projectId,
+            chapterNo: Number(chapterNo),
+            title: String(title).trim(),
+            status: status || 'Reviewing',
+            content: cleanContent,
+            keyTakeaways: cleanTakeaways,
+            keyTerminology: cleanTerminology,
+            hasContent: Boolean(cleanContent.trim()),
+        })
+
+        return NextResponse.json({ success: true, chapter: created })
+    } catch (error: any) {
+        console.error('Error creating chapter:', error)
+        return NextResponse.json(
+            { error: error.message || 'Failed to create chapter' },
+            { status: 500 }
+        )
+    }
+}
+
 export async function PUT(request: Request) {
     try {
         const body = await request.json()
-        const { id, title, content, keyTakeaways, keyTerminology } = body
+        const { id, title, chapterNo, status, content, keyTakeaways, keyTerminology } = body
 
         if (!id) {
             return NextResponse.json({ error: 'Missing chapter id' }, { status: 400 })
@@ -45,6 +91,8 @@ export async function PUT(request: Request) {
         const updated = await localDb.saveChapter({
             ...existing,
             ...(title !== undefined ? { title: title.trim() } : {}),
+            ...(chapterNo !== undefined ? { chapterNo: Number(chapterNo) } : {}),
+            ...(status !== undefined ? { status } : {}),
             ...(cleanContent !== undefined ? { content: cleanContent } : {}),
             ...(cleanTakeaways !== undefined ? { keyTakeaways: cleanTakeaways } : {}),
             ...(cleanTerminology !== undefined ? { keyTerminology: cleanTerminology } : {}),
