@@ -40,7 +40,7 @@ export async function POST(
         }
 
         const body = await req.json();
-        const { copyright, theme } = body;
+        const { copyright, theme, title, briefTheme, audience, extraInfoPatch } = body;
 
         const project = await localDb.getProject(projectId);
         if (!project) {
@@ -49,18 +49,25 @@ export async function POST(
 
         const extraInfo = {
             ...(project.extraInfo || {}),
+            ...(extraInfoPatch && typeof extraInfoPatch === 'object' ? extraInfoPatch : {}),
             ...(copyright !== undefined ? { copyright } : {}),
             ...(theme !== undefined ? { themePreset: theme } : {}),
         };
 
         const updated = await localDb.saveProject({
             ...project,
+            ...(typeof title === 'string' && title.trim() ? { title: title.trim() } : {}),
+            ...(typeof briefTheme === 'string' ? { theme: briefTheme } : {}),
+            ...(typeof audience === 'string' ? { audience } : {}),
             extraInfo,
         });
 
         return NextResponse.json({
             success: true,
             projectId,
+            title: updated.title,
+            briefTheme: updated.theme,
+            audience: updated.audience,
             copyright: updated.extraInfo?.copyright,
             theme: updated.extraInfo?.themePreset,
         });
