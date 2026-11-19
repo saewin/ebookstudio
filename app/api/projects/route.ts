@@ -55,3 +55,41 @@ export async function GET(req: NextRequest) {
         )
     }
 }
+
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json()
+        const { id, title, status, theme, audience, tone, coverImageUrl, backCoverUrl, extraInfo } = body
+
+        if (!title || typeof title !== 'string' || !title.trim()) {
+            return NextResponse.json(
+                { success: false, error: 'Missing required field: title' },
+                { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
+            )
+        }
+
+        const project = await localDb.saveProject({
+            ...(id ? { id: String(id).trim() } : {}),
+            title: title.trim(),
+            status: status || 'Drafting',
+            theme: theme || '',
+            audience: audience || '',
+            tone: tone || 'Executive',
+            coverImageUrl: coverImageUrl || null,
+            backCoverUrl: backCoverUrl || null,
+            extraInfo: extraInfo && typeof extraInfo === 'object' ? extraInfo : {},
+        })
+
+        return NextResponse.json(
+            { success: true, project },
+            { status: 201, headers: { 'Access-Control-Allow-Origin': '*' } }
+        )
+    } catch (error: any) {
+        console.error('Error in POST /api/projects:', error)
+        return NextResponse.json(
+            { success: false, error: error.message || 'Failed to create project' },
+            { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } }
+        )
+    }
+}
+

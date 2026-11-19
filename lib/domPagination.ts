@@ -366,6 +366,10 @@ export function blockToMeasureHtml(
     // Give body <img> deterministic height in the measurer matching CSS max-height so un-decoded lazy images don't measure as 0px
     const imgH = pageSize === 'a5' ? 148 : 192;
     html = html.replace(/<img(\b[^>]*?)(\s*\/?)>/gi, (full, attrs, close) => {
+        if (/cta-qr-img/i.test(attrs)) {
+            if (/style=/i.test(attrs)) return full;
+            return `<img${attrs} style="width:76px;height:76px;display:block;margin:0 auto;"${close}>`;
+        }
         if (/style=/i.test(attrs)) return full;
         return `<img${attrs} style="height:${imgH}px;width:auto;display:block;margin:0 auto;"${close}>`;
     });
@@ -883,7 +887,7 @@ export function paginateSingleChapterWithDOM({
                 const isNextUnsplittable =
                     nextBlock &&
                     (/^<figure\b/i.test(nextBlock) ||
-                        /^<div\b[^>]*class="[^"]*(?:diagram-box|pull-quote-box)[^"]*"/i.test(nextBlock));
+                        /^<div\b[^>]*class="[^"]*(?:diagram-box|pull-quote-box|executive-cta-box)[^"]*"/i.test(nextBlock));
 
                 const fitsWithNext = isNextUnsplittable
                     ? measureBlocks([...currentPageBlocks, trimmed, nextBlock]) <= targetBudget

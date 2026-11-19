@@ -3083,7 +3083,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     max-height: ${pageSize === 'a5' ? '155px' : '220px'} !important;
                     object-fit: cover !important;
                 }
-                .book-body-content img,
+                .book-body-content img:not(.cta-qr-img),
                 .book-body-content figure img {
                     max-height: ${pageSize === 'a5' ? '150px' : '200px'} !important;
                     width: auto !important;
@@ -3165,13 +3165,14 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         max-height: ${pageSize === 'a5' ? '209.8mm' : '296.8mm'} !important;
                         background-color: #060d1d !important;
                     }
-                    .break-inside-avoid, .diagram-box, .pull-quote-box, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
+                    .break-inside-avoid, .diagram-box, .pull-quote-box, .executive-cta-box, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
                         page-break-inside: avoid !important;
                     }
                     .chapter-hero-img { max-height: ${pageSize === 'a5' ? '155px' : '200px'} !important; }
-                    .book-body-content img,
+                    .book-body-content img:not(.cta-qr-img),
                     .book-body-content figure img { max-height: ${pageSize === 'a5' ? '150px' : '190px'} !important; }
+                    .book-body-content img.cta-qr-img { width: 76px !important; height: 76px !important; max-height: 76px !important; }
                 }
             ` }} />
         </div>
