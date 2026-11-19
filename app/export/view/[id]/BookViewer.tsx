@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { 
     Printer, FileText, ArrowLeft, Type, Settings, 
     BookOpen, Layers, CheckCircle2, Lightbulb, 
@@ -18,6 +18,12 @@ import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import { Chapter, Project } from '@/lib/notion'
 import { sanitizeBookContent } from '@/lib/sanitize'
+import {
+    blockToMeasureHtml,
+    paginateSingleChapterWithDOM,
+    getVisualCharLength,
+    countVisualLines,
+} from '@/lib/domPagination'
 import ProofreadModal from './ProofreadModal'
 import MockupModal from './MockupModal'
 import QuickEditModal from './QuickEditModal'
@@ -117,32 +123,14 @@ function getFullChapterHeader(chapterNo: number, title: string): string {
     return `บทที่ ${chapterNo}: ${clean || title}`;
 }
 
-// Measure visible plain-text length excluding HTML tags and Markdown markers
+// Measure visible plain-text length excluding HTML tags, Markdown markers, and zero-width Thai combining marks
 function getVisibleTextLength(html: string): number {
-    if (!html) return 0;
-    return html
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&[a-z]+;/gi, ' ')
-        .replace(/\*\*/g, '')
-        .replace(/\s+/g, ' ')
-        .trim().length;
+    return getVisualCharLength(html);
 }
 
 // Count visual lines accurately, honoring explicit <br> breaks inside <p>, <code>, or callouts
 function countWrappedLines(html: string, effectiveCharsPerLine: number): number {
-    if (!html) return 0;
-    const segments = html.split(/<br\s*\/?>/i);
-    let totalLines = 0;
-    for (let i = 0; i < segments.length; i++) {
-        const segLen = getVisibleTextLength(segments[i]);
-        if (segLen === 0) {
-            if (i > 0 && i < segments.length - 1) totalLines += 1;
-            continue;
-        }
-        totalLines += Math.max(1, Math.ceil(segLen / Math.max(12, effectiveCharsPerLine)));
-    }
-    return totalLines;
+    return countVisualLines(html, effectiveCharsPerLine);
 }
 
 // Helper to extract blocks keeping HTML containers (even with nested divs) atomic while isolating headings, lists, and tables
@@ -1047,19 +1035,166 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         fontFamily === 'sarabun' ? 'font-[family-name:var(--font-sarabun)]' : 
         fontFamily === 'serif' ? 'font-serif' : 'font-sans';
 
-    const sizeClass = {
-        'sm': 'text-[14px] leading-relaxed',
-        'base': 'text-[16px] leading-[1.8]',
-        'lg': 'text-[18px] leading-[1.9]'
-    }[fontSize];
+    const sizeClass = pageSize === 'a5'
+        ? {
+            'sm': 'text-[12.5px] leading-[1.58]',
+            'base': 'text-[13.5px] leading-[1.62]',
+            'lg': 'text-[15px] leading-[1.68]'
+        }[fontSize]
+        : {
+            'sm': 'text-[14px] leading-[1.68]',
+            'base': 'text-[15.5px] leading-[1.75]',
+            'lg': 'text-[17.5px] leading-[1.82]'
+        }[fontSize];
 
-    const headingScale = {
-        'sm': { h1: 'text-2xl', h2: 'text-xl', h3: 'text-lg' },
-        'base': { h1: 'text-3xl', h2: 'text-2xl', h3: 'text-xl' },
-        'lg': { h1: 'text-4xl', h2: 'text-3xl', h3: 'text-2xl' }
-    }[fontSize];
+    const headingScale = useMemo(() => (
+        pageSize === 'a5'
+            ? {
+                'sm': { h1: 'text-[17px]', h2: 'text-[14.5px]', h3: 'text-[13.5px]' },
+                'base': { h1: 'text-[18px]', h2: 'text-[15.5px]', h3: 'text-[14px]' },
+                'lg': { h1: 'text-[20px]', h2: 'text-[17px]', h3: 'text-[15.5px]' }
+            }[fontSize]
+            : {
+                'sm': { h1: 'text-2xl', h2: 'text-xl', h3: 'text-lg' },
+                'base': { h1: 'text-3xl', h2: 'text-2xl', h3: 'text-xl' },
+                'lg': { h1: 'text-4xl', h2: 'text-3xl', h3: 'text-2xl' }
+            }[fontSize]
+    ), [pageSize, fontSize]);
 
     const cleanProjectTitle = projectTitle.replace(/^["']|["']$/g, '');
+
+    // Off-screen print-geometry DOM measurement host for exact pixel-level pagination
+    const pageProbeRef = useRef<HTMLDivElement | null>(null);
+    const headerProbeRef = useRef<HTMLDivElement | null>(null);
+    const footerProbeRef = useRef<HTMLDivElement | null>(null);
+    const measureBodyRef = useRef<HTMLDivElement | null>(null);
+    const [measuredPagination, setMeasuredPagination] = useState<{
+        key: string;
+        sectionsByChapterId: Record<string, string[]>;
+    } | null>(null);
+
+    const paginationKey = useMemo(() => {
+        const chapSig = localChapters
+            .map(c => `${c.id}:${c.chapterNo}:${(c.content || '').length}:${(c.title || '').length}:${c.image1Url || c.chapterImage || ''}:${(c.keyTakeaways || '').length}:${(c.keyTerminology || '').length}`)
+            .join('|');
+        return `${pageSize}|${fontSize}|${fontFamily}|${themePreset}|${chapSig}`;
+    }, [localChapters, pageSize, fontSize, fontFamily, themePreset]);
+
+    // Measure actual rendered heights in the browser after fonts load so every page fills cleanly (~85-95%) with 0 clipped footers
+    useEffect(() => {
+        let cancelled = false;
+
+        const runDomMeasurement = () => {
+            if (cancelled) return;
+            const probeEl = pageProbeRef.current;
+            const headerEl = headerProbeRef.current;
+            const footerEl = footerProbeRef.current;
+            const bodyEl = measureBodyRef.current;
+            if (!probeEl || !headerEl || !footerEl || !bodyEl) return;
+
+            const probeStyle = window.getComputedStyle(probeEl);
+            const padTop = parseFloat(probeStyle.paddingTop) || 0;
+            const padBottom = parseFloat(probeStyle.paddingBottom) || 0;
+            const innerPageH = probeEl.getBoundingClientRect().height - padTop - padBottom;
+
+            const headerStyle = window.getComputedStyle(headerEl);
+            const headerH = headerEl.getBoundingClientRect().height + (parseFloat(headerStyle.marginBottom) || 0);
+
+            const footerStyle = window.getComputedStyle(footerEl);
+            const footerH = footerEl.getBoundingClientRect().height + (parseFloat(footerStyle.marginTop) || 0);
+
+            // Real usable height inside the printed page between running header and running footer
+            const safetyCushion = pageSize === 'a5' ? 12 : 14;
+            const usableBodyH = Math.max(300, Math.floor(innerPageH - headerH - footerH - safetyCushion));
+
+            const transformRefs = (s: string) => transformCrossReferences(s, localChapters);
+            const blockHtmlCache = new Map<string, string>();
+            const getCachedBlockHtml = (b: string) => {
+                let cached = blockHtmlCache.get(b);
+                if (cached === undefined) {
+                    cached = blockToMeasureHtml(b, pageSize, headingScale, transformRefs);
+                    blockHtmlCache.set(b, cached);
+                }
+                return cached;
+            };
+
+            const measureBlocks = (blocks: string[]): number => {
+                if (blocks.length === 0) return 0;
+                const html = blocks.map(getCachedBlockHtml).join('\n');
+                bodyEl.innerHTML = html;
+                return Math.ceil(bodyEl.getBoundingClientRect().height);
+            };
+
+            const sortedChapters = [...localChapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0));
+            const nextMap: Record<string, string[]> = {};
+
+            for (const chap of sortedChapters) {
+                const cleanTitle = cleanChapterTitle(chap.title);
+                const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
+                const cleaned = cleanContentBody(chap.content || '', cleanTitle, chap.chapterNo);
+
+                // Measure exact chapter hero header + hero image height on page 1
+                const heroHtml = [
+                    `<div class="chapter-hero-header ${pageSize === 'a5' ? 'mb-2' : 'mb-4'} text-center">`,
+                    `<div class="flex items-center justify-center gap-2 mb-1"><span class="inline-block px-3 py-0.5 text-[11px] font-bold">${formatChapterLabel(chap.chapterNo)}</span></div>`,
+                    `<h2 class="${headingScale.h1} leading-snug font-bold font-serif">${cleanTitle}</h2>`,
+                    `<div class="w-14 h-0.5 mx-auto mt-2"></div>`,
+                    `</div>`,
+                    directImgUrl
+                        ? `<figure class="${pageSize === 'a5' ? 'my-2' : 'my-4'} text-center"><div style="height:${pageSize === 'a5' ? 148 : 215}px"></div><figcaption class="mt-1 text-[10.5px] italic">ภาพประกอบ ${formatChapterLabel(chap.chapterNo)}: ${cleanTitle}</figcaption></figure>`
+                        : '',
+                ].join('');
+                bodyEl.innerHTML = heroHtml;
+                const measuredHeroH = Math.ceil(bodyEl.getBoundingClientRect().height) + (pageSize === 'a5' ? 6 : 8);
+
+                // Measure exact end-of-chapter cards height (Key Terminology + Key Takeaways + Ornament)
+                const endParts: string[] = [];
+                if (chap.keyTerminology && chap.keyTerminology.trim()) {
+                    endParts.push(`<div class="${pageSize === 'a5' ? 'mt-2.5 p-2.5' : 'mt-4 p-4'} rounded-xl border"><div class="font-bold mb-1 text-xs">คลังคำศัพท์สำคัญประจำบท</div><div class="text-[11px] leading-relaxed">${sanitizeBookContent(chap.keyTerminology)}</div></div>`);
+                }
+                if (chap.keyTakeaways && chap.keyTakeaways.trim()) {
+                    endParts.push(`<div class="${pageSize === 'a5' ? 'mt-2.5 p-2.5' : 'mt-4 p-4'} rounded-xl border"><div class="font-bold mb-1 text-xs">สรุปประเด็นสำคัญ</div><div class="text-[11px] leading-relaxed">${sanitizeBookContent(chap.keyTakeaways)}</div></div>`);
+                }
+                endParts.push(`<div class="text-center ${pageSize === 'a5' ? 'my-1.5' : 'my-4'} text-xs">❖ ❖ ❖</div>`);
+                bodyEl.innerHTML = endParts.join('');
+                const measuredEndH = Math.ceil(bodyEl.getBoundingClientRect().height) + 4;
+
+                const firstPageBudgetPx = Math.max(200, usableBodyH - measuredHeroH);
+
+                nextMap[chap.id] = paginateSingleChapterWithDOM({
+                    cleanedContent: cleaned,
+                    firstPageBudgetPx,
+                    normalBudgetPx: usableBodyH,
+                    endCardsHeightPx: measuredEndH,
+                    measureBlocks,
+                });
+            }
+
+            bodyEl.innerHTML = '';
+
+            if (!cancelled) {
+                setMeasuredPagination({
+                    key: paginationKey,
+                    sectionsByChapterId: nextMap,
+                });
+            }
+        };
+
+        const schedule = () => {
+            if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(() => {
+                    if (!cancelled) requestAnimationFrame(runDomMeasurement);
+                });
+            } else {
+                requestAnimationFrame(runDomMeasurement);
+            }
+        };
+
+        schedule();
+        return () => {
+            cancelled = true;
+        };
+    }, [paginationKey, localChapters, pageSize, headingScale]);
 
     // Reading analytics: word count and estimated reading time
     const bookStats = useMemo(() => {
@@ -1081,7 +1216,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         const tocStartPage = show ? 3 : 2;
         const sortedChapters = [...localChapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0));
 
-        // 1. Pre-split Table of Contents rows into page buckets so A5 never clips overflow items
+        // 1. Pre-split Table of Contents rows into page buckets so TOC fills cleanly without half-empty spillover
         type TocBucketEntry = {
             kind: 'chapter' | 'appendix';
             chapterIdx?: number;
@@ -1091,15 +1226,15 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             rawTitle: string;
             pageNumber: number;
         };
-        const tocCharsPerLine = pageSize === 'a4' ? 66 : 38;
-        const rowLinePx = pageSize === 'a4' ? 21 : 18.5;
-        const rowBasePx = pageSize === 'a4' ? 14 : 13;
+        const tocCharsPerLine = pageSize === 'a4' ? 66 : 48;
+        const rowLinePx = pageSize === 'a4' ? 21 : 15;
+        const rowBasePx = pageSize === 'a4' ? 14 : 9;
         const estimateTocRowPx = (titleStr: string) => {
-            const lines = Math.max(1, Math.ceil((titleStr || '').length / tocCharsPerLine));
+            const lines = Math.max(1, Math.ceil(getVisualCharLength(titleStr || '') / tocCharsPerLine));
             return rowBasePx + lines * rowLinePx;
         };
-        const firstTocBudgetPx = pageSize === 'a4' ? 810 : 500;
-        const nextTocBudgetPx = pageSize === 'a4' ? 860 : 570;
+        const firstTocBudgetPx = pageSize === 'a4' ? 810 : 575;
+        const nextTocBudgetPx = pageSize === 'a4' ? 860 : 620;
 
         const tocBuckets: TocBucketEntry[][] = [[]];
         let tocUsedPx = 0;
@@ -1143,6 +1278,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         let currentPage = tocStartPage + tocBuckets.length;
         const pages: BookPageSheet[] = [];
         const chapterPageNumbers = new Map<string, number>();
+        const activeMeasured = measuredPagination && measuredPagination.key === paginationKey
+            ? measuredPagination.sectionsByChapterId
+            : null;
 
         sortedChapters.forEach((chap) => {
             const cleanTitle = cleanChapterTitle(chap.title);
@@ -1153,20 +1291,22 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
             const hasTerms = Boolean(chap.keyTerminology && chap.keyTerminology.trim());
             const hasTakeaways = Boolean(chap.keyTakeaways && chap.keyTakeaways.trim());
-            const cardCpl = pageSize === 'a4' ? 62 : 40;
-            const termsPx = hasTerms ? Math.max(104, countWrappedLines(chap.keyTerminology!, cardCpl) * 21 + 64) : 0;
-            const takeawaysPx = hasTakeaways ? Math.max(114, countWrappedLines(chap.keyTakeaways!, cardCpl) * 21 + 68) : 0;
-            const endCardsHeightPx = (hasTerms || hasTakeaways) ? (termsPx + takeawaysPx + 38) : 32;
+            const cardCpl = pageSize === 'a4' ? 62 : 44;
+            const termsPx = hasTerms ? Math.max(104, countWrappedLines(chap.keyTerminology!, cardCpl) * 20 + 60) : 0;
+            const takeawaysPx = hasTakeaways ? Math.max(114, countWrappedLines(chap.keyTakeaways!, cardCpl) * 20 + 64) : 0;
+            const endCardsHeightPx = (hasTerms || hasTakeaways) ? (termsPx + takeawaysPx + 34) : 28;
 
-            const sections = paginateChapterContent({
-                content: chap.content,
-                pageSize,
-                fontSize,
-                hasImage: !!directImgUrl,
-                cleanTitle,
-                chapterNo: chap.chapterNo,
-                endCardsHeightPx,
-            });
+            const sections = activeMeasured && Array.isArray(activeMeasured[chap.id])
+                ? activeMeasured[chap.id]
+                : paginateChapterContent({
+                    content: chap.content,
+                    pageSize,
+                    fontSize,
+                    hasImage: !!directImgUrl,
+                    cleanTitle,
+                    chapterNo: chap.chapterNo,
+                    endCardsHeightPx,
+                });
 
             if (sections.length === 0) {
                 pages.push({
@@ -1248,7 +1388,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             showCopyright: show,
             tocPageNum: tocStartPage,
         };
-    }, [localChapters, pageSize, fontSize, copyrightSettings.showCopyrightPage]);
+    }, [localChapters, pageSize, fontSize, copyrightSettings.showCopyrightPage, measuredPagination, paginationKey]);
 
     // Active reading tracker via scroll position
     useEffect(() => {
@@ -1443,9 +1583,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 onChange={(e) => setFontSize(e.target.value as any)}
                                 className="bg-transparent font-medium text-slate-700 focus:outline-none cursor-pointer"
                             >
-                                <option value="sm">14pt (กะทัดรัด)</option>
-                                <option value="base">16pt (มาตรฐานพิมพ์)</option>
-                                <option value="lg">18pt (อ่านง่าย)</option>
+                                <option value="sm">{pageSize === 'a5' ? '9.5pt / 12.5px (กะทัดรัด)' : '10.5pt / 14px (กะทัดรัด)'}</option>
+                                <option value="base">{pageSize === 'a5' ? '10pt / 13.5px (มาตรฐานพ็อกเก็ตบุ๊ก)' : '11.5pt / 15.5px (มาตรฐานพิมพ์)'}</option>
+                                <option value="lg">{pageSize === 'a5' ? '11pt / 15px (อ่านง่าย)' : '13pt / 17.5px (อ่านง่าย)'}</option>
                             </select>
                         </div>
                     </div>
@@ -1819,33 +1959,33 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     >
                         <div>
                             {!tocSheet.isContinuation ? (
-                                <div className={`text-center ${pageSize === 'a5' ? 'mb-5' : 'mb-7'}`}>
-                                    <span className="text-[11px] font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
-                                    <h2 className={`${pageSize === 'a5' ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-1 font-serif`}>สารบัญ</h2>
-                                    <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-2.5 theme-accent-rule" />
+                                <div className={`text-center ${pageSize === 'a5' ? 'mb-3.5' : 'mb-7'}`}>
+                                    <span className="text-[10px] font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
+                                    <h2 className={`${pageSize === 'a5' ? 'text-xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-0.5 font-serif`}>สารบัญ</h2>
+                                    <div className="w-10 h-0.5 bg-blue-600 mx-auto mt-2 theme-accent-rule" />
                                 </div>
                             ) : (
-                                <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-5">
+                                <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-4">
                                     <span className="text-xs font-bold text-slate-700 font-serif">สารบัญ (ต่อ)</span>
                                     <span className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">Table of Contents</span>
                                 </div>
                             )}
 
-                            <div className={`${pageSize === 'a5' ? 'space-y-1.5' : 'space-y-2'} max-w-2xl mx-auto w-full`}>
+                            <div className={`${pageSize === 'a5' ? 'space-y-0.5' : 'space-y-2'} max-w-2xl mx-auto w-full`}>
                                 {tocSheet.items.map((item) =>
                                     item.kind === 'appendix' ? (
                                         <a
                                             key={item.id}
                                             href="#about-author"
-                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors cursor-pointer ${pageSize === 'a5' ? 'py-1 pt-2' : 'py-1 pt-2.5'} border-t border-slate-300 mt-2`}
+                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors cursor-pointer ${pageSize === 'a5' ? 'py-1 pt-1.5 mt-1.5' : 'py-1 pt-2.5 mt-2'} border-t border-slate-300`}
                                         >
-                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-xs min-w-[50px]' : 'text-sm min-w-[54px]'} shrink-0 text-slate-700 group-hover:text-blue-600`}>
+                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-[11px] min-w-[48px]' : 'text-sm min-w-[54px]'} shrink-0 text-slate-700 group-hover:text-blue-600`}>
                                                 ภาคผนวก:
                                             </span>
-                                            <span className={`${pageSize === 'a5' ? 'text-xs' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
+                                            <span className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
                                                 {item.title}
                                             </span>
-                                            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0 tabular-nums">
+                                            <span className={`font-mono ${pageSize === 'a5' ? 'text-[10.5px] px-1.5 py-0' : 'text-xs px-2 py-0.5'} font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 rounded border border-slate-200 transition-colors shrink-0 tabular-nums`}>
                                                 {item.pageNumber}
                                             </span>
                                         </a>
@@ -1853,15 +1993,15 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         <a
                                             key={item.id}
                                             href={`#chapter-${item.id}`}
-                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors ${pageSize === 'a5' ? 'py-0.5' : 'py-1'} border-b border-dotted border-slate-200 cursor-pointer`}
+                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors ${pageSize === 'a5' ? 'py-[3px]' : 'py-1'} border-b border-dotted border-slate-200 cursor-pointer`}
                                         >
-                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-xs min-w-[52px]' : 'text-sm min-w-[68px]'} shrink-0 text-blue-800 group-hover:text-blue-600 whitespace-nowrap`}>
+                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-[11px] min-w-[46px]' : 'text-sm min-w-[68px]'} shrink-0 text-blue-800 group-hover:text-blue-600 whitespace-nowrap`}>
                                                 {formatChapterLabel(item.chapterNo)}:
                                             </span>
-                                            <span className={`${pageSize === 'a5' ? 'text-xs' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
+                                            <span className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
                                                 {item.title}
                                             </span>
-                                            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0 tabular-nums">
+                                            <span className={`font-mono ${pageSize === 'a5' ? 'text-[10.5px] px-1.5 py-0' : 'text-xs px-2 py-0.5'} font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 rounded border border-slate-200 transition-colors shrink-0 tabular-nums`}>
                                                 {item.pageNumber}
                                             </span>
                                         </a>
@@ -1871,10 +2011,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
 
                         {/* Running Footer TOC */}
-                        <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                        <div className={`book-page-footer mt-auto ${pageSize === 'a5' ? 'pt-2 text-[10px]' : 'pt-3 text-xs'} border-t border-slate-200 flex justify-between items-center text-slate-400 select-none`}>
                             <span>สารบัญ (Table of Contents)</span>
-                            <span className="text-[11px] text-slate-400 font-medium">❖ {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : ''}</span>
-                            <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                            <span className="text-[10px] text-slate-400 font-medium">❖ {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : ''}</span>
+                            <span className={`tabular-nums font-bold text-slate-700 bg-slate-100 ${pageSize === 'a5' ? 'px-2.5 py-0.5 text-[10.5px]' : 'px-3 py-1'} rounded border border-slate-200`}>
                                 หน้า {tocSheet.pageNumber}
                             </span>
                         </div>
@@ -1894,16 +2034,16 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             className={`book-page book-content-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${
                                 viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-8'
                             } bg-white text-slate-900 ${
-                                pageSize === 'a4' ? 'p-8 md:p-14 lg:p-16' : 'p-6 md:p-8 lg:p-10'
+                                pageSize === 'a4' ? 'p-8 md:p-14 lg:p-16' : 'px-[12mm] py-[10mm]'
                             } flex flex-col justify-between transition-all ${fontClass}`}
                             style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                         >
                             {/* Running Header at top of every page */}
-                            <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-2 mb-3.5 text-[11px]' : 'pb-2.5 mb-6 text-xs'} text-slate-500 shrink-0 select-none`}>
-                                <span className="truncate max-w-[200px] md:max-w-xs font-medium text-slate-500">
+                            <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-1.5 mb-2.5 text-[10px]' : 'pb-2.5 mb-6 text-xs'} text-slate-500 shrink-0 select-none`}>
+                                <span className="truncate max-w-[185px] md:max-w-xs font-medium text-slate-500">
                                     {cleanProjectTitle}
                                 </span>
-                                <span className="font-semibold text-slate-700 truncate max-w-[230px] md:max-w-md text-right">
+                                <span className="font-semibold text-slate-700 truncate max-w-[215px] md:max-w-md text-right">
                                     {page.fullHeader}
                                 </span>
                             </div>
@@ -1912,9 +2052,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex-1 flex flex-col">
                                 {/* Chapter Hero Header (Only on First Section) */}
                                 {page.isFirstSection && (
-                                    <div className={`chapter-hero-header ${pageSize === 'a5' ? 'mb-2.5' : 'mb-4'} text-center shrink-0 relative group`}>
-                                        <div className="flex items-center justify-center gap-2 mb-1.5">
-                                            <span className="inline-block px-3.5 py-0.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-100">
+                                    <div className={`chapter-hero-header ${pageSize === 'a5' ? 'mb-2' : 'mb-4'} text-center shrink-0 relative group`}>
+                                        <div className="flex items-center justify-center gap-2 mb-1">
+                                            <span className={`inline-block ${pageSize === 'a5' ? 'px-3 py-0.5 text-[11px]' : 'px-3.5 py-0.5 text-xs'} bg-blue-50 text-blue-700 font-bold rounded-full uppercase tracking-wider border border-blue-100`}>
                                                 {formatChapterLabel(page.chapterNo)}
                                             </span>
                                             <button
@@ -1926,26 +2066,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                                 <span>แก้ไขบทนี้</span>
                                             </button>
                                         </div>
-                                        <h2 className={`${pageSize === 'a5' ? 'text-xl leading-snug' : `${headingScale.h1} leading-snug`} font-bold text-slate-900 tracking-tight font-serif`}>
+                                        <h2 className={`${headingScale.h1} leading-snug font-bold text-slate-900 tracking-tight font-serif`}>
                                             {page.chapterTitle}
                                         </h2>
-                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-2.5 rounded-full theme-accent-rule" />
+                                        <div className={`${pageSize === 'a5' ? 'w-14 h-0.5 mt-2' : 'w-16 h-1 mt-2.5'} bg-blue-600 mx-auto rounded-full theme-accent-rule`} />
                                     </div>
                                 )}
 
                                 {/* Featured Chapter Image (Only on First Section if available) */}
                                 {page.isFirstSection && page.imageDirectUrl && (
-                                    <figure className={`${pageSize === 'a5' ? 'my-2.5' : 'my-4'} text-center break-inside-avoid shrink-0`}>
+                                    <figure className={`${pageSize === 'a5' ? 'my-2' : 'my-4'} text-center break-inside-avoid shrink-0`}>
                                         <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-lg">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={page.imageDirectUrl}
                                                 alt={page.chapterTitle}
-                                                className={`w-full h-auto object-cover ${pageSize === 'a5' ? 'max-h-[155px]' : 'max-h-[220px]'} chapter-hero-img mx-auto`}
+                                                className={`w-full h-auto object-cover ${pageSize === 'a5' ? 'max-h-[148px]' : 'max-h-[215px]'} chapter-hero-img mx-auto`}
                                                 loading="lazy"
                                             />
                                         </div>
-                                        <figcaption className="mt-1 text-[11px] text-slate-500 italic">
+                                        <figcaption className="mt-1 text-[10.5px] text-slate-500 italic">
                                             ภาพประกอบ {formatChapterLabel(page.chapterNo)}: {page.chapterTitle}
                                         </figcaption>
                                     </figure>
@@ -1957,21 +2097,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         <ReactMarkdown 
                                             rehypePlugins={[rehypeRaw]}
                                             components={{
-                                                h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-5 mb-2.5 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                                h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-5 mb-2.5 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                                h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-4 mb-2`} {...props} />,
-                                                p: ({node, ...props}) => <p className="mb-3.5 leading-relaxed text-slate-800 text-indent-book" {...props} />,
-                                                hr: ({node, ...props}) => (
-                                                    <div className="my-6 flex items-center justify-center gap-3 text-slate-300 select-none">
+                                                h1: ({node, className, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 ${pageSize === 'a5' ? 'mt-3.5 mb-2' : 'mt-5 mb-2.5'} border-l-4 border-blue-600 pl-3 ${className || ''}`} {...props} />,
+                                                h2: ({node, className, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 ${pageSize === 'a5' ? 'mt-3.5 mb-2' : 'mt-5 mb-2.5'} border-l-4 border-blue-600 pl-3 ${className || ''}`} {...props} />,
+                                                h3: ({node, className, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 ${pageSize === 'a5' ? 'mt-3 mb-1.5' : 'mt-4 mb-2'} ${className || ''}`} {...props} />,
+                                                p: ({node, className, ...props}) => {
+                                                    const isCont = Boolean(className && /(?:continued-paragraph|continued-list-item)/.test(className));
+                                                    const isSplitFirst = Boolean(className && /split-paragraph-first/.test(className));
+                                                    const mbCls = isSplitFirst ? 'mb-0' : (pageSize === 'a5' ? 'mb-2.5' : 'mb-3.5');
+                                                    return <p className={`${mbCls} leading-relaxed text-slate-800 ${isCont ? '' : 'text-indent-book'} ${className || ''}`} {...props} />;
+                                                },
+                                                hr: () => (
+                                                    <div className={`${pageSize === 'a5' ? 'my-4' : 'my-6'} flex items-center justify-center gap-3 text-slate-300 select-none`}>
                                                         <span className="w-16 h-px bg-slate-200" />
                                                         <span className="text-xs text-slate-400 font-serif">❖</span>
                                                         <span className="w-16 h-px bg-slate-200" />
                                                     </div>
                                                 ),
-                                                ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-1.5 my-3 text-slate-800" {...props} />,
-                                                ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-1.5 my-3 text-slate-800" {...props} />,
-                                                blockquote: ({node, ...props}) => (
-                                                    <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-4 text-slate-700 italic" {...props} />
+                                                ul: ({node, className, ...props}) => <ul className={`list-disc ${pageSize === 'a5' ? 'pl-5 space-y-1 my-2' : 'pl-6 space-y-1.5 my-3'} text-slate-800 ${className || ''}`} {...props} />,
+                                                ol: ({node, className, ...props}) => <ol className={`list-decimal ${pageSize === 'a5' ? 'pl-5 space-y-1 my-2' : 'pl-6 space-y-1.5 my-3'} text-slate-800 ${className || ''}`} {...props} />,
+                                                blockquote: ({node, className, ...props}) => (
+                                                    <blockquote className={`border-l-4 border-amber-400 bg-amber-50/60 ${pageSize === 'a5' ? 'p-3 my-2.5' : 'p-4 my-4'} rounded-r-lg text-slate-700 italic ${className || ''}`} {...props} />
                                                 ),
                                             }}
                                         >
@@ -1985,12 +2130,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Key Terminology Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTerminology && (
-                                    <div className={`${pageSize === 'a5' ? 'mt-3 p-3' : 'mt-4 p-4'} bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0`}>
-                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-1.5 text-sm">
-                                            <BookMarked size={15} className="text-emerald-600" />
+                                    <div className={`${pageSize === 'a5' ? 'mt-2.5 p-2.5' : 'mt-4 p-4'} bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0`}>
+                                        <div className={`flex items-center gap-2 text-emerald-900 font-bold mb-1 ${pageSize === 'a5' ? 'text-xs' : 'text-sm'}`}>
+                                            <BookMarked size={14} className="text-emerald-600" />
                                             <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
                                         </div>
-                                        <div className="text-xs text-slate-700 leading-relaxed">
+                                        <div className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-xs'} text-slate-700 leading-relaxed`}>
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTerminology)}
                                             </ReactMarkdown>
@@ -2000,12 +2145,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Key Takeaways Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTakeaways && (
-                                    <div className={`${pageSize === 'a5' ? 'mt-3 p-3' : 'mt-4 p-4'} bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0`}>
-                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-1.5 text-sm">
-                                            <Lightbulb size={15} className="text-amber-500 fill-amber-500" />
+                                    <div className={`${pageSize === 'a5' ? 'mt-2.5 p-2.5' : 'mt-4 p-4'} bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0`}>
+                                        <div className={`flex items-center gap-2 text-blue-900 font-bold mb-1 ${pageSize === 'a5' ? 'text-xs' : 'text-sm'}`}>
+                                            <Lightbulb size={14} className="text-amber-500 fill-amber-500" />
                                             <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
                                         </div>
-                                        <div className="text-xs text-slate-700 leading-relaxed">
+                                        <div className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-xs'} text-slate-700 leading-relaxed`}>
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTakeaways)}
                                             </ReactMarkdown>
@@ -2015,21 +2160,21 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* End of Chapter Ornament (Rendered on Last Section) */}
                                 {page.isLastSection && (
-                                    <div className={`text-center ${pageSize === 'a5' ? 'my-2' : 'my-4'} text-slate-300 tracking-[0.5em] text-sm select-none shrink-0`}>
+                                    <div className={`text-center ${pageSize === 'a5' ? 'my-1.5 text-xs' : 'my-4 text-sm'} text-slate-300 tracking-[0.5em] select-none shrink-0`}>
                                         ❖ ❖ ❖
                                     </div>
                                 )}
                             </div>
 
                             {/* Running Footer at bottom of every page */}
-                            <div className={`book-page-footer ${pageSize === 'a5' ? 'mt-2.5 pt-2' : 'mt-4 pt-3'} border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0`}>
-                                <span className="truncate max-w-[165px] md:max-w-xs text-slate-600 font-medium text-[10.5px]">
+                            <div className={`book-page-footer ${pageSize === 'a5' ? 'mt-2 pt-1.5 text-[10px]' : 'mt-4 pt-3 text-xs'} border-t border-slate-200 flex justify-between items-center text-slate-500 select-none shrink-0`}>
+                                <span className="truncate max-w-[165px] md:max-w-xs text-slate-600 font-medium text-[10px]">
                                     {page.fullHeader}
                                 </span>
-                                <span className="text-[10.5px] text-slate-400 font-medium shrink-0">
+                                <span className="text-[10px] text-slate-400 font-medium shrink-0">
                                     {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : '❖'}
                                 </span>
-                                <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 text-[11px] shrink-0">
+                                <span className={`tabular-nums font-bold text-slate-700 bg-slate-100 ${pageSize === 'a5' ? 'px-2 py-0.5 text-[10.5px]' : 'px-2.5 py-0.5 text-[11px]'} rounded border border-slate-200 shrink-0`}>
                                     หน้า {page.pageNumber}
                                 </span>
                             </div>
@@ -2042,10 +2187,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="about-author"
                     data-page-num={aboutAuthorPageNumber}
                     data-chapter-full-header="เกี่ยวกับผู้เขียน (About the Author)"
-                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 ${pageSize === 'a5' ? 'p-6 md:p-8' : 'p-8 md:p-16 lg:p-20'} flex flex-col justify-between`}
+                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 ${pageSize === 'a5' ? 'px-[12mm] py-[10mm]' : 'p-8 md:p-16 lg:p-20'} flex flex-col justify-between`}
                 >
                     {/* Running Header */}
-                    <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-2 mb-4 text-[11px]' : 'pb-2.5 mb-8 text-xs'} text-slate-500 select-none`}>
+                    <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-1.5 mb-3 text-[10px]' : 'pb-2.5 mb-8 text-xs'} text-slate-500 select-none`}>
                         <span className="truncate max-w-[200px] font-medium text-slate-500">{cleanProjectTitle}</span>
                         <span className="font-semibold text-slate-700">เกี่ยวกับผู้เขียน (About the Author)</span>
                     </div>
@@ -2053,11 +2198,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     <div className="my-auto">
                         <div className={`text-center ${pageSize === 'a5' ? 'mb-5' : 'mb-10'}`}>
                             <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">About the Author</span>
-                            <h2 className={`${pageSize === 'a5' ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-1 font-serif`}>เกี่ยวกับผู้เขียน</h2>
+                            <h2 className={`${pageSize === 'a5' ? 'text-xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-1 font-serif`}>เกี่ยวกับผู้เขียน</h2>
                             <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-2.5 theme-accent-rule" />
                         </div>
 
-                        <div className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'space-y-3 text-sm' : 'space-y-4'} text-slate-700 leading-relaxed text-left break-words`}>
+                        <div className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'space-y-3 text-[13.5px]' : 'space-y-4'} text-slate-700 leading-relaxed text-left break-words`}>
                             <p className="text-indent-book">
                                 หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
                                 และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
@@ -2073,16 +2218,20 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
 
                         <div className={`text-center ${pageSize === 'a5' ? 'pt-5 mt-5' : 'pt-8 mt-8'} border-t border-slate-100 max-w-sm mx-auto`}>
-                            <p className="text-sm font-semibold text-slate-800">{copyrightSettings.author || 'อดิศร เทพวัลย์ (เส-วิญ)'}</p>
-                            <p className="text-xs text-slate-500 mt-1">{copyrightSettings.publisher || 'Saewin Publishing'} • Selfpreneur.club • aimar.cloud</p>
+                            <p className="text-sm font-semibold text-slate-800">{copyrightSettings.author || 'เสวิญ'}</p>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {(copyrightSettings.publisher || '').toLowerCase().includes('selfpreneur')
+                                    ? 'Selfpreneur.club • aimar.cloud'
+                                    : `${copyrightSettings.publisher || 'Saewin Publishing'} • Selfpreneur.club • aimar.cloud`}
+                            </p>
                         </div>
                     </div>
 
                     {/* Running Footer for About the Author */}
-                    <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none">
+                    <div className={`book-page-footer mt-auto ${pageSize === 'a5' ? 'pt-2 text-[10px]' : 'pt-3 text-xs'} border-t border-slate-200 flex justify-between items-center text-slate-500 select-none`}>
                         <span className="text-slate-600 font-medium">เกี่ยวกับผู้เขียน (About the Author)</span>
-                        <span className="text-[11px] text-slate-400 font-medium">{copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : '❖'}</span>
-                        <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                        <span className="text-[10px] text-slate-400 font-medium">{copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : '❖'}</span>
+                        <span className={`tabular-nums font-bold text-slate-700 bg-slate-100 ${pageSize === 'a5' ? 'px-2.5 py-0.5 text-[10.5px]' : 'px-3 py-1'} rounded border border-slate-200`}>
                             หน้า {aboutAuthorPageNumber}
                         </span>
                     </div>
@@ -2733,6 +2882,52 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 onSaveSuccess={handleQuickEditSuccess}
             />
 
+            {/* Off-Screen Print-Geometry DOM Measurement Host (matches @media print mm geometry 1:1) */}
+            <div
+                ref={pageProbeRef}
+                aria-hidden="true"
+                className={`no-print ${fontClass}`}
+                style={{
+                    position: 'fixed',
+                    left: '-99999px',
+                    top: 0,
+                    width: pageSize === 'a5' ? '148mm' : '210mm',
+                    height: pageSize === 'a5' ? '209.5mm' : '296.5mm',
+                    padding: pageSize === 'a5' ? '10mm 12mm' : '14mm 18mm',
+                    boxSizing: 'border-box',
+                    visibility: 'hidden',
+                    pointerEvents: 'none',
+                    zIndex: -1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    contain: 'layout style',
+                }}
+            >
+                <div
+                    ref={headerProbeRef}
+                    className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-1.5 mb-2.5 text-[10px]' : 'pb-2.5 mb-6 text-xs'} shrink-0`}
+                >
+                    <span>Title</span>
+                    <span>Header</span>
+                </div>
+                <div
+                    ref={measureBodyRef}
+                    className={`prose ${sizeClass} max-w-none text-left break-words prose-code:before:content-none prose-code:after:content-none book-body-content`}
+                    style={{ width: '100%', display: 'flow-root' }}
+                />
+                <div
+                    ref={footerProbeRef}
+                    className={`book-page-footer ${pageSize === 'a5' ? 'mt-2 pt-1.5 text-[10px]' : 'mt-4 pt-3 text-xs'} border-t border-slate-200 flex justify-between items-center shrink-0`}
+                >
+                    <span>Header</span>
+                    <span>Selfpreneur.club • aimar.cloud</span>
+                    <span className={`tabular-nums font-bold bg-slate-100 ${pageSize === 'a5' ? 'px-2 py-0.5 text-[10.5px]' : 'px-2.5 py-0.5 text-[11px]'} rounded border border-slate-200`}>
+                        หน้า 100
+                    </span>
+                </div>
+            </div>
+
             <style dangerouslySetInnerHTML={{ __html: `
                 /* Ensure self-hosted Thai font (--font-sarabun) always covers headings, CIP, TOC, and badges */
                 .book-viewer-main,
@@ -2764,12 +2959,23 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
                 }
                 
-                /* Typography styling for book paragraphs */
+                /* Typography styling for book paragraphs & seamless cross-page splits */
                 .book-body-content p.text-indent-book {
-                    text-indent: 2rem;
+                    text-indent: ${pageSize === 'a5' ? '1.5rem' : '2rem'};
                 }
                 .book-body-content p:first-of-type {
                     text-indent: 0 !important;
+                }
+                .book-body-content p.continued-paragraph {
+                    text-indent: 0 !important;
+                }
+                .book-body-content p.split-paragraph-first {
+                    margin-bottom: 0 !important;
+                }
+                .book-body-content p.continued-list-item {
+                    text-indent: 0 !important;
+                    padding-left: ${pageSize === 'a5' ? '1.25rem' : '1.5rem'};
+                    margin-top: 0 !important;
                 }
 
                 /* ==================== THEME PRESETS ==================== */
