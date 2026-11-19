@@ -249,6 +249,47 @@ body {
   margin: 4px 0 !important;
 }
 
+/* Editorial Pull-Quote Visual Break Card */
+.pull-quote-box {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  color: #f8fafc !important;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-left: 6px solid #f59e0b;
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin: 18px 0;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+  position: relative;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.pull-quote-box::before {
+  content: "✦ KEY EXECUTIVE INSIGHT";
+  display: block;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: #fcd34d;
+  margin-bottom: 8px;
+}
+.pull-quote-box[data-title]::before {
+  content: "✦ " attr(data-title);
+}
+.pull-quote-box p,
+.pull-quote-box strong,
+.pull-quote-box em {
+  color: #f8fafc !important;
+  text-indent: 0 !important;
+  margin-bottom: 0.35em !important;
+  line-height: 1.65 !important;
+}
+.pull-quote-box p:last-child {
+  margin-bottom: 0 !important;
+}
+.pull-quote-box strong {
+  color: #fde68a !important;
+}
+
 .cross-ref-badge {
   display: inline-flex;
   align-items: center;
@@ -285,7 +326,8 @@ body {
   content: none !important;
 }
 .book-body-content code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-sarabun), 'Sarabun', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-style: normal;
   font-size: 0.88em;
   font-weight: 600;
   background-color: #f1f5f9;
@@ -369,7 +411,6 @@ body {
 @media print {
   @page {
     margin: 0;
-    size: A4;
   }
 
   html, body {
@@ -399,7 +440,6 @@ body {
 
   /* Ensure content takes full width */
   main,
-  main > div,
   .print-content {
     width: 100% !important;
     margin: 0 !important;

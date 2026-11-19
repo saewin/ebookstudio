@@ -141,6 +141,27 @@ img {
     height: 100%;
     object-fit: cover;
 }
+.diagram-box {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-top: 3px solid #1e3a8a;
+    border-radius: 8px;
+    padding: 1em;
+    margin: 1.2em 0;
+}
+.pull-quote-box {
+    background: #0f172a;
+    color: #f8fafc;
+    border-left: 5px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1em 1.2em;
+    margin: 1.2em 0;
+}
+.pull-quote-box p {
+    text-indent: 0;
+    margin-bottom: 0;
+    color: #f8fafc;
+}
 `
     zip.file('OEBPS/styles.css', cssContent)
 

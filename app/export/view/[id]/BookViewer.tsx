@@ -129,6 +129,22 @@ function getVisibleTextLength(html: string): number {
         .trim().length;
 }
 
+// Count visual lines accurately, honoring explicit <br> breaks inside <p>, <code>, or callouts
+function countWrappedLines(html: string, effectiveCharsPerLine: number): number {
+    if (!html) return 0;
+    const segments = html.split(/<br\s*\/?>/i);
+    let totalLines = 0;
+    for (let i = 0; i < segments.length; i++) {
+        const segLen = getVisibleTextLength(segments[i]);
+        if (segLen === 0) {
+            if (i > 0 && i < segments.length - 1) totalLines += 1;
+            continue;
+        }
+        totalLines += Math.max(1, Math.ceil(segLen / Math.max(12, effectiveCharsPerLine)));
+    }
+    return totalLines;
+}
+
 // Helper to extract blocks keeping HTML containers (even with nested divs) atomic while isolating headings, lists, and tables
 function extractBlocks(text: string): string[] {
     if (!text || !text.trim()) return [];
@@ -137,7 +153,7 @@ function extractBlocks(text: string): string[] {
         .replace(/(<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n))/gi, '\n\n$1\n\n');
 
     const tokens: string[] = [];
-    const openRegex = /<(div|table|figure|ul|ol)\b[^>]*>/gi;
+    const openRegex = /<(div|table|figure|ul|ol|blockquote|pre)\b[^>]*>/gi;
     let cursor = 0;
 
     while (cursor < normalized.length) {
@@ -246,9 +262,11 @@ function trySplitList(
 function trySplitTable(
     tableHtml: string,
     remainingPx: number,
-    estimateRowPx: (rowHtml: string) => number
+    estimateRowPx: (rowHtml: string) => number,
+    minRemainingPx: number = 180,
+    minFirstRows: number = 2
 ): { part1: string; part2: string } | null {
-    if (remainingPx < 180) return null;
+    if (remainingPx < minRemainingPx) return null;
     const tableMatch = tableHtml.match(/^<table\b([^>]*)>([\s\S]*?)<\/table>$/i);
     if (!tableMatch) return null;
     const tableAttrs = tableMatch[1] || '';
@@ -272,8 +290,8 @@ function trySplitTable(
     }
     if (dataRows.length < 3) return null;
 
-    const headerPx = theadHtml ? estimateRowPx(theadHtml) + 12 : 16;
-    let usedPx = 24 + headerPx;
+    const headerPx = theadHtml ? estimateRowPx(theadHtml) + 10 : 14;
+    let usedPx = 20 + headerPx;
     let splitIdx = -1;
 
     for (let i = 0; i < dataRows.length; i++) {
@@ -286,7 +304,7 @@ function trySplitTable(
         }
     }
 
-    if (splitIdx < 2 || splitIdx >= dataRows.length) return null;
+    if (splitIdx < minFirstRows || splitIdx >= dataRows.length) return null;
 
     const part1Rows = dataRows.slice(0, splitIdx).join('\n');
     const part2Rows = dataRows.slice(splitIdx).join('\n');
@@ -294,6 +312,38 @@ function trySplitTable(
     return {
         part1: `<table${tableAttrs}>\n${theadHtml}\n<tbody${tbodyAttrs}>\n${part1Rows}\n</tbody>\n</table>`,
         part2: `<table${tableAttrs}>\n${theadHtml}\n<tbody${tbodyAttrs}>\n${part2Rows}\n</tbody>\n</table>`,
+    };
+}
+
+// Split a large <p> containing multiple <br> segments across a page boundary
+function trySplitParagraphByBr(
+    pHtml: string,
+    remainingPx: number,
+    estimateSegPx: (segHtml: string) => number
+): { part1: string; part2: string } | null {
+    if (remainingPx < 140) return null;
+    const match = pHtml.match(/^<p\b([^>]*)>([\s\S]*?)<\/p>$/i);
+    if (!match) return null;
+    const attrs = match[1] || '';
+    const inner = match[2] || '';
+    const segments = inner.split(/<br\s*\/?>/i).map(s => s.trim()).filter(Boolean);
+    if (segments.length < 4) return null;
+
+    let usedPx = 14;
+    let splitIdx = -1;
+    for (let i = 0; i < segments.length; i++) {
+        const segPx = estimateSegPx(segments[i]);
+        if (usedPx + segPx <= remainingPx) {
+            usedPx += segPx;
+        } else {
+            splitIdx = i;
+            break;
+        }
+    }
+    if (splitIdx < 2 || splitIdx >= segments.length - 1) return null;
+    return {
+        part1: `<p${attrs}>${segments.slice(0, splitIdx).join('<br />\n')}</p>`,
+        part2: `<p${attrs}>${segments.slice(splitIdx).join('<br />\n')}</p>`,
     };
 }
 
@@ -312,10 +362,10 @@ function trySplitBox(
 
     const childRegex = /(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<div\b[^>]*>[\s\S]*?<\/div>)/gi;
     const children = innerHtml.match(childRegex);
-    if (!children || children.length <= 1) return null;
+    if (!children || children.length === 0) return null;
 
     const part1Children: string[] = [];
-    let usedPx = 92; // header bar + top/bottom padding + continuation footer
+    let usedPx = 82; // header bar + top/bottom padding + continuation footer
 
     let splitIndex = -1;
     for (let i = 0; i < children.length; i++) {
@@ -324,12 +374,21 @@ function trySplitBox(
             part1Children.push(children[i]);
             usedPx += childPx;
         } else {
-            // Try splitting an oversized inner list inside the box if nothing or few items placed yet
-            if (/^<(ul|ol)\b/i.test(children[i]) && remainingPx - usedPx >= 110) {
+            // Try splitting an oversized inner list (even if it is the sole child inside key-terms-box / action-checklist)
+            if (/^<(ul|ol)\b/i.test(children[i]) && remainingPx - usedPx >= 100) {
                 const listSplit = trySplitList(children[i], remainingPx - usedPx, (li) => estimateChildPx(li));
                 if (listSplit) {
                     part1Children.push(listSplit.part1);
                     const restChildren = [listSplit.part2, ...children.slice(i + 1)];
+                    return buildSplitBoxResult(rawAttrs, part1Children, restChildren);
+                }
+            }
+            // Try splitting an oversized <br>-delimited <p> inside a callout box (e.g. multi-question audit)
+            if (/^<p\b/i.test(children[i]) && /<br\s*\/?>/i.test(children[i]) && remainingPx - usedPx >= 140) {
+                const pSplit = trySplitParagraphByBr(children[i], remainingPx - usedPx, (seg) => estimateChildPx(`<p>${seg}</p>`));
+                if (pSplit) {
+                    part1Children.push(pSplit.part1);
+                    const restChildren = [pSplit.part2, ...children.slice(i + 1)];
                     return buildSplitBoxResult(rawAttrs, part1Children, restChildren);
                 }
             }
@@ -401,36 +460,35 @@ function paginateChapterContent({
 
     // Physical page dimensions matching @media print CSS:
     // A4 (210x296.5mm, pad 14mm 18mm): body box ~657px wide x ~915px tall (safe fill = 875px)
-    // A5 (148x209.5mm, pad 10mm 12mm): body box ~468px wide x ~635px tall (safe fill = 605px)
-    const normalBudgetPx = pageSize === 'a4' ? 875 : 605;
-    const heroHeaderPx = pageSize === 'a4' ? 98 : 82;
-    const heroImagePx = hasImage ? (pageSize === 'a4' ? 235 : 175) : 0;
-    const firstPageBudgetPx = Math.max(260, normalBudgetPx - heroHeaderPx - heroImagePx);
+    // A5 (148x209.5mm, pad 10mm 12mm): body box ~468px wide x ~625px tall (safe fill = 548px with safety cushion for Sarabun glyph wrapping)
+    const normalBudgetPx = pageSize === 'a4' ? 875 : 548;
+    const heroHeaderPx = pageSize === 'a4' ? 98 : 80;
+    const heroImagePx = hasImage ? (pageSize === 'a4' ? 235 : 182) : 0;
+    const firstPageBudgetPx = Math.max(245, normalBudgetPx - heroHeaderPx - heroImagePx);
 
     const fontPx = fontSize === 'sm' ? 14 : (fontSize === 'lg' ? 18 : 16);
-    const lineHeightPx = fontSize === 'sm' ? 23.5 : (fontSize === 'lg' ? 32.5 : 27.5);
+    const lineHeightPx = fontSize === 'sm' ? 23.0 : (fontSize === 'lg' ? 34.2 : 28.8);
     const bodyWidthPx = pageSize === 'a4' ? 657 : 468;
-    // Average Thai character glyph advance width at sarabun ~0.465 * fontPx; leave ~8% slack for English tokens/wrapping
-    const charsPerLine = Math.max(30, Math.floor(bodyWidthPx / (fontPx * 0.50)));
+    // Conservative Thai/English mixed glyph advance ratio for Sarabun
+    const charsPerLine = Math.max(26, Math.floor(bodyWidthPx / (fontPx * 0.53)));
 
-    function estimateTextBlockPx(html: string, effectiveCharsPerLine: number, extraMarginPx: number): number {
-        const visLen = getVisibleTextLength(html);
-        if (visLen === 0) return 0;
-        const lines = Math.max(1, Math.ceil(visLen / effectiveCharsPerLine));
-        return lines * lineHeightPx + extraMarginPx;
+    function estimateTextBlockPx(html: string, effectiveCharsPerLine: number, extraMarginPx: number, lineHeightMultiplier: number = 1): number {
+        const lines = countWrappedLines(html, effectiveCharsPerLine);
+        if (lines === 0) return 0;
+        return lines * (lineHeightPx * lineHeightMultiplier) + extraMarginPx;
     }
 
     function estimateRowPx(rowHtml: string): number {
         const cells = rowHtml.match(/<t[hd]\b[^>]*>[\s\S]*?<\/t[hd]>/gi) || [rowHtml];
         const colCount = Math.max(1, cells.length);
-        const colChars = Math.max(10, Math.floor((charsPerLine - colCount * 2) / colCount));
+        const tableScale = pageSize === 'a5' ? 0.84 : 0.9;
+        const colChars = Math.max(9, Math.floor(((charsPerLine / tableScale) - colCount * 2.5) / colCount));
         let maxLines = 1;
         for (const c of cells) {
-            const cLen = getVisibleTextLength(c);
-            const cLines = Math.max(1, Math.ceil(cLen / colChars));
+            const cLines = Math.max(1, countWrappedLines(c, colChars));
             if (cLines > maxLines) maxLines = cLines;
         }
-        return maxLines * (lineHeightPx * 0.85) + 18;
+        return maxLines * (lineHeightPx * (pageSize === 'a5' ? 0.82 : 0.86)) + (pageSize === 'a5' ? 15 : 18);
     }
 
     function getBlockHeightPx(block: string): number {
@@ -438,17 +496,17 @@ function paginateChapterContent({
         if (!trimmed) return 0;
         if (/^<(?:hr\s*\/?>)|^---$/i.test(trimmed)) return 36;
         if (/<(?:img|figure)\b/i.test(trimmed) && !/<div\b/i.test(trimmed)) {
-            return pageSize === 'a4' ? 238 : 185;
+            return pageSize === 'a4' ? 238 : 180;
         }
         if (/^(?:<h1\b|#\s+|<h2\b|##\s+)/i.test(trimmed)) {
             const visLen = getVisibleTextLength(trimmed.replace(/^#{1,2}\s+/, ''));
-            const lines = Math.max(1, Math.ceil(visLen / Math.max(22, charsPerLine * 0.68)));
-            return lines * (fontPx * 1.6) + 28;
+            const lines = Math.max(1, Math.ceil(visLen / Math.max(20, charsPerLine * 0.66)));
+            return lines * (fontPx * 1.62) + 28;
         }
         if (/^(?:<h[3-6]\b|#{3,6}\s+)/i.test(trimmed)) {
             const visLen = getVisibleTextLength(trimmed.replace(/^#{3,6}\s+/, ''));
-            const lines = Math.max(1, Math.ceil(visLen / Math.max(26, charsPerLine * 0.8)));
-            return lines * (fontPx * 1.45) + 22;
+            const lines = Math.max(1, Math.ceil(visLen / Math.max(24, charsPerLine * 0.78)));
+            return lines * (fontPx * 1.48) + 22;
         }
         if (/^<table\b/i.test(trimmed)) {
             const rows = trimmed.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [];
@@ -457,25 +515,36 @@ function paginateChapterContent({
         }
         if (/^<(ul|ol)\b/i.test(trimmed)) {
             const items = trimmed.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) || [trimmed];
-            return items.reduce((acc, li) => acc + estimateTextBlockPx(li, charsPerLine - 5, 7), 0) + 18;
+            return items.reduce((acc, li) => acc + estimateTextBlockPx(li, charsPerLine - 6, 8), 0) + 18;
         }
-        if (/^<div\b[^>]*class="[^"]*(?:box|checklist|diagram-box)[^"]*"/i.test(trimmed)) {
+        if (/^<div\b[^>]*class="[^"]*(?:box|checklist|diagram-box|pull-quote-box)[^"]*"/i.test(trimmed)) {
+            const isPullQuote = /pull-quote-box/i.test(trimmed);
+            const isDiagram = /diagram-box/i.test(trimmed);
+            const boxScale = pageSize === 'a5' ? 0.90 : 0.98;
+            const innerCpl = pageSize === 'a5' ? charsPerLine - 5 : charsPerLine - 7;
+            const listCpl = pageSize === 'a5' ? charsPerLine - 9 : charsPerLine - 11;
             const inner = trimmed.replace(/^<div\b[^>]*>|<\/div>$/gi, '');
             const children = inner.match(/(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<li\b[^>]*>[\s\S]*?<\/li>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<div\b[^>]*>[\s\S]*?<\/div>)/gi);
             if (children && children.length > 0) {
                 const innerPx = children.reduce((acc, ch) => {
                     if (/^<(ul|ol)\b/i.test(ch)) {
                         const lis = ch.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) || [ch];
-                        return acc + lis.reduce((a, l) => a + estimateTextBlockPx(l, charsPerLine - 10, 6), 0) + 10;
+                        return acc + lis.reduce((a, l) => a + estimateTextBlockPx(l, listCpl, 7, boxScale), 0) + 10;
                     }
-                    return acc + estimateTextBlockPx(ch, charsPerLine - 8, 10);
+                    if (isDiagram && /diagram-arrow/i.test(ch)) {
+                        return acc + 22;
+                    }
+                    const chMargin = isDiagram ? 20 : 10;
+                    return acc + estimateTextBlockPx(ch, innerCpl, chMargin, boxScale);
                 }, 0);
-                return innerPx + 74;
+                return innerPx + (isPullQuote ? 60 : isDiagram ? 76 : 80);
             }
-            return estimateTextBlockPx(trimmed, charsPerLine - 8, 76);
+            return estimateTextBlockPx(trimmed, innerCpl, isPullQuote ? 64 : 80, boxScale);
         }
         if (/^<(blockquote)\b|^>\s+/i.test(trimmed)) {
-            return estimateTextBlockPx(trimmed, charsPerLine - 6, 36);
+            const hasCodePills = /<code\b/i.test(trimmed);
+            const bqCpl = charsPerLine - (hasCodePills ? 10 : 7);
+            return estimateTextBlockPx(trimmed, bqCpl, hasCodePills ? 44 : 38);
         }
         // Standard paragraph (account for 2rem book indent ~4 chars on first line)
         return estimateTextBlockPx(trimmed, charsPerLine, 14);
@@ -523,15 +592,8 @@ function paginateChapterContent({
                 }
             }
 
-            // Heading attachment guard: never break when page only has headings so far
-            const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
-            if (hasOnlyHeadings) {
-                currentPageBlocks.push(block);
-                currentPx += blockPx;
-                continue;
-            }
-
             // Keep headings together with at least ~90px of following body content
+            const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
             const isHeading = /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim());
             const effectiveNeeded = isHeading ? blockPx + 95 : blockPx;
 
@@ -543,13 +605,44 @@ function paginateChapterContent({
 
             // Try splitting oversized blocks cleanly so the bottom of the page isn't left half-blank
             let splitResult: { part1: string; part2: string } | null = null;
-            const isBox = /^<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block) && !/diagram-box/i.test(block);
-            if (isBox && remainingPx >= 165) {
-                splitResult = trySplitBox(block, remainingPx, (ch) => getBlockHeightPx(ch));
+            const boxScale = pageSize === 'a5' ? 0.90 : 0.98;
+            const isBox = /^<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block) && !/diagram-box|pull-quote-box/i.test(block);
+            if (isBox && remainingPx >= 155) {
+                splitResult = trySplitBox(block, remainingPx, (ch) => {
+                    if (/^<li\b/i.test(ch.trim())) {
+                        return estimateTextBlockPx(ch, pageSize === 'a5' ? charsPerLine - 9 : charsPerLine - 11, 7, boxScale);
+                    }
+                    return getBlockHeightPx(ch);
+                });
             } else if (/^<(ul|ol)\b/i.test(block.trim()) && remainingPx >= 120) {
-                splitResult = trySplitList(block.trim(), remainingPx, (li) => estimateTextBlockPx(li, charsPerLine - 5, 7));
-            } else if (/^<table\b/i.test(block.trim()) && remainingPx >= 190) {
-                splitResult = trySplitTable(block.trim(), remainingPx, estimateRowPx);
+                splitResult = trySplitList(block.trim(), remainingPx, (li) => estimateTextBlockPx(li, charsPerLine - 6, 8));
+            } else if (/^<table\b/i.test(block.trim()) && remainingPx >= (pageSize === 'a5' ? 130 : 185)) {
+                splitResult = trySplitTable(
+                    block.trim(),
+                    remainingPx,
+                    estimateRowPx,
+                    pageSize === 'a5' ? 130 : 180,
+                    pageSize === 'a5' ? 1 : 2
+                );
+            } else if (/^<blockquote\b/i.test(block.trim()) && remainingPx >= 150) {
+                const bqMatch = block.trim().match(/^<blockquote\b([^>]*)>([\s\S]*?)<\/blockquote>$/i);
+                if (bqMatch) {
+                    const bqAttrs = bqMatch[1] || '';
+                    const bqInner = bqMatch[2].trim();
+                    if (/^<p\b/i.test(bqInner) && /<br\s*\/?>/i.test(bqInner)) {
+                        const pSplit = trySplitParagraphByBr(
+                            bqInner,
+                            remainingPx - 36,
+                            (seg) => estimateTextBlockPx(`<p>${seg}</p>`, charsPerLine - (/<code\b/i.test(seg) ? 10 : 7), 6)
+                        );
+                        if (pSplit) {
+                            splitResult = {
+                                part1: `<blockquote${bqAttrs}>\n${pSplit.part1}\n</blockquote>`,
+                                part2: `<blockquote${bqAttrs}>\n${pSplit.part2}\n</blockquote>`,
+                            };
+                        }
+                    }
+                }
             }
 
             if (splitResult) {
@@ -557,6 +650,13 @@ function paginateChapterContent({
                 currentPx += getBlockHeightPx(splitResult.part1);
                 flushPage();
                 blocksQueue.unshift(splitResult.part2);
+                continue;
+            }
+
+            // Heading attachment guard: never leave an unsplittable block separated from a lone leading heading
+            if (hasOnlyHeadings) {
+                currentPageBlocks.push(block);
+                currentPx += blockPx;
                 continue;
             }
 
@@ -662,8 +762,16 @@ function transformCrossReferences(content: string, chapters: Chapter[]): string 
 export default function BookViewer({ chapters, projectTitle, project, projectId }: BookViewerProps) {
     const [fontFamily, setFontFamily] = useState<'sarabun' | 'serif' | 'sans'>('sarabun');
     const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg'>('base');
-    const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
+    const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a5');
     const [viewMode, setViewMode] = useState<'pages' | 'continuous'>('pages');
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const paramSize = new URLSearchParams(window.location.search).get('pageSize');
+        if (paramSize === 'a4' || paramSize === 'a5') {
+            setPageSize(paramSize);
+        }
+    }, []);
     const [isExporting, setIsExporting] = useState(false);
     const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
     const [showPrintModal, setShowPrintModal] = useState(false);
@@ -967,41 +1075,88 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         return { totalChars, totalWords, readMinutes };
     }, [localChapters]);
 
-    // Compute exact continuous pagination and sub-pages
-    const { allBookPages, tableOfContents, totalPages, aboutAuthorPageNumber, showCopyright, tocPageNum } = useMemo(() => {
+    // Compute exact continuous pagination and multi-page-safe TOC
+    const { allBookPages, tableOfContents, tocPages, totalPages, aboutAuthorPageNumber, showCopyright, tocPageNum } = useMemo(() => {
         const show = copyrightSettings.showCopyrightPage;
-        const tocPage = show ? 3 : 2;
-        let currentPage = show ? 4 : 3; // Page 1: Cover, Page 2: Imprint (if enabled), Page 3 or 2: TOC
-        const pages: BookPageSheet[] = [];
-        const tocList: Array<{
+        const tocStartPage = show ? 3 : 2;
+        const sortedChapters = [...localChapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0));
+
+        // 1. Pre-split Table of Contents rows into page buckets so A5 never clips overflow items
+        type TocBucketEntry = {
+            kind: 'chapter' | 'appendix';
+            chapterIdx?: number;
             id: string;
             chapterNo: number;
             title: string;
             rawTitle: string;
             pageNumber: number;
-        }> = [];
+        };
+        const tocCharsPerLine = pageSize === 'a4' ? 66 : 38;
+        const rowLinePx = pageSize === 'a4' ? 21 : 18.5;
+        const rowBasePx = pageSize === 'a4' ? 14 : 13;
+        const estimateTocRowPx = (titleStr: string) => {
+            const lines = Math.max(1, Math.ceil((titleStr || '').length / tocCharsPerLine));
+            return rowBasePx + lines * rowLinePx;
+        };
+        const firstTocBudgetPx = pageSize === 'a4' ? 810 : 500;
+        const nextTocBudgetPx = pageSize === 'a4' ? 860 : 570;
 
-        const sortedChapters = [...localChapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0));
+        const tocBuckets: TocBucketEntry[][] = [[]];
+        let tocUsedPx = 0;
+
+        sortedChapters.forEach((chap, idx) => {
+            const cleanTitle = cleanChapterTitle(chap.title);
+            const rowPx = estimateTocRowPx(cleanTitle);
+            const budget = tocBuckets.length === 1 ? firstTocBudgetPx : nextTocBudgetPx;
+            if (tocBuckets[tocBuckets.length - 1].length > 0 && tocUsedPx + rowPx > budget) {
+                tocBuckets.push([]);
+                tocUsedPx = 0;
+            }
+            tocBuckets[tocBuckets.length - 1].push({
+                kind: 'chapter',
+                chapterIdx: idx,
+                id: chap.id,
+                chapterNo: chap.chapterNo,
+                title: cleanTitle,
+                rawTitle: chap.title,
+                pageNumber: 0, // filled once paginated
+            });
+            tocUsedPx += rowPx;
+        });
+
+        // Reserve space for "เกี่ยวกับผู้เขียน (About the Author)" at the end of TOC
+        const appendixPx = pageSize === 'a4' ? 46 : 42;
+        const lastBudget = tocBuckets.length === 1 ? firstTocBudgetPx : nextTocBudgetPx;
+        if (tocBuckets[tocBuckets.length - 1].length > 0 && tocUsedPx + appendixPx > lastBudget) {
+            tocBuckets.push([]);
+        }
+        tocBuckets[tocBuckets.length - 1].push({
+            kind: 'appendix',
+            id: 'about-author',
+            chapterNo: 999,
+            title: 'เกี่ยวกับผู้เขียน (About the Author)',
+            rawTitle: 'เกี่ยวกับผู้เขียน',
+            pageNumber: 0,
+        });
+
+        // 2. Now paginate chapters knowing exact tocBuckets.length
+        let currentPage = tocStartPage + tocBuckets.length;
+        const pages: BookPageSheet[] = [];
+        const chapterPageNumbers = new Map<string, number>();
 
         sortedChapters.forEach((chap) => {
             const cleanTitle = cleanChapterTitle(chap.title);
             const fullHeader = getFullChapterHeader(chap.chapterNo, chap.title);
             const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
-            
-            // Record chapter start page for Table of Contents
-            tocList.push({
-                id: chap.id,
-                chapterNo: chap.chapterNo,
-                title: cleanTitle,
-                rawTitle: chap.title,
-                pageNumber: currentPage,
-            });
+
+            chapterPageNumbers.set(chap.id, currentPage);
 
             const hasTerms = Boolean(chap.keyTerminology && chap.keyTerminology.trim());
             const hasTakeaways = Boolean(chap.keyTakeaways && chap.keyTakeaways.trim());
-            const termsPx = hasTerms ? Math.max(105, Math.ceil(getVisibleTextLength(chap.keyTerminology!) / 65) * 21 + 64) : 0;
-            const takeawaysPx = hasTakeaways ? Math.max(115, Math.ceil(getVisibleTextLength(chap.keyTakeaways!) / 65) * 21 + 68) : 0;
-            const endCardsHeightPx = (hasTerms || hasTakeaways) ? (termsPx + takeawaysPx + 36) : 32;
+            const cardCpl = pageSize === 'a4' ? 62 : 40;
+            const termsPx = hasTerms ? Math.max(104, countWrappedLines(chap.keyTerminology!, cardCpl) * 21 + 64) : 0;
+            const takeawaysPx = hasTakeaways ? Math.max(114, countWrappedLines(chap.keyTakeaways!, cardCpl) * 21 + 68) : 0;
+            const endCardsHeightPx = (hasTerms || hasTakeaways) ? (termsPx + takeawaysPx + 38) : 32;
 
             const sections = paginateChapterContent({
                 content: chap.content,
@@ -1056,13 +1211,42 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         const aboutAuthorPage = currentPage++;
         const total = currentPage; // including Back Cover
 
+        // Fill resolved page numbers back into TOC buckets & flat list
+        const tocList: Array<{
+            id: string;
+            chapterNo: number;
+            title: string;
+            rawTitle: string;
+            pageNumber: number;
+        }> = [];
+        const resolvedTocPages = tocBuckets.map((bucket, idx) => ({
+            pageNumber: tocStartPage + idx,
+            isContinuation: idx > 0,
+            items: bucket.map((entry) => {
+                const resolvedNum = entry.kind === 'appendix'
+                    ? aboutAuthorPage
+                    : (chapterPageNumbers.get(entry.id) || tocStartPage + tocBuckets.length);
+                if (entry.kind === 'chapter') {
+                    tocList.push({
+                        id: entry.id,
+                        chapterNo: entry.chapterNo,
+                        title: entry.title,
+                        rawTitle: entry.rawTitle,
+                        pageNumber: resolvedNum,
+                    });
+                }
+                return { ...entry, pageNumber: resolvedNum };
+            }),
+        }));
+
         return {
             allBookPages: pages,
             tableOfContents: tocList,
+            tocPages: resolvedTocPages,
             totalPages: total,
             aboutAuthorPageNumber: aboutAuthorPage,
             showCopyright: show,
-            tocPageNum: tocPage,
+            tocPageNum: tocStartPage,
         };
     }, [localChapters, pageSize, fontSize, copyrightSettings.showCopyrightPage]);
 
@@ -1504,11 +1688,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         id="book-imprint"
                         data-page-num="2"
                         data-chapter-full-header="ข้อมูลลิขสิทธิ์ & บรรณานุกรม (CIP)"
-                        className={`book-page relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-12 lg:p-16 flex flex-col justify-between`}
+                        className={`book-page relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 ${pageSize === 'a5' ? 'p-5 md:p-8' : 'p-8 md:p-12 lg:p-16'} flex flex-col justify-between`}
                         style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                     >
                         {/* Quick Edit Overlay Button (Screen Only) */}
-                        <div className="no-print absolute top-6 right-6 flex items-center gap-2">
+                        <div className="no-print absolute top-4 right-4 flex items-center gap-2">
                             <button
                                 onClick={() => {
                                     setDraftCopyright(copyrightSettings);
@@ -1523,26 +1707,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
 
                         {/* Half-Title Section */}
-                        <div className="pt-6 md:pt-10 text-center">
-                            <span className="text-[11px] font-semibold tracking-widest text-slate-400 uppercase">
+                        <div className={`${pageSize === 'a5' ? 'pt-2' : 'pt-6 md:pt-10'} text-center`}>
+                            <span className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">
                                 Cataloging-in-Publication (CIP) & Colophon
                             </span>
-                            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-2 font-serif">
+                            <h2 className={`${pageSize === 'a5' ? 'text-lg leading-snug mt-1.5 mb-1.5' : 'text-2xl md:text-3xl mt-2 mb-2'} font-bold tracking-tight text-slate-900 font-serif`}>
                                 {copyrightSettings.bookTitle || cleanProjectTitle}
                             </h2>
                             {project?.audience && (
-                                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                                <p className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-xs'} text-slate-500 max-w-md mx-auto`}>
                                     {project.audience}
                                 </p>
                             )}
-                            <div className="w-12 h-0.5 bg-slate-300 mx-auto mt-4 mb-2 theme-accent-rule" />
+                            <div className="w-12 h-0.5 bg-slate-300 mx-auto mt-3 mb-1 theme-accent-rule" />
                         </div>
 
                         {/* Middle: National Library CIP Box + Colophon Grid */}
-                        <div className="max-w-xl mx-auto w-full my-auto space-y-6">
+                        <div className={`max-w-xl mx-auto w-full my-auto ${pageSize === 'a5' ? 'space-y-3' : 'space-y-6'}`}>
                             {/* National Library of Thailand CIP Box */}
-                            <div className="border border-slate-300 rounded-lg p-5 md:p-6 bg-slate-50/70 text-slate-800 shadow-xs">
-                                <div className="text-center pb-3 border-b border-slate-200 mb-4">
+                            <div className={`border border-slate-300 rounded-lg ${pageSize === 'a5' ? 'p-3.5' : 'p-5 md:p-6'} bg-slate-50/70 text-slate-800 shadow-xs`}>
+                                <div className={`text-center ${pageSize === 'a5' ? 'pb-2 mb-2.5' : 'pb-3 mb-4'} border-b border-slate-200`}>
                                     <p className="font-semibold text-xs text-slate-900">
                                         ข้อมูลทางบรรณานุกรมของสำนักหอสมุดแห่งชาติ
                                     </p>
@@ -1551,7 +1735,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     </p>
                                 </div>
 
-                                <div className="space-y-2 text-xs font-mono leading-relaxed text-slate-700">
+                                <div className={`${pageSize === 'a5' ? 'space-y-1 text-[11px]' : 'space-y-2 text-xs'} font-mono leading-relaxed text-slate-700`}>
                                     <p className="font-semibold text-slate-900">
                                         {copyrightSettings.author || 'Saewin'}.
                                     </p>
@@ -1561,18 +1745,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     <p className="pl-4 text-slate-600">
                                         {totalPages} หน้า.
                                     </p>
-                                    <p className="pl-4 text-slate-600 pt-1">
+                                    <p className="pl-4 text-slate-600 pt-0.5">
                                         1. {copyrightSettings.category || 'การบริหารธุรกิจ / นวัตกรรมและเทคโนโลยี'}. I. ชื่อเรื่อง.
                                     </p>
-                                    <p className="pt-2 font-bold text-slate-900 tracking-wider">
+                                    <p className="pt-1 font-bold text-slate-900 tracking-wider">
                                         ISBN {copyrightSettings.isbn || '978-616-XXXX-XX-X (e-Book)'}
                                     </p>
                                 </div>
                             </div>
 
                             {/* Publishing & Editorial Colophon Table */}
-                            <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs text-slate-600 space-y-2">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-slate-100">
+                            <div className={`bg-white border border-slate-200 rounded-lg ${pageSize === 'a5' ? 'p-3 text-[11px] space-y-1.5' : 'p-4 text-xs space-y-2'} text-slate-600`}>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1.5 border-b border-slate-100">
                                     <div>
                                         <span className="text-slate-400 block text-[10px]">ผู้เขียน / เรียบเรียง:</span>
                                         <strong className="text-slate-800">{copyrightSettings.author || 'Saewin'}</strong>
@@ -1583,7 +1767,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-slate-100">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1.5 border-b border-slate-100">
                                     <div>
                                         <span className="text-slate-400 block text-[10px]">ครั้งที่พิมพ์:</span>
                                         <span className="text-slate-700">{copyrightSettings.edition || 'พิมพ์ครั้งที่ 1'}</span>
@@ -1601,9 +1785,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             </div>
 
                             {/* Legal Notice */}
-                            <div className="text-[11px] text-slate-500 leading-relaxed border-t border-slate-200 pt-4 px-1">
-                                <p className="font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-                                    <Shield size={12} className="text-indigo-600" />
+                            <div className={`${pageSize === 'a5' ? 'text-[10px] pt-2.5' : 'text-[11px] pt-4'} text-slate-500 leading-relaxed border-t border-slate-200 px-1`}>
+                                <p className="font-semibold text-slate-700 mb-0.5 flex items-center gap-1.5">
+                                    <Shield size={11} className="text-indigo-600" />
                                     <span>สงวนลิขสิทธิ์ตามพระราชบัญญัติลิขสิทธิ์</span>
                                 </p>
                                 <p className="text-justify text-slate-500 leading-relaxed">
@@ -1613,9 +1797,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
 
                         {/* Running Footer Page 2 */}
-                        <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                        <div className="book-page-footer mt-auto pt-2.5 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
                             <span>{copyrightSettings.publisher || 'Ebook Creator Studio'}</span>
-                            <span className="text-slate-400 font-serif">❖</span>
+                            <span className="text-[11px] text-slate-400 font-medium">❖ {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : ''}</span>
                             <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                                 หน้า 2
                             </span>
@@ -1623,67 +1807,79 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     </div>
                 )}
 
-                {/* 3. TABLE OF CONTENTS (สารบัญ - Page 3 or Page 2) */}
-                <div 
-                    id="table-of-contents"
-                    data-page-num={tocPageNum}
-                    data-chapter-full-header="สารบัญ (Table of Contents)"
-                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
-                    style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
-                >
-                    <div>
-                        <div className="text-center mb-10">
-                            <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
-                            <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">สารบัญ</h2>
-                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3 theme-accent-rule" />
+                {/* 3. TABLE OF CONTENTS (สารบัญ - Single or Multi-Page Sheet) */}
+                {tocPages.map((tocSheet, tocIdx) => (
+                    <div
+                        key={`toc-sheet-${tocSheet.pageNumber}`}
+                        id={tocIdx === 0 ? 'table-of-contents' : undefined}
+                        data-page-num={tocSheet.pageNumber}
+                        data-chapter-full-header="สารบัญ (Table of Contents)"
+                        className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 ${pageSize === 'a5' ? 'p-6 md:p-8' : 'p-8 md:p-16 lg:p-20'} flex flex-col justify-between`}
+                        style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
+                    >
+                        <div>
+                            {!tocSheet.isContinuation ? (
+                                <div className={`text-center ${pageSize === 'a5' ? 'mb-5' : 'mb-7'}`}>
+                                    <span className="text-[11px] font-semibold tracking-widest text-blue-600 uppercase">Contents</span>
+                                    <h2 className={`${pageSize === 'a5' ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-1 font-serif`}>สารบัญ</h2>
+                                    <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-2.5 theme-accent-rule" />
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-5">
+                                    <span className="text-xs font-bold text-slate-700 font-serif">สารบัญ (ต่อ)</span>
+                                    <span className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">Table of Contents</span>
+                                </div>
+                            )}
+
+                            <div className={`${pageSize === 'a5' ? 'space-y-1.5' : 'space-y-2'} max-w-2xl mx-auto w-full`}>
+                                {tocSheet.items.map((item) =>
+                                    item.kind === 'appendix' ? (
+                                        <a
+                                            key={item.id}
+                                            href="#about-author"
+                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors cursor-pointer ${pageSize === 'a5' ? 'py-1 pt-2' : 'py-1 pt-2.5'} border-t border-slate-300 mt-2`}
+                                        >
+                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-xs min-w-[50px]' : 'text-sm min-w-[54px]'} shrink-0 text-slate-700 group-hover:text-blue-600`}>
+                                                ภาคผนวก:
+                                            </span>
+                                            <span className={`${pageSize === 'a5' ? 'text-xs' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
+                                                {item.title}
+                                            </span>
+                                            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0 tabular-nums">
+                                                {item.pageNumber}
+                                            </span>
+                                        </a>
+                                    ) : (
+                                        <a
+                                            key={item.id}
+                                            href={`#chapter-${item.id}`}
+                                            className={`group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors ${pageSize === 'a5' ? 'py-0.5' : 'py-1'} border-b border-dotted border-slate-200 cursor-pointer`}
+                                        >
+                                            <span className={`font-bold ${pageSize === 'a5' ? 'text-xs min-w-[52px]' : 'text-sm min-w-[68px]'} shrink-0 text-blue-800 group-hover:text-blue-600 whitespace-nowrap`}>
+                                                {formatChapterLabel(item.chapterNo)}:
+                                            </span>
+                                            <span className={`${pageSize === 'a5' ? 'text-xs' : 'text-sm'} font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug`}>
+                                                {item.title}
+                                            </span>
+                                            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0 tabular-nums">
+                                                {item.pageNumber}
+                                            </span>
+                                        </a>
+                                    )
+                                )}
+                            </div>
                         </div>
 
-                        <div className="space-y-2.5 max-w-2xl mx-auto w-full">
-                            {tableOfContents.map((item) => (
-                                <a
-                                    key={item.id}
-                                    href={`#chapter-${item.id}`}
-                                    className="group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors py-1 border-b border-dotted border-slate-200 cursor-pointer"
-                                >
-                                    <span className="font-bold text-sm shrink-0 text-blue-800 group-hover:text-blue-600 whitespace-nowrap min-w-[68px]">
-                                        {formatChapterLabel(item.chapterNo)}:
-                                    </span>
-                                    <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug">
-                                        {item.title}
-                                    </span>
-                                    <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
-                                        {item.pageNumber}
-                                    </span>
-                                </a>
-                            ))}
-
-                            {/* Entry for About the Author */}
-                            <a
-                                href="#about-author"
-                                className="group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer pt-2.5 border-t border-slate-300 mt-2"
-                            >
-                                <span className="font-bold text-sm shrink-0 text-slate-700 group-hover:text-blue-600 min-w-[54px]">
-                                    ภาคผนวก:
-                                </span>
-                                <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug">
-                                    เกี่ยวกับผู้เขียน (About the Author)
-                                </span>
-                                <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
-                                    {aboutAuthorPageNumber}
-                                </span>
-                            </a>
+                        {/* Running Footer TOC */}
+                        <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
+                            <span>สารบัญ (Table of Contents)</span>
+                            <span className="text-[11px] text-slate-400 font-medium">❖ {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : ''}</span>
+                            <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                                หน้า {tocSheet.pageNumber}
+                            </span>
                         </div>
                     </div>
-
-                    {/* Running Footer Page 3 / Page 2 */}
-                    <div className="book-page-footer mt-auto pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
-                        <span>สารบัญ (Table of Contents)</span>
-                        <span className="text-slate-400 font-serif">❖</span>
-                        <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
-                            หน้า {tocPageNum}
-                        </span>
-                    </div>
-                </div>
+                ))}
 
                 {/* 4. CHAPTER PAGES (Paginated Sub-Page Sheets) */}
                 {allBookPages.map((page) => {
@@ -1703,11 +1899,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             style={{ breakAfter: 'page', pageBreakAfter: 'always' }}
                         >
                             {/* Running Header at top of every page */}
-                            <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-6 text-xs text-slate-500 shrink-0 select-none">
-                                <span className="truncate max-w-[240px] md:max-w-xs font-medium text-slate-500">
+                            <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-2 mb-3.5 text-[11px]' : 'pb-2.5 mb-6 text-xs'} text-slate-500 shrink-0 select-none`}>
+                                <span className="truncate max-w-[200px] md:max-w-xs font-medium text-slate-500">
                                     {cleanProjectTitle}
                                 </span>
-                                <span className="font-semibold text-slate-700 truncate max-w-[280px] md:max-w-md text-right">
+                                <span className="font-semibold text-slate-700 truncate max-w-[230px] md:max-w-md text-right">
                                     {page.fullHeader}
                                 </span>
                             </div>
@@ -1716,9 +1912,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex-1 flex flex-col">
                                 {/* Chapter Hero Header (Only on First Section) */}
                                 {page.isFirstSection && (
-                                    <div className="chapter-hero-header mb-4 text-center shrink-0 relative group">
-                                        <div className="flex items-center justify-center gap-2 mb-2">
-                                            <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-100">
+                                    <div className={`chapter-hero-header ${pageSize === 'a5' ? 'mb-2.5' : 'mb-4'} text-center shrink-0 relative group`}>
+                                        <div className="flex items-center justify-center gap-2 mb-1.5">
+                                            <span className="inline-block px-3.5 py-0.5 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-100">
                                                 {formatChapterLabel(page.chapterNo)}
                                             </span>
                                             <button
@@ -1730,26 +1926,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                                 <span>แก้ไขบทนี้</span>
                                             </button>
                                         </div>
-                                        <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
+                                        <h2 className={`${pageSize === 'a5' ? 'text-xl leading-snug' : `${headingScale.h1} leading-snug`} font-bold text-slate-900 tracking-tight font-serif`}>
                                             {page.chapterTitle}
                                         </h2>
-                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-3 rounded-full theme-accent-rule" />
+                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-2.5 rounded-full theme-accent-rule" />
                                     </div>
                                 )}
 
                                 {/* Featured Chapter Image (Only on First Section if available) */}
                                 {page.isFirstSection && page.imageDirectUrl && (
-                                    <figure className="my-4 text-center break-inside-avoid shrink-0">
+                                    <figure className={`${pageSize === 'a5' ? 'my-2.5' : 'my-4'} text-center break-inside-avoid shrink-0`}>
                                         <div className="relative mx-auto rounded-xl overflow-hidden border border-slate-200 shadow-sm max-w-lg">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img
                                                 src={page.imageDirectUrl}
                                                 alt={page.chapterTitle}
-                                                className="w-full h-auto object-cover max-h-[220px] chapter-hero-img mx-auto"
+                                                className={`w-full h-auto object-cover ${pageSize === 'a5' ? 'max-h-[155px]' : 'max-h-[220px]'} chapter-hero-img mx-auto`}
                                                 loading="lazy"
                                             />
                                         </div>
-                                        <figcaption className="mt-1.5 text-xs text-slate-500 italic">
+                                        <figcaption className="mt-1 text-[11px] text-slate-500 italic">
                                             ภาพประกอบ {formatChapterLabel(page.chapterNo)}: {page.chapterTitle}
                                         </figcaption>
                                     </figure>
@@ -1761,21 +1957,21 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         <ReactMarkdown 
                                             rehypePlugins={[rehypeRaw]}
                                             components={{
-                                                h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                                h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                                h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-5 mb-2`} {...props} />,
-                                                p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
+                                                h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-5 mb-2.5 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                                h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-5 mb-2.5 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                                h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-4 mb-2`} {...props} />,
+                                                p: ({node, ...props}) => <p className="mb-3.5 leading-relaxed text-slate-800 text-indent-book" {...props} />,
                                                 hr: ({node, ...props}) => (
-                                                    <div className="my-8 flex items-center justify-center gap-3 text-slate-300 select-none">
+                                                    <div className="my-6 flex items-center justify-center gap-3 text-slate-300 select-none">
                                                         <span className="w-16 h-px bg-slate-200" />
                                                         <span className="text-xs text-slate-400 font-serif">❖</span>
                                                         <span className="w-16 h-px bg-slate-200" />
                                                     </div>
                                                 ),
-                                                ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
-                                                ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-1.5 my-3 text-slate-800" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-1.5 my-3 text-slate-800" {...props} />,
                                                 blockquote: ({node, ...props}) => (
-                                                    <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-6 text-slate-700 italic" {...props} />
+                                                    <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-4 text-slate-700 italic" {...props} />
                                                 ),
                                             }}
                                         >
@@ -1789,12 +1985,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Key Terminology Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTerminology && (
-                                    <div className="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0">
-                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-2">
-                                            <BookMarked size={16} className="text-emerald-600" />
+                                    <div className={`${pageSize === 'a5' ? 'mt-3 p-3' : 'mt-4 p-4'} bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0`}>
+                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-1.5 text-sm">
+                                            <BookMarked size={15} className="text-emerald-600" />
                                             <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
                                         </div>
-                                        <div className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                                        <div className="text-xs text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTerminology)}
                                             </ReactMarkdown>
@@ -1804,12 +2000,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Key Takeaways Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTakeaways && (
-                                    <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0">
-                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-2">
-                                            <Lightbulb size={16} className="text-amber-500 fill-amber-500" />
+                                    <div className={`${pageSize === 'a5' ? 'mt-3 p-3' : 'mt-4 p-4'} bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0`}>
+                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-1.5 text-sm">
+                                            <Lightbulb size={15} className="text-amber-500 fill-amber-500" />
                                             <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
                                         </div>
-                                        <div className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                                        <div className="text-xs text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTakeaways)}
                                             </ReactMarkdown>
@@ -1819,19 +2015,21 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* End of Chapter Ornament (Rendered on Last Section) */}
                                 {page.isLastSection && (
-                                    <div className="text-center my-4 text-slate-300 tracking-[0.5em] text-base select-none shrink-0">
+                                    <div className={`text-center ${pageSize === 'a5' ? 'my-2' : 'my-4'} text-slate-300 tracking-[0.5em] text-sm select-none shrink-0`}>
                                         ❖ ❖ ❖
                                     </div>
                                 )}
                             </div>
 
                             {/* Running Footer at bottom of every page */}
-                            <div className="book-page-footer mt-4 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0">
-                                <span className="truncate max-w-[240px] md:max-w-md text-slate-600 font-medium">
+                            <div className={`book-page-footer ${pageSize === 'a5' ? 'mt-2.5 pt-2' : 'mt-4 pt-3'} border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0`}>
+                                <span className="truncate max-w-[165px] md:max-w-xs text-slate-600 font-medium text-[10.5px]">
                                     {page.fullHeader}
                                 </span>
-                                <span className="text-slate-400 font-serif">❖</span>
-                                <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                                <span className="text-[10.5px] text-slate-400 font-medium shrink-0">
+                                    {copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : '❖'}
+                                </span>
+                                <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200 text-[11px] shrink-0">
                                     หน้า {page.pageNumber}
                                 </span>
                             </div>
@@ -1844,22 +2042,22 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     id="about-author"
                     data-page-num={aboutAuthorPageNumber}
                     data-chapter-full-header="เกี่ยวกับผู้เขียน (About the Author)"
-                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
+                    className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 ${pageSize === 'a5' ? 'p-6 md:p-8' : 'p-8 md:p-16 lg:p-20'} flex flex-col justify-between`}
                 >
                     {/* Running Header */}
-                    <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-8 text-xs text-slate-500 select-none">
-                        <span className="truncate max-w-[260px] font-medium text-slate-500">{cleanProjectTitle}</span>
+                    <div className={`book-page-header flex justify-between items-center border-b border-slate-200 ${pageSize === 'a5' ? 'pb-2 mb-4 text-[11px]' : 'pb-2.5 mb-8 text-xs'} text-slate-500 select-none`}>
+                        <span className="truncate max-w-[200px] font-medium text-slate-500">{cleanProjectTitle}</span>
                         <span className="font-semibold text-slate-700">เกี่ยวกับผู้เขียน (About the Author)</span>
                     </div>
 
                     <div className="my-auto">
-                        <div className="text-center mb-10">
+                        <div className={`text-center ${pageSize === 'a5' ? 'mb-5' : 'mb-10'}`}>
                             <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">About the Author</span>
-                            <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">เกี่ยวกับผู้เขียน</h2>
-                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3 theme-accent-rule" />
+                            <h2 className={`${pageSize === 'a5' ? 'text-2xl' : 'text-3xl'} font-bold tracking-tight text-slate-900 mt-1 font-serif`}>เกี่ยวกับผู้เขียน</h2>
+                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-2.5 theme-accent-rule" />
                         </div>
 
-                        <div className="max-w-xl mx-auto space-y-4 text-slate-700 leading-relaxed text-left break-words">
+                        <div className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'space-y-3 text-sm' : 'space-y-4'} text-slate-700 leading-relaxed text-left break-words`}>
                             <p className="text-indent-book">
                                 หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
                                 และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
@@ -1874,16 +2072,16 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             </p>
                         </div>
 
-                        <div className="text-center pt-8 border-t border-slate-100 max-w-sm mx-auto mt-8">
+                        <div className={`text-center ${pageSize === 'a5' ? 'pt-5 mt-5' : 'pt-8 mt-8'} border-t border-slate-100 max-w-sm mx-auto`}>
                             <p className="text-sm font-semibold text-slate-800">{copyrightSettings.author || 'อดิศร เทพวัลย์ (เส-วิญ)'}</p>
-                            <p className="text-xs text-slate-500 mt-1">{copyrightSettings.publisher || 'Saewin Publishing'} • www.aimar.cloud</p>
+                            <p className="text-xs text-slate-500 mt-1">{copyrightSettings.publisher || 'Saewin Publishing'} • Selfpreneur.club • aimar.cloud</p>
                         </div>
                     </div>
 
                     {/* Running Footer for About the Author */}
                     <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none">
                         <span className="text-slate-600 font-medium">เกี่ยวกับผู้เขียน (About the Author)</span>
-                        <span className="text-slate-400 font-serif">❖</span>
+                        <span className="text-[11px] text-slate-400 font-medium">{copyrightSettings.publisher?.toLowerCase().includes('aimar') ? 'Selfpreneur.club • aimar.cloud' : '❖'}</span>
                         <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                             หน้า {aboutAuthorPageNumber}
                         </span>
@@ -2535,7 +2733,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 onSaveSuccess={handleQuickEditSuccess}
             />
 
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{ __html: `
                 /* Ensure self-hosted Thai font (--font-sarabun) always covers headings, CIP, TOC, and badges */
                 .book-viewer-main,
                 .book-viewer-main .font-sans {
@@ -2575,68 +2773,44 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
 
                 /* ==================== THEME PRESETS ==================== */
-                /* 1. Executive Pro (Navy & Gold - Luxury Corporate) */
-                .theme-executive {
-                    --theme-accent: #b45309;
-                }
-                .theme-executive .theme-accent-rule {
-                    background-color: #b45309 !important;
-                }
-                .theme-executive .book-page-header {
-                    border-bottom-color: #cbd5e1;
-                }
+                .theme-executive { --theme-accent: #b45309; }
+                .theme-executive .theme-accent-rule { background-color: #b45309 !important; }
+                .theme-executive .book-page-header { border-bottom-color: #cbd5e1; }
 
-                /* 2. Classic Literary (Charcoal & Crimson - Warm Bookish) */
-                .theme-classic {
-                    --theme-accent: #991b1b;
-                }
-                .theme-classic .page-sheet {
-                    background-color: #fdfbf7 !important;
-                }
-                .theme-classic .theme-accent-rule {
-                    background-color: #991b1b !important;
-                }
+                .theme-classic { --theme-accent: #991b1b; }
+                .theme-classic .page-sheet { background-color: #fdfbf7 !important; }
+                .theme-classic .theme-accent-rule { background-color: #991b1b !important; }
                 .theme-classic .cross-ref-badge {
                     border-color: #fca5a5 !important;
                     background-color: #fef2f2 !important;
                     color: #991b1b !important;
                 }
-
-                /* 3. Tech & Modern (Slate & Indigo - Startup) */
-                .theme-tech {
-                    --theme-accent: #4f46e5;
-                }
-                .theme-tech .theme-accent-rule {
-                    background-color: #4f46e5 !important;
-                }
-                .theme-tech .book-content-page h2 {
-                    letter-spacing: -0.025em;
+                .theme-classic .pull-quote-box {
+                    background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%) !important;
+                    border-left-color: #d97706 !important;
                 }
 
-                /* 4. Warm Minimal (Charcoal & Sage - Muted Elegance) */
-                .theme-minimal {
-                    --theme-accent: #059669;
+                .theme-tech { --theme-accent: #4f46e5; }
+                .theme-tech .theme-accent-rule { background-color: #4f46e5 !important; }
+                .theme-tech .book-content-page h2 { letter-spacing: -0.025em; }
+                .theme-tech .pull-quote-box {
+                    background: linear-gradient(135deg, #1e1b4b 0%, #3730a3 100%) !important;
+                    border-left-color: #38bdf8 !important;
                 }
-                .theme-minimal .theme-accent-rule {
-                    background-color: #059669 !important;
-                }
-                .theme-minimal .book-page-header {
-                    border-bottom-color: #f4f4f5;
+
+                .theme-minimal { --theme-accent: #059669; }
+                .theme-minimal .theme-accent-rule { background-color: #059669 !important; }
+                .theme-minimal .book-page-header { border-bottom-color: #f4f4f5; }
+                .theme-minimal .pull-quote-box {
+                    background: linear-gradient(135deg, #064e3b 0%, #047857 100%) !important;
+                    border-left-color: #34d399 !important;
                 }
 
                 /* Continuous Section & Box Flow Styles */
-                .war-story-box.box-split-next:not([data-title])::before {
-                    content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;
-                }
-                .case-study-box.box-split-next:not([data-title])::before {
-                    content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important;
-                }
-                .key-terms-box.box-split-next:not([data-title])::before {
-                    content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important;
-                }
-                .action-checklist.box-split-next:not([data-title])::before {
-                    content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important;
-                }
+                .war-story-box.box-split-next:not([data-title])::before { content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important; }
+                .case-study-box.box-split-next:not([data-title])::before { content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important; }
+                .key-terms-box.box-split-next:not([data-title])::before { content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important; }
+                .action-checklist.box-split-next:not([data-title])::before { content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important; }
                 .war-story-box[data-title]::before,
                 .case-study-box[data-title]::before,
                 .key-terms-box[data-title]::before,
@@ -2644,18 +2818,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     content: attr(data-title) !important;
                 }
 
-                .box-split-first {
-                    margin-bottom: 12px !important;
-                    border-bottom-style: dashed !important;
-                }
-                .box-split-next {
-                    margin-top: 12px !important;
-                    border-top-style: dashed !important;
-                }
+                .box-split-first { margin-bottom: 12px !important; border-bottom-style: dashed !important; }
+                .box-split-next { margin-top: 12px !important; border-top-style: dashed !important; }
                 .box-continuation-footer {
                     border-top: 1px dashed rgba(0, 0, 0, 0.15);
-                    margin-top: 12px;
-                    padding-top: 6px;
+                    margin-top: 10px;
+                    padding-top: 5px;
                     font-size: 0.75rem;
                     color: #64748b;
                     text-align: right;
@@ -2671,14 +2839,14 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 .book-body-content table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin: 14px 0;
-                    font-size: 0.9em;
-                    line-height: 1.5;
+                    margin: ${pageSize === 'a5' ? '10px 0' : '14px 0'};
+                    font-size: ${pageSize === 'a5' ? '0.84em' : '0.9em'};
+                    line-height: 1.48;
                 }
                 .book-body-content th,
                 .book-body-content td {
                     border: 1px solid #cbd5e1;
-                    padding: 7px 10px;
+                    padding: ${pageSize === 'a5' ? '5px 8px' : '7px 10px'};
                     text-align: left;
                     vertical-align: top;
                 }
@@ -2687,18 +2855,31 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     font-weight: 700;
                     color: #0f172a;
                 }
-                .book-body-content tr:nth-child(even) td {
-                    background-color: #f8fafc;
-                }
+                .book-body-content tr:nth-child(even) td { background-color: #f8fafc; }
+
+                ${pageSize === 'a5' ? [
+                    '.book-body-content .war-story-box, .book-body-content .case-study-box, .book-body-content .key-terms-box, .book-body-content .action-checklist { padding: 12px 15px !important; margin: 12px 0 !important; font-size: 0.90em !important; line-height: 1.54 !important; }',
+                    '.book-body-content .war-story-box::before, .book-body-content .case-study-box::before, .book-body-content .key-terms-box::before, .book-body-content .action-checklist::before { font-size: 0.86rem !important; margin-bottom: 8px !important; padding-bottom: 5px !important; }',
+                    '.book-body-content .war-story-box p, .book-body-content .case-study-box p, .book-body-content .key-terms-box p, .book-body-content .action-checklist p, .book-body-content .war-story-box li, .book-body-content .case-study-box li, .book-body-content .key-terms-box li, .book-body-content .action-checklist li { margin-bottom: 0.42em !important; line-height: 1.54 !important; }',
+                    '.book-body-content .diagram-box { padding: 12px 15px !important; margin: 12px 0 !important; font-size: 0.88em !important; }',
+                    '.book-body-content .diagram-box::before { font-size: 0.86rem !important; margin-bottom: 8px !important; padding-bottom: 5px !important; }',
+                    '.book-body-content .diagram-box .diagram-step { padding: 6px 10px !important; margin-bottom: 4px !important; line-height: 1.46 !important; }',
+                    '.book-body-content .diagram-box .diagram-arrow { margin: 2px 0 !important; font-size: 0.78rem !important; }',
+                    '.book-body-content .pull-quote-box { padding: 13px 16px !important; margin: 12px 0 !important; font-size: 0.92em !important; }',
+                    '.book-body-content blockquote { padding: 10px 14px !important; margin: 10px 0 !important; line-height: 1.55 !important; }'
+                ].join('\n') : ''}
+
+                .book-body-content blockquote p { text-indent: 0 !important; margin-bottom: 0.45em !important; }
+                .book-body-content blockquote p:last-child { margin-bottom: 0 !important; }
 
                 /* Constrain body images & figures so they never blow out page height */
                 .chapter-hero-img {
-                    max-height: 220px !important;
+                    max-height: ${pageSize === 'a5' ? '155px' : '220px'} !important;
                     object-fit: cover !important;
                 }
                 .book-body-content img,
                 .book-body-content figure img {
-                    max-height: 200px !important;
+                    max-height: ${pageSize === 'a5' ? '150px' : '200px'} !important;
                     width: auto !important;
                     max-width: 100% !important;
                     object-fit: contain !important;
@@ -2706,15 +2887,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     display: block !important;
                     border-radius: 8px;
                 }
-                .book-body-content figure {
-                    margin-top: 10px !important;
-                    margin-bottom: 10px !important;
-                }
+                .book-body-content figure { margin-top: 8px !important; margin-bottom: 8px !important; }
 
                 /* Print specific styling */
                 @media print {
                     @page {
-                        size: ${pageSize === 'a5' ? '148mm 210mm' : '210mm 297mm'};
+                        size: ${pageSize === 'a5' ? '148mm 210mm' : '210mm 297mm'} !important;
                         margin: 0 !important;
                     }
                     * {
@@ -2732,16 +2910,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
-                    .no-print, aside {
-                        display: none !important;
-                    }
-                    .chapter-hero-header {
-                        display: block !important;
-                    }
-                    .print-content {
-                        padding: 0 !important;
-                        overflow: visible !important;
-                    }
+                    .no-print, aside { display: none !important; }
+                    .chapter-hero-header { display: block !important; }
+                    .print-content { padding: 0 !important; overflow: visible !important; }
                     .book-page {
                         box-shadow: none !important;
                         border-radius: 0 !important;
@@ -2782,20 +2953,21 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     }
                     .book-cover.has-custom-cover {
                         padding: 0 !important;
+                        width: ${pageSize === 'a5' ? '148.25mm' : '210.25mm'} !important;
+                        max-width: none !important;
+                        height: ${pageSize === 'a5' ? '209.8mm' : '296.8mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '209.8mm' : '296.8mm'} !important;
+                        background-color: #060d1d !important;
                     }
-                    .break-inside-avoid, .diagram-box, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
+                    .break-inside-avoid, .diagram-box, .pull-quote-box, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
                         page-break-inside: avoid !important;
                     }
-                    .chapter-hero-img {
-                        max-height: 200px !important;
-                    }
+                    .chapter-hero-img { max-height: ${pageSize === 'a5' ? '155px' : '200px'} !important; }
                     .book-body-content img,
-                    .book-body-content figure img {
-                        max-height: 190px !important;
-                    }
+                    .book-body-content figure img { max-height: ${pageSize === 'a5' ? '150px' : '190px'} !important; }
                 }
-            `}</style>
+            ` }} />
         </div>
     )
 }

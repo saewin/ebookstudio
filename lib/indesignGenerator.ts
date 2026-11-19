@@ -103,9 +103,9 @@ export function stripHtmlToBlocks(rawHtml: string, chapterTitleToStrip?: string)
 
     const blocks: ParsedBlock[] = [];
 
-    // 1. Convert special callout & diagram containers (<div class="war-story-box|case-study-box|diagram-box|..." data-title="...">...</div>)
+    // 1. Convert special callout & diagram containers (<div class="war-story-box|case-study-box|diagram-box|pull-quote-box|..." data-title="...">...</div>)
     html = html.replace(
-        /<div\b([^>]*class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|diagram-box)[^'"]*['"][^>]*)>([\s\S]*?)<\/div>/gi,
+        /<div\b([^>]*class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|diagram-box|pull-quote-box)[^'"]*['"][^>]*)>([\s\S]*?)<\/div>/gi,
         (_m, attrs: string, inner: string) => {
             const titleMatch = attrs.match(/data-title=['"]([^'"]+)['"]/i);
             let boxTitle = titleMatch ? titleMatch[1] : 'กรอบข้อมูลสำคัญ (Executive Insight)';
@@ -113,6 +113,7 @@ export function stripHtmlToBlocks(rawHtml: string, chapterTitleToStrip?: string)
             if (/case-study-box/i.test(attrs) && !titleMatch) boxTitle = 'กรณีศึกษาและงานวิจัยรองรับ (Case Study)';
             if (/action-checklist/i.test(attrs) && !titleMatch) boxTitle = 'เช็กลิสต์ปฏิบัติการทันที (Action Checklist)';
             if (/diagram-box/i.test(attrs) && !titleMatch) boxTitle = 'แผนภาพโครงสร้างระบบ (Architecture Diagram)';
+            if (/pull-quote-box/i.test(attrs) && !titleMatch) boxTitle = 'ประโยคทองประจำบท (Key Insight)';
 
             const innerLines = inner
                 .replace(/<\/(p|li|h[1-6]|div)>/gi, '$&\n')
