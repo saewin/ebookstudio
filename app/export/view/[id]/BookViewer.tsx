@@ -94,14 +94,14 @@ function getDirectImageUrl(url?: string | null): string {
 // Clean duplicate chapter numbering from title if already present
 function cleanChapterTitle(title: string): string {
     if (!title) return '';
-    const cleaned = title.replace(/^(บทที่\s*\d+|บทนำ|Chapter\s*\d+|Introduction)[:\s.-]*/i, '').trim();
+    const cleaned = title.replace(/^(บทที่\s*\d+|คำนำ|บทนำ|Chapter\s*\d+|Introduction|Preface|Foreword)[:\s.-]*/i, '').trim();
     if (!cleaned) return title.trim();
     return cleaned;
 }
 
-// Format Thai Numbers if desired, or standard numbers
+// Format chapter label for badges and TOC
 function formatChapterLabel(chapterNo: number): string {
-    if (chapterNo === 0) return 'บทนำ';
+    if (chapterNo === 0) return 'คำนำ';
     return `บทที่ ${chapterNo}`;
 }
 
@@ -109,113 +109,280 @@ function formatChapterLabel(chapterNo: number): string {
 function getFullChapterHeader(chapterNo: number, title: string): string {
     const clean = cleanChapterTitle(title);
     if (chapterNo === 0) {
-        if (!clean || clean === 'บทนำ' || clean === '(Introduction)') {
-            return 'บทนำ (Introduction)';
+        if (!clean || clean === 'คำนำ' || clean === 'บทนำ' || clean === '(Introduction)') {
+            return 'คำนำ (Preface)';
         }
-        return `บทนำ: ${clean}`;
+        return `คำนำ: ${clean}`;
     }
     return `บทที่ ${chapterNo}: ${clean || title}`;
 }
 
-// Helper to extract blocks keeping HTML containers atomic and splitting markdown by double newlines
+// Measure visible plain-text length excluding HTML tags and Markdown markers
+function getVisibleTextLength(html: string): number {
+    if (!html) return 0;
+    return html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&[a-z]+;/gi, ' ')
+        .replace(/\*\*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim().length;
+}
+
+// Helper to extract blocks keeping HTML containers (even with nested divs) atomic while isolating headings, lists, and tables
 function extractBlocks(text: string): string[] {
     if (!text || !text.trim()) return [];
-    // Ensure block closing tags are followed by double newlines so each paragraph is an independent block
-    // Also ensure <hr> and --- horizontal rules are isolated as distinct blocks
     const normalized = text
-        .replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote)>)\s*(?=<)/gi, '$1\n\n')
+        .replace(/(<\/(?:p|h[1-6]|ul|ol|blockquote|table|figure)>)\s*(?=<)/gi, '$1\n\n')
         .replace(/(<hr\s*\/?>|(?:\r?\n)\s*---\s*(?:\r?\n))/gi, '\n\n$1\n\n');
-    const containerRegex = /(<div\b[^>]*>[\s\S]*?<\/div>|<table\b[^>]*>[\s\S]*?<\/table>|<figure\b[^>]*>[\s\S]*?<\/figure>)/gi;
+
     const tokens: string[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = containerRegex.exec(normalized)) !== null) {
-        const textBefore = normalized.slice(lastIndex, match.index).trim();
-        if (textBefore) {
-            tokens.push(...textBefore.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+    const openRegex = /<(div|table|figure|ul|ol)\b[^>]*>/gi;
+    let cursor = 0;
+
+    while (cursor < normalized.length) {
+        openRegex.lastIndex = cursor;
+        const openMatch = openRegex.exec(normalized);
+        if (!openMatch) {
+            const tail = normalized.slice(cursor).trim();
+            if (tail) {
+                tokens.push(...tail.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+            }
+            break;
         }
-        tokens.push(match[0].trim());
-        lastIndex = match.index + match[0].length;
+
+        const before = normalized.slice(cursor, openMatch.index).trim();
+        if (before) {
+            tokens.push(...before.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+        }
+
+        const tagName = openMatch[1].toLowerCase();
+        const tagScanner = new RegExp(`<(/?)${tagName}\\b[^>]*>`, 'gi');
+        tagScanner.lastIndex = openMatch.index + openMatch[0].length;
+        let depth = 1;
+        let closeEnd = -1;
+        let tagMatch: RegExpExecArray | null;
+
+        while ((tagMatch = tagScanner.exec(normalized)) !== null) {
+            const isClosing = tagMatch[1] === '/';
+            const rawTag = tagMatch[0];
+            if (!isClosing && rawTag.endsWith('/>')) continue;
+            depth += isClosing ? -1 : 1;
+            if (depth === 0) {
+                closeEnd = tagMatch.index + rawTag.length;
+                break;
+            }
+        }
+
+        if (closeEnd === -1) {
+            const rest = normalized.slice(openMatch.index).trim();
+            if (rest) {
+                tokens.push(...rest.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
+            }
+            break;
+        }
+
+        tokens.push(normalized.slice(openMatch.index, closeEnd).trim());
+        cursor = closeEnd;
     }
-    const remainingText = normalized.slice(lastIndex).trim();
-    if (remainingText) {
-        tokens.push(...remainingText.split(/\n\n+/).map(p => p.trim()).filter(Boolean));
-    }
+
     return tokens;
 }
 
+// Split a large <ul> or <ol> list across page breaks cleanly
+function trySplitList(
+    listHtml: string,
+    remainingPx: number,
+    estimateItemPx: (itemHtml: string) => number
+): { part1: string; part2: string } | null {
+    if (remainingPx < 120) return null;
+    const match = listHtml.match(/^<(ul|ol)\b([^>]*)>([\s\S]*?)<\/\1>$/i);
+    if (!match) return null;
+    const tag = match[1].toLowerCase();
+    const attrs = match[2] || '';
+    const inner = match[3] || '';
+
+    const items = inner.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi);
+    if (!items || items.length < 3) return null;
+
+    let usedPx = 22; // container vertical margin
+    let splitIdx = -1;
+    for (let i = 0; i < items.length; i++) {
+        const itemPx = estimateItemPx(items[i]);
+        if (usedPx + itemPx <= remainingPx) {
+            usedPx += itemPx;
+        } else {
+            splitIdx = i;
+            break;
+        }
+    }
+
+    // Require at least 2 items (or 1 tall item) on current page and >= 1 on next page
+    if (splitIdx < 1 || splitIdx >= items.length) return null;
+    if (splitIdx === 1 && usedPx < 130) return null;
+
+    const part1Items = items.slice(0, splitIdx).join('\n');
+    const part2Items = items.slice(splitIdx).join('\n');
+
+    let part2Attrs = attrs;
+    if (tag === 'ol') {
+        const startMatch = attrs.match(/\bstart=["']?(\d+)["']?/i);
+        const baseStart = startMatch ? parseInt(startMatch[1], 10) : 1;
+        const nextStart = baseStart + splitIdx;
+        if (startMatch) {
+            part2Attrs = attrs.replace(/\bstart=["']?\d+["']?/i, `start="${nextStart}"`);
+        } else {
+            part2Attrs = `${attrs} start="${nextStart}"`;
+        }
+    }
+
+    return {
+        part1: `<${tag}${attrs}>\n${part1Items}\n</${tag}>`,
+        part2: `<${tag}${part2Attrs}>\n${part2Items}\n</${tag}>`,
+    };
+}
+
+// Split a large <table> across page breaks cleanly, repeating <thead> on the continuation page
+function trySplitTable(
+    tableHtml: string,
+    remainingPx: number,
+    estimateRowPx: (rowHtml: string) => number
+): { part1: string; part2: string } | null {
+    if (remainingPx < 180) return null;
+    const tableMatch = tableHtml.match(/^<table\b([^>]*)>([\s\S]*?)<\/table>$/i);
+    if (!tableMatch) return null;
+    const tableAttrs = tableMatch[1] || '';
+    const inner = tableMatch[2] || '';
+
+    const theadMatch = inner.match(/<thead\b[^>]*>[\s\S]*?<\/thead>/i);
+    const tbodyMatch = inner.match(/<tbody\b([^>]*)>([\s\S]*?)<\/tbody>/i);
+
+    let theadHtml = theadMatch ? theadMatch[0] : '';
+    let bodyInner = tbodyMatch ? tbodyMatch[2] : inner.replace(theadHtml, '');
+    const tbodyAttrs = tbodyMatch ? tbodyMatch[1] : '';
+
+    const allRows = bodyInner.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi);
+    if (!allRows || allRows.length < 4) return null;
+
+    // If no explicit <thead>, treat first row with <th> as header
+    let dataRows: string[] = Array.from(allRows);
+    if (!theadHtml && /<th\b/i.test(allRows[0])) {
+        theadHtml = `<thead>${allRows[0]}</thead>`;
+        dataRows = allRows.slice(1);
+    }
+    if (dataRows.length < 3) return null;
+
+    const headerPx = theadHtml ? estimateRowPx(theadHtml) + 12 : 16;
+    let usedPx = 24 + headerPx;
+    let splitIdx = -1;
+
+    for (let i = 0; i < dataRows.length; i++) {
+        const rowPx = estimateRowPx(dataRows[i]);
+        if (usedPx + rowPx <= remainingPx) {
+            usedPx += rowPx;
+        } else {
+            splitIdx = i;
+            break;
+        }
+    }
+
+    if (splitIdx < 2 || splitIdx >= dataRows.length) return null;
+
+    const part1Rows = dataRows.slice(0, splitIdx).join('\n');
+    const part2Rows = dataRows.slice(splitIdx).join('\n');
+
+    return {
+        part1: `<table${tableAttrs}>\n${theadHtml}\n<tbody${tbodyAttrs}>\n${part1Rows}\n</tbody>\n</table>`,
+        part2: `<table${tableAttrs}>\n${theadHtml}\n<tbody${tbodyAttrs}>\n${part2Rows}\n</tbody>\n</table>`,
+    };
+}
+
 // Split a large callout box across page breaks cleanly
-function trySplitBox(boxHtml: string, remainingBudget: number): {
-    part1: string;
-    part2: string;
-    part1Weight: number;
-    part2Weight: number;
-} | null {
-    // If remaining budget is less than 400 chars, it's better to push the whole box to the next page
-    if (remainingBudget < 400) return null;
+function trySplitBox(
+    boxHtml: string,
+    remainingPx: number,
+    estimateChildPx: (childHtml: string) => number
+): { part1: string; part2: string } | null {
+    if (remainingPx < 150) return null;
 
     const match = boxHtml.match(/^<div\b([^>]*)>([\s\S]*?)<\/div>$/i);
     if (!match) return null;
     const rawAttrs = match[1];
     const innerHtml = match[2].trim();
 
-    // Extract child elements: <p>...</p>, <ul>...</ul>, <ol>...</ol>, <blockquote>...</blockquote>
-    const childRegex = /(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<div\b[^>]*>[\s\S]*?<\/div>)/gi;
+    const childRegex = /(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>|<div\b[^>]*>[\s\S]*?<\/div>)/gi;
     const children = innerHtml.match(childRegex);
     if (!children || children.length <= 1) return null;
 
     const part1Children: string[] = [];
-    let part1Weight = 160; // container styling overhead
+    let usedPx = 92; // header bar + top/bottom padding + continuation footer
 
     let splitIndex = -1;
     for (let i = 0; i < children.length; i++) {
-        const childWeight = Math.round(children[i].length * 1.15);
-        if (part1Weight + childWeight <= remainingBudget) {
+        const childPx = estimateChildPx(children[i]);
+        if (usedPx + childPx <= remainingPx) {
             part1Children.push(children[i]);
-            part1Weight += childWeight;
+            usedPx += childPx;
         } else {
+            // Try splitting an oversized inner list inside the box if nothing or few items placed yet
+            if (/^<(ul|ol)\b/i.test(children[i]) && remainingPx - usedPx >= 110) {
+                const listSplit = trySplitList(children[i], remainingPx - usedPx, (li) => estimateChildPx(li));
+                if (listSplit) {
+                    part1Children.push(listSplit.part1);
+                    const restChildren = [listSplit.part2, ...children.slice(i + 1)];
+                    return buildSplitBoxResult(rawAttrs, part1Children, restChildren);
+                }
+            }
             splitIndex = i;
             break;
         }
     }
 
-    // Must have at least 1 child element in Part 1 and at least 1 remaining for Part 2
     if (part1Children.length === 0 || splitIndex === -1 || splitIndex >= children.length) {
         return null;
     }
 
-    const part2Children = children.slice(splitIndex);
-
-    // Prepare attributes for continuous rendering
-    const classMatch = rawAttrs.match(/class="([^"]*)"/i);
-    const existingClass = classMatch ? classMatch[1] : '';
-    const titleMatch = rawAttrs.match(/data-title="([^"]*)"/i);
-    const title = titleMatch ? titleMatch[1] : '';
-
-    const part1Attrs = rawAttrs.replace(/class="[^"]*"/i, `class="${existingClass} box-split-first"`);
-    const part2Attrs = rawAttrs
-        .replace(/class="[^"]*"/i, `class="${existingClass} box-split-next"`)
-        .replace(/data-title="[^"]*"/i, `data-title="${title ? title + ' (ต่อ)' : 'ต่อจากหน้าก่อน'}"`);
-
-    const part1Html = `<div${part1Attrs}>\n${part1Children.join('\n')}\n<div class="box-continuation-footer">➥ (มีต่อหน้าถัดไป)</div>\n</div>`;
-    const part2Html = `<div${part2Attrs}>\n${part2Children.join('\n')}\n</div>`;
-
-    return {
-        part1: part1Html,
-        part2: part2Html,
-        part1Weight,
-        part2Weight: Math.round(part2Html.length * 1.15) + 160
-    };
+    return buildSplitBoxResult(rawAttrs, part1Children, children.slice(splitIndex));
 }
 
-// Smart, Content-Aware Pagination Engine for A4 & A5 Book Formats
+function buildSplitBoxResult(
+    rawAttrs: string,
+    part1Children: string[],
+    part2Children: string[]
+): { part1: string; part2: string } {
+    const classMatch = rawAttrs.match(/class=["']([^"']*)["']/i);
+    const existingClass = classMatch ? classMatch[1] : '';
+    const titleMatch = rawAttrs.match(/data-title=["']([^"']*)["']/i);
+    const title = titleMatch ? titleMatch[1] : '';
+
+    const part1Attrs = classMatch
+        ? rawAttrs.replace(/class=["'][^"']*["']/i, `class="${existingClass} box-split-first"`)
+        : `${rawAttrs} class="box-split-first"`;
+
+    let part2Attrs = classMatch
+        ? rawAttrs.replace(/class=["'][^"']*["']/i, `class="${existingClass} box-split-next"`)
+        : `${rawAttrs} class="box-split-next"`;
+
+    if (titleMatch) {
+        const nextTitle = title.includes('(ต่อ') ? title : `${title} (ต่อจากหน้าก่อน)`;
+        part2Attrs = part2Attrs.replace(/data-title=["'][^"']*["']/i, `data-title="${nextTitle}"`);
+    }
+
+    const part1Html = `<div${part1Attrs}>\n${part1Children.join('\n')}\n<div class="box-continuation-footer">➥ (อ่านต่อหน้าถัดไป)</div>\n</div>`;
+    const part2Html = `<div${part2Attrs}>\n${part2Children.join('\n')}\n</div>`;
+
+    return { part1: part1Html, part2: part2Html };
+}
+
+// Physical Pixel-Height-Calibrated Pagination Engine for A4 & A5 Book Formats
 function paginateChapterContent({
     content,
     pageSize = 'a4',
     fontSize = 'base',
     hasImage = false,
     cleanTitle = '',
-    chapterNo
+    chapterNo,
+    endCardsHeightPx = 0
 }: {
     content?: string;
     pageSize: 'a4' | 'a5';
@@ -223,172 +390,225 @@ function paginateChapterContent({
     hasImage?: boolean;
     cleanTitle?: string;
     chapterNo?: number;
+    endCardsHeightPx?: number;
 }): string[] {
     if (!content || !content.trim()) return [];
 
-    let cleaned = cleanContentBody(content, cleanTitle, chapterNo);
+    const cleaned = cleanContentBody(content, cleanTitle, chapterNo);
     if (!cleaned) return [];
 
-    // Explicit author pagebreaks: e.g. <!-- pagebreak -->, <!-- page-break -->, or <div class="page-break"></div>
     const hardSections = cleaned.split(/<!--\s*page-?break\s*-->|<div[^>]*class="[^"]*page-break[^"]*"[^>]*><\/div>/i);
 
-    // Calibrated weight and capacity configurations strictly matching physical A4 & A5 dimensions:
-    // A4 (210x297mm): Printable text area accommodates ~1,850 characters max without spillover
-    // A5 (148x210mm): Printable text area accommodates ~1,000 characters max without spillover
-    const fontMultiplier = fontSize === 'sm' ? 1.2 : (fontSize === 'lg' ? 0.85 : 1.0);
-    const baseBudget = pageSize === 'a4' ? 1850 : 1000;
-    const normalBudget = Math.round(baseBudget * fontMultiplier);
-    const firstPageBase = pageSize === 'a4' ? 1650 : 900;
-    const imagePenalty = hasImage ? (pageSize === 'a4' ? 450 : 250) : 0;
-    const firstPageBudget = Math.round(Math.max(450, (firstPageBase - imagePenalty) * fontMultiplier));
+    // Physical page dimensions matching @media print CSS:
+    // A4 (210x296.5mm, pad 14mm 18mm): body box ~657px wide x ~915px tall (safe fill = 875px)
+    // A5 (148x209.5mm, pad 10mm 12mm): body box ~468px wide x ~635px tall (safe fill = 605px)
+    const normalBudgetPx = pageSize === 'a4' ? 875 : 605;
+    const heroHeaderPx = pageSize === 'a4' ? 98 : 82;
+    const heroImagePx = hasImage ? (pageSize === 'a4' ? 235 : 175) : 0;
+    const firstPageBudgetPx = Math.max(260, normalBudgetPx - heroHeaderPx - heroImagePx);
 
-    function getBlockWeight(block: string): number {
-        // Inline Images & Figures (constrained to max-h 200px in CSS): ~240px total = ~650 chars equiv
-        if (/<(?:img|figure)\b/i.test(block)) {
-            return pageSize === 'a4' ? 650 : 400;
+    const fontPx = fontSize === 'sm' ? 14 : (fontSize === 'lg' ? 18 : 16);
+    const lineHeightPx = fontSize === 'sm' ? 23.5 : (fontSize === 'lg' ? 32.5 : 27.5);
+    const bodyWidthPx = pageSize === 'a4' ? 657 : 468;
+    // Average Thai character glyph advance width at sarabun ~0.465 * fontPx; leave ~8% slack for English tokens/wrapping
+    const charsPerLine = Math.max(30, Math.floor(bodyWidthPx / (fontPx * 0.50)));
+
+    function estimateTextBlockPx(html: string, effectiveCharsPerLine: number, extraMarginPx: number): number {
+        const visLen = getVisibleTextLength(html);
+        if (visLen === 0) return 0;
+        const lines = Math.max(1, Math.ceil(visLen / effectiveCharsPerLine));
+        return lines * lineHeightPx + extraMarginPx;
+    }
+
+    function estimateRowPx(rowHtml: string): number {
+        const cells = rowHtml.match(/<t[hd]\b[^>]*>[\s\S]*?<\/t[hd]>/gi) || [rowHtml];
+        const colCount = Math.max(1, cells.length);
+        const colChars = Math.max(10, Math.floor((charsPerLine - colCount * 2) / colCount));
+        let maxLines = 1;
+        for (const c of cells) {
+            const cLen = getVisibleTextLength(c);
+            const cLines = Math.max(1, Math.ceil(cLen / colChars));
+            if (cLines > maxLines) maxLines = cLines;
         }
-        // Special Callout Boxes (War Story, Case Study, Key Terms, Action Checklist)
-        if (/<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block)) {
-            return Math.round(block.length * 1.15) + 200;
+        return maxLines * (lineHeightPx * 0.85) + 18;
+    }
+
+    function getBlockHeightPx(block: string): number {
+        const trimmed = block.trim();
+        if (!trimmed) return 0;
+        if (/^<(?:hr\s*\/?>)|^---$/i.test(trimmed)) return 36;
+        if (/<(?:img|figure)\b/i.test(trimmed) && !/<div\b/i.test(trimmed)) {
+            return pageSize === 'a4' ? 238 : 185;
         }
-        // Headings take vertical spacing, larger font and margin
-        if (/^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim())) {
-            return 200;
+        if (/^(?:<h1\b|#\s+|<h2\b|##\s+)/i.test(trimmed)) {
+            const visLen = getVisibleTextLength(trimmed.replace(/^#{1,2}\s+/, ''));
+            const lines = Math.max(1, Math.ceil(visLen / Math.max(22, charsPerLine * 0.68)));
+            return lines * (fontPx * 1.6) + 28;
         }
-        // Lists have item line wraps & margins
-        if (/<(?:ul|ol)\b/i.test(block)) {
-            const items = (block.match(/<li\b/gi) || []).length;
-            return block.length + items * 45;
+        if (/^(?:<h[3-6]\b|#{3,6}\s+)/i.test(trimmed)) {
+            const visLen = getVisibleTextLength(trimmed.replace(/^#{3,6}\s+/, ''));
+            const lines = Math.max(1, Math.ceil(visLen / Math.max(26, charsPerLine * 0.8)));
+            return lines * (fontPx * 1.45) + 22;
         }
-        // Horizontal divider line (<hr> or ---)
-        if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
-            return 80;
+        if (/^<table\b/i.test(trimmed)) {
+            const rows = trimmed.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [];
+            const rowSum = rows.reduce((acc, r) => acc + estimateRowPx(r), 0);
+            return rowSum + 24;
         }
-        return block.length;
+        if (/^<(ul|ol)\b/i.test(trimmed)) {
+            const items = trimmed.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) || [trimmed];
+            return items.reduce((acc, li) => acc + estimateTextBlockPx(li, charsPerLine - 5, 7), 0) + 18;
+        }
+        if (/^<div\b[^>]*class="[^"]*(?:box|checklist|diagram-box)[^"]*"/i.test(trimmed)) {
+            const inner = trimmed.replace(/^<div\b[^>]*>|<\/div>$/gi, '');
+            const children = inner.match(/(<p\b[^>]*>[\s\S]*?<\/p>|<ul\b[^>]*>[\s\S]*?<\/ul>|<ol\b[^>]*>[\s\S]*?<\/ol>|<li\b[^>]*>[\s\S]*?<\/li>|<blockquote\b[^>]*>[\s\S]*?<\/blockquote>|<div\b[^>]*>[\s\S]*?<\/div>)/gi);
+            if (children && children.length > 0) {
+                const innerPx = children.reduce((acc, ch) => {
+                    if (/^<(ul|ol)\b/i.test(ch)) {
+                        const lis = ch.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) || [ch];
+                        return acc + lis.reduce((a, l) => a + estimateTextBlockPx(l, charsPerLine - 10, 6), 0) + 10;
+                    }
+                    return acc + estimateTextBlockPx(ch, charsPerLine - 8, 10);
+                }, 0);
+                return innerPx + 74;
+            }
+            return estimateTextBlockPx(trimmed, charsPerLine - 8, 76);
+        }
+        if (/^<(blockquote)\b|^>\s+/i.test(trimmed)) {
+            return estimateTextBlockPx(trimmed, charsPerLine - 6, 36);
+        }
+        // Standard paragraph (account for 2rem book indent ~4 chars on first line)
+        return estimateTextBlockPx(trimmed, charsPerLine, 14);
     }
 
     const finalPages: string[] = [];
+    const finalPageWeights: number[] = [];
 
     hardSections.forEach((section) => {
         const secTrimmed = section.trim();
         if (!secTrimmed) return;
 
         const rawBlocks = extractBlocks(secTrimmed);
-
-        // Decompose oversized plain text blocks (e.g. copied text without paragraph breaks)
-        const normalizedBlocks: string[] = [];
-        for (const b of rawBlocks) {
-            if (b.length > normalBudget && !b.startsWith('<table') && !b.startsWith('<div')) {
-                let rem = b;
-                const chunkLimit = Math.round(normalBudget * 0.7);
-                while (rem.length > chunkLimit) {
-                    const search = rem.slice(Math.round(chunkLimit * 0.6), chunkLimit);
-                    const match = search.match(/(?:\. |\? |! |\n|[\s\u200B])(?!.*(?:\. |\? |! |\n|[\s\u200B]))/);
-                    let splitIdx = chunkLimit;
-                    if (match && match.index !== undefined) {
-                        splitIdx = Math.round(chunkLimit * 0.6) + match.index + match[0].length;
-                    }
-                    normalizedBlocks.push(rem.slice(0, splitIdx).trim());
-                    rem = rem.slice(splitIdx).trim();
-                }
-                if (rem.length > 0) normalizedBlocks.push(rem);
-            } else {
-                normalizedBlocks.push(b);
-            }
-        }
-        const blocksQueue = normalizedBlocks.filter(b => b.length > 0);
+        const blocksQueue = rawBlocks.filter(b => b.length > 0);
 
         let currentPageBlocks: string[] = [];
-        let currentWeight = 0;
+        let currentPx = 0;
         let isFirstPage = finalPages.length === 0;
+
+        const flushPage = () => {
+            if (currentPageBlocks.length > 0) {
+                finalPages.push(currentPageBlocks.join('\n\n'));
+                finalPageWeights.push(currentPx);
+                currentPageBlocks = [];
+                currentPx = 0;
+                isFirstPage = false;
+            }
+        };
 
         while (blocksQueue.length > 0) {
             const block = blocksQueue.shift()!;
-            const weight = getBlockWeight(block);
-            const targetBudget = isFirstPage ? firstPageBudget : normalBudget;
-            const remainingBudget = targetBudget - currentWeight;
+            const blockPx = getBlockHeightPx(block);
+            const targetBudget = isFirstPage ? firstPageBudgetPx : normalBudgetPx;
+            const remainingPx = targetBudget - currentPx;
 
             // Handle horizontal divider (<hr> or ---)
             if (/^(?:<hr\s*\/?>|---)$/i.test(block.trim())) {
-                // If page is already significantly filled (>= 65%), naturally break to fresh page
-                if (currentWeight >= targetBudget * 0.65) {
-                    if (currentPageBlocks.length > 0) {
-                        finalPages.push(currentPageBlocks.join('\n\n'));
-                        currentPageBlocks = [];
-                        currentWeight = 0;
-                        isFirstPage = false;
-                    }
-                    continue; // Skip divider tag itself when breaking page
+                if (currentPx >= targetBudget * 0.7) {
+                    flushPage();
+                    continue;
                 } else {
-                    // Page still has ample room: retain as inline decorative divider
                     currentPageBlocks.push('<hr />');
-                    currentWeight += weight;
+                    currentPx += blockPx;
                     continue;
                 }
             }
 
-            // Heading attachment guard: If current page ONLY contains headings, NEVER push page break!
+            // Heading attachment guard: never break when page only has headings so far
             const hasOnlyHeadings = currentPageBlocks.length > 0 && currentPageBlocks.every(b => /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(b.trim()));
-
             if (hasOnlyHeadings) {
                 currentPageBlocks.push(block);
-                currentWeight += weight;
+                currentPx += blockPx;
                 continue;
             }
 
-            // Strict budget adherence: never allow spillover past target physical page budget
-            if (currentWeight + weight <= targetBudget) {
+            // Keep headings together with at least ~90px of following body content
+            const isHeading = /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(block.trim());
+            const effectiveNeeded = isHeading ? blockPx + 95 : blockPx;
+
+            if (currentPx + effectiveNeeded <= targetBudget) {
                 currentPageBlocks.push(block);
-                currentWeight += weight;
+                currentPx += blockPx;
+                continue;
+            }
+
+            // Try splitting oversized blocks cleanly so the bottom of the page isn't left half-blank
+            let splitResult: { part1: string; part2: string } | null = null;
+            const isBox = /^<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block) && !/diagram-box/i.test(block);
+            if (isBox && remainingPx >= 165) {
+                splitResult = trySplitBox(block, remainingPx, (ch) => getBlockHeightPx(ch));
+            } else if (/^<(ul|ol)\b/i.test(block.trim()) && remainingPx >= 120) {
+                splitResult = trySplitList(block.trim(), remainingPx, (li) => estimateTextBlockPx(li, charsPerLine - 5, 7));
+            } else if (/^<table\b/i.test(block.trim()) && remainingPx >= 190) {
+                splitResult = trySplitTable(block.trim(), remainingPx, estimateRowPx);
+            }
+
+            if (splitResult) {
+                currentPageBlocks.push(splitResult.part1);
+                currentPx += getBlockHeightPx(splitResult.part1);
+                flushPage();
+                blocksQueue.unshift(splitResult.part2);
+                continue;
+            }
+
+            // Cannot split and doesn't fit cleanly
+            if (currentPageBlocks.length === 0) {
+                // Single block taller than an entire page — place on page so we always advance
+                currentPageBlocks.push(block);
+                currentPx += blockPx;
+                flushPage();
             } else {
-                // Block does not fit in remaining space. Can we split it if it's a Callout Box?
-                const isBox = /<div\b[^>]*class="[^"]*(?:box|checklist)[^"]*"/i.test(block);
-                let splitResult = null;
-                if (isBox && currentPageBlocks.length > 0 && remainingBudget >= 350) {
-                    splitResult = trySplitBox(block, remainingBudget);
+                blocksQueue.unshift(block);
+                // Keep-with-next: pull trailing heading(s) off bottom of page
+                while (
+                    currentPageBlocks.length > 1 &&
+                    /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(currentPageBlocks[currentPageBlocks.length - 1].trim())
+                ) {
+                    const pulledHeading = currentPageBlocks.pop()!;
+                    currentPx -= getBlockHeightPx(pulledHeading);
+                    blocksQueue.unshift(pulledHeading);
                 }
-
-                if (splitResult) {
-                    // Split box: Put Part 1 on current page, close page, queue Part 2 for next page
-                    currentPageBlocks.push(splitResult.part1);
-                    finalPages.push(currentPageBlocks.join('\n\n'));
-                    currentPageBlocks = [];
-                    currentWeight = 0;
-                    isFirstPage = false;
-                    blocksQueue.unshift(splitResult.part2);
-                } else {
-                    // Cannot or shouldn't split: put block back at the front of queue
-                    blocksQueue.unshift(block);
-
-                    // Keep-with-next: If the current page ends with a heading, DO NOT leave it alone at the bottom!
-                    // Pull it back into blocksQueue so it moves to the top of the next page with its content!
-                    while (
-                        currentPageBlocks.length > 1 &&
-                        /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(currentPageBlocks[currentPageBlocks.length - 1].trim())
-                    ) {
-                        const pulledHeading = currentPageBlocks.pop()!;
-                        blocksQueue.unshift(pulledHeading);
-                    }
-
-                    if (currentPageBlocks.length > 0) {
-                        finalPages.push(currentPageBlocks.join('\n\n'));
-                        currentPageBlocks = [];
-                        currentWeight = 0;
-                        isFirstPage = false;
-                    } else {
-                        // Edge case: single block exceeds entire page budget
-                        const huge = blocksQueue.shift()!;
-                        currentPageBlocks.push(huge);
-                        currentWeight += getBlockWeight(huge);
-                    }
-                }
+                flushPage();
             }
         }
 
-        if (currentPageBlocks.length > 0) {
-            finalPages.push(currentPageBlocks.join('\n\n'));
-        }
+        flushPage();
     });
+
+    // Guard against end-of-chapter Key Terminology & Key Takeaways cards overflowing the last page
+    if (finalPages.length > 0 && endCardsHeightPx > 0) {
+        const lastIdx = finalPages.length - 1;
+        const lastBudget = lastIdx === 0 ? firstPageBudgetPx : normalBudgetPx;
+        if (finalPageWeights[lastIdx] + endCardsHeightPx > lastBudget) {
+            const blocksOnLast = finalPages[lastIdx].split('\n\n');
+            if (blocksOnLast.length > 1) {
+                const movedBlocks = [blocksOnLast.pop()!];
+                while (
+                    blocksOnLast.length > 1 &&
+                    /^(?:<h[1-6]\b|#{1,6}\s+)/i.test(blocksOnLast[blocksOnLast.length - 1].trim())
+                ) {
+                    movedBlocks.unshift(blocksOnLast.pop()!);
+                }
+                if (blocksOnLast.length > 0) {
+                    finalPages[lastIdx] = blocksOnLast.join('\n\n');
+                    finalPages.push(movedBlocks.join('\n\n'));
+                } else {
+                    finalPages.push('');
+                }
+            } else {
+                finalPages.push('');
+            }
+        }
+    }
 
     return finalPages.length > 0 ? finalPages : [cleaned];
 }
@@ -404,11 +624,15 @@ function cleanContentBody(content?: string, cleanTitle?: string, chapterNo?: num
         return `src=${quote}/api/uploads/${encodedFile}${quote}`;
     });
 
-    // If content starts with an H1-H4 heading repeating the title or "บทที่ X"
-    if (cleanTitle) {
-        const escaped = cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // If content starts with an H1-H4 heading repeating the title or "บทที่ X" or "คำนำ"
+    if (cleanTitle || chapterNo === 0) {
+        const escaped = cleanTitle ? cleanTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+        const prefixRegex = chapterNo === 0
+            ? `(?:บทที่\\s*\\d+[:\\s.-]*|คำนำ[:\\s.-]*|บทนำ[:\\s.-]*)?`
+            : `(?:บทที่\\s*\\d+[:\\s.-]*|${chapterNo}\\.?\\s*)?`;
+        const titlePart = escaped ? `(?:${escaped})?` : '';
         const pattern = new RegExp(
-            `^(?:<h[1-4][^>]*>\\s*(?:บทที่\\s*\\d+[:\\s.-]*|${chapterNo}\\.?\\s*)?(?:${escaped})?\\s*<\\/h[1-4]>|#{1,4}\\s+(?:บทที่\\s*\\d+[:\\s.-]*|${chapterNo}\\.?\\s*)?(?:${escaped})?)\\s*\\n*`,
+            `^(?:<h[1-4][^>]*>\\s*${prefixRegex}${titlePart}\\s*<\\/h[1-4]>|#{1,4}\\s+${prefixRegex}${titlePart})\\s*\\n*`,
             'i'
         );
         cleaned = cleaned.replace(pattern, '').trim();
@@ -446,16 +670,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [dontShowPrintModalAgain, setDontShowPrintModalAgain] = useState(false);
 
     // Front and Back Cover Custom Images (Stored on persistent VPS storage & localStorage)
-    const [frontCoverUrl, setFrontCoverUrl] = useState<string | null>(null);
-    const [backCoverUrl, setBackCoverUrl] = useState<string | null>(null);
+    const [frontCoverUrl, setFrontCoverUrl] = useState<string | null>(project?.coverImageUrl || null);
+    const [backCoverUrl, setBackCoverUrl] = useState<string | null>(project?.backCoverUrl || null);
     const [isUploadingFrontCover, setIsUploadingFrontCover] = useState(false);
     const [isUploadingBackCover, setIsUploadingBackCover] = useState(false);
     const [showCoverManagerModal, setShowCoverManagerModal] = useState(false);
 
     // Chapters local reactive state
-    const [localChapters, setLocalChapters] = useState<Chapter[]>(chapters);
+    const [localChapters, setLocalChapters] = useState<Chapter[]>(() =>
+        [...chapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0))
+    );
     useEffect(() => {
-        setLocalChapters(chapters);
+        setLocalChapters([...chapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0)));
     }, [chapters]);
 
     // EPUB & Adobe InDesign Exporter state
@@ -473,11 +699,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [showQuickEditModal, setShowQuickEditModal] = useState(false);
 
     // Book Design Theme & Preset
-    const [themePreset, setThemePreset] = useState<'executive' | 'classic' | 'tech' | 'minimal'>('executive');
+    const initialTheme = project?.extraInfo?.themePreset && ['executive', 'classic', 'tech', 'minimal'].includes(project.extraInfo.themePreset)
+        ? (project.extraInfo.themePreset as 'executive' | 'classic' | 'tech' | 'minimal')
+        : 'executive';
+    const [themePreset, setThemePreset] = useState<'executive' | 'classic' | 'tech' | 'minimal'>(initialTheme);
 
     // Copyright & CIP Page Customization
-    const [copyrightSettings, setCopyrightSettings] = useState<CopyrightSettings>(DEFAULT_COPYRIGHT_SETTINGS);
-    const [draftCopyright, setDraftCopyright] = useState<CopyrightSettings>(DEFAULT_COPYRIGHT_SETTINGS);
+    const initialCopyright: CopyrightSettings = {
+        ...DEFAULT_COPYRIGHT_SETTINGS,
+        ...(project?.extraInfo?.copyright || {}),
+    };
+    const [copyrightSettings, setCopyrightSettings] = useState<CopyrightSettings>(initialCopyright);
+    const [draftCopyright, setDraftCopyright] = useState<CopyrightSettings>(initialCopyright);
     const [showCopyrightModal, setShowCopyrightModal] = useState(false);
     const [isSavingCopyright, setIsSavingCopyright] = useState(false);
 
@@ -748,7 +981,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             pageNumber: number;
         }> = [];
 
-        localChapters.forEach((chap) => {
+        const sortedChapters = [...localChapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0));
+
+        sortedChapters.forEach((chap) => {
             const cleanTitle = cleanChapterTitle(chap.title);
             const fullHeader = getFullChapterHeader(chap.chapterNo, chap.title);
             const directImgUrl = getDirectImageUrl(chap.image1Url || chap.chapterImage);
@@ -762,13 +997,20 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 pageNumber: currentPage,
             });
 
+            const hasTerms = Boolean(chap.keyTerminology && chap.keyTerminology.trim());
+            const hasTakeaways = Boolean(chap.keyTakeaways && chap.keyTakeaways.trim());
+            const termsPx = hasTerms ? Math.max(105, Math.ceil(getVisibleTextLength(chap.keyTerminology!) / 65) * 21 + 64) : 0;
+            const takeawaysPx = hasTakeaways ? Math.max(115, Math.ceil(getVisibleTextLength(chap.keyTakeaways!) / 65) * 21 + 68) : 0;
+            const endCardsHeightPx = (hasTerms || hasTakeaways) ? (termsPx + takeawaysPx + 36) : 32;
+
             const sections = paginateChapterContent({
                 content: chap.content,
                 pageSize,
                 fontSize,
                 hasImage: !!directImgUrl,
                 cleanTitle,
-                chapterNo: chap.chapterNo
+                chapterNo: chap.chapterNo,
+                endCardsHeightPx,
             });
 
             if (sections.length === 0) {
@@ -1154,7 +1396,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             </header>
 
             {/* Book Pages Container */}
-            <main className={`book-viewer-main theme-${themePreset} flex-1 overflow-y-auto py-8 px-4 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible`}>
+            <main className={`book-viewer-main theme-${themePreset} ${fontClass} flex-1 overflow-y-auto py-8 px-4 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible`}>
                 
                 {/* 1. FRONT COVER PAGE (Page 1) */}
                 <div 
@@ -1228,7 +1470,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         />
                                     </label>
                                 </div>
-                                <p className="text-xs text-slate-400 tracking-[0.3em] uppercase">Saewin</p>
+                                <p className="text-xs text-slate-400 tracking-[0.25em] uppercase">{copyrightSettings.publisher || 'Saewin Publishing'}</p>
                             </div>
 
                             {/* Center Title & Subtitle */}
@@ -1246,10 +1488,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="relative z-10 pb-12 md:pb-16 px-8 md:px-12 text-center">
                                 <div className="w-16 h-px bg-slate-700 mx-auto mb-4" />
                                 <p className="text-sm font-medium text-slate-200 tracking-wider">
-                                    เรียบเรียงโดย Saewin
+                                    เรียบเรียงโดย {copyrightSettings.author || 'Saewin'}
                                 </p>
                                 <p className="text-xs text-slate-500 mt-1">
-                                    BANGKOK • 2026
+                                    BANGKOK • {copyrightSettings.pubYear?.match(/\d{4}/)?.[0] || '2026'}
                                 </p>
                             </div>
                         </>
@@ -1374,7 +1616,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
                             <span>{copyrightSettings.publisher || 'Ebook Creator Studio'}</span>
                             <span className="text-slate-400 font-serif">❖</span>
-                            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                            <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                                 หน้า 2
                             </span>
                         </div>
@@ -1396,21 +1638,20 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3 theme-accent-rule" />
                         </div>
 
-                        <div className="space-y-3.5 max-w-xl mx-auto w-full">
+                        <div className="space-y-2.5 max-w-2xl mx-auto w-full">
                             {tableOfContents.map((item) => (
                                 <a
                                     key={item.id}
                                     href={`#chapter-${item.id}`}
-                                    className="group flex items-baseline justify-between text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer"
+                                    className="group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors py-1 border-b border-dotted border-slate-200 cursor-pointer"
                                 >
-                                    <span className="font-bold text-sm md:text-base shrink-0 group-hover:text-blue-600">
+                                    <span className="font-bold text-sm shrink-0 text-blue-800 group-hover:text-blue-600 whitespace-nowrap min-w-[68px]">
                                         {formatChapterLabel(item.chapterNo)}:
                                     </span>
-                                    <span className="text-sm md:text-base font-medium truncate mx-2 text-slate-800 group-hover:text-blue-600">
+                                    <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug">
                                         {item.title}
                                     </span>
-                                    <span className="flex-1 border-b border-dotted border-slate-300 mx-1 mb-1" />
-                                    <span className="font-mono text-xs md:text-sm font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
+                                    <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
                                         {item.pageNumber}
                                     </span>
                                 </a>
@@ -1419,16 +1660,15 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             {/* Entry for About the Author */}
                             <a
                                 href="#about-author"
-                                className="group flex items-baseline justify-between text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer pt-3 border-t border-slate-200 mt-2"
+                                className="group flex items-baseline justify-between gap-2 text-slate-700 hover:text-blue-600 transition-colors py-1 cursor-pointer pt-2.5 border-t border-slate-300 mt-2"
                             >
-                                <span className="font-bold text-sm md:text-base shrink-0 group-hover:text-blue-600">
+                                <span className="font-bold text-sm shrink-0 text-slate-700 group-hover:text-blue-600 min-w-[54px]">
                                     ภาคผนวก:
                                 </span>
-                                <span className="text-sm md:text-base font-medium truncate mx-2 text-slate-800 group-hover:text-blue-600">
+                                <span className="text-sm font-medium text-slate-800 group-hover:text-blue-600 flex-1 leading-snug">
                                     เกี่ยวกับผู้เขียน (About the Author)
                                 </span>
-                                <span className="flex-1 border-b border-dotted border-slate-300 mx-1 mb-1" />
-                                <span className="font-mono text-xs md:text-sm font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
+                                <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 px-2 py-0.5 rounded border border-slate-200 transition-colors shrink-0">
                                     {aboutAuthorPageNumber}
                                 </span>
                             </a>
@@ -1439,7 +1679,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     <div className="book-page-footer mt-auto pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-400 select-none">
                         <span>สารบัญ (Table of Contents)</span>
                         <span className="text-slate-400 font-serif">❖</span>
-                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                        <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                             หน้า {tocPageNum}
                         </span>
                     </div>
@@ -1476,7 +1716,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="flex-1 flex flex-col">
                                 {/* Chapter Hero Header (Only on First Section) */}
                                 {page.isFirstSection && (
-                                    <header className="mb-4 text-center shrink-0 relative group">
+                                    <div className="chapter-hero-header mb-4 text-center shrink-0 relative group">
                                         <div className="flex items-center justify-center gap-2 mb-2">
                                             <span className="inline-block px-3.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full uppercase tracking-wider border border-blue-100">
                                                 {formatChapterLabel(page.chapterNo)}
@@ -1493,8 +1733,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                         <h2 className={`${headingScale.h1} font-bold text-slate-900 tracking-tight leading-snug font-serif`}>
                                             {page.chapterTitle}
                                         </h2>
-                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-3 rounded-full" />
-                                    </header>
+                                        <div className="w-16 h-1 bg-blue-600 mx-auto mt-3 rounded-full theme-accent-rule" />
+                                    </div>
                                 )}
 
                                 {/* Featured Chapter Image (Only on First Section if available) */}
@@ -1516,43 +1756,45 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 )}
 
                                 {/* Section Markdown Content */}
-                                <div className={`prose ${sizeClass} max-w-none text-justify book-body-content flex-1`}>
-                                    <ReactMarkdown 
-                                        rehypePlugins={[rehypeRaw]}
-                                        components={{
-                                            h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                            h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
-                                            h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-5 mb-2`} {...props} />,
-                                            p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
-                                            hr: ({node, ...props}) => (
-                                                <div className="my-8 flex items-center justify-center gap-3 text-slate-300 select-none">
-                                                    <span className="w-16 h-px bg-slate-200" />
-                                                    <span className="text-xs text-slate-400 font-serif">❖</span>
-                                                    <span className="w-16 h-px bg-slate-200" />
-                                                </div>
-                                            ),
-                                            ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
-                                            ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
-                                            blockquote: ({node, ...props}) => (
-                                                <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-6 text-slate-700 italic" {...props} />
-                                            ),
-                                        }}
-                                    >
-                                        {transformCrossReferences(
-                                            cleanContentBody(page.content, page.isFirstSection ? page.chapterTitle : undefined, page.chapterNo), 
-                                            localChapters
-                                        )}
-                                    </ReactMarkdown>
-                                </div>
+                                {page.content.trim() && (
+                                    <div className={`prose ${sizeClass} max-w-none text-left break-words prose-code:before:content-none prose-code:after:content-none book-body-content flex-1`}>
+                                        <ReactMarkdown 
+                                            rehypePlugins={[rehypeRaw]}
+                                            components={{
+                                                h1: ({node, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                                h2: ({node, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 mt-6 mb-3 border-l-4 border-blue-600 pl-3`} {...props} />,
+                                                h3: ({node, ...props}) => <h5 className={`${headingScale.h3} font-semibold text-slate-800 mt-5 mb-2`} {...props} />,
+                                                p: ({node, ...props}) => <p className="mb-4 leading-relaxed text-slate-800 text-indent-book" {...props} />,
+                                                hr: ({node, ...props}) => (
+                                                    <div className="my-8 flex items-center justify-center gap-3 text-slate-300 select-none">
+                                                        <span className="w-16 h-px bg-slate-200" />
+                                                        <span className="text-xs text-slate-400 font-serif">❖</span>
+                                                        <span className="w-16 h-px bg-slate-200" />
+                                                    </div>
+                                                ),
+                                                ul: ({node, ...props}) => <ul className="list-disc pl-6 space-y-2 my-4 text-slate-800" {...props} />,
+                                                ol: ({node, ...props}) => <ol className="list-decimal pl-6 space-y-2 my-4 text-slate-800" {...props} />,
+                                                blockquote: ({node, ...props}) => (
+                                                    <blockquote className="border-l-4 border-amber-400 bg-amber-50/60 p-4 rounded-r-lg my-6 text-slate-700 italic" {...props} />
+                                                ),
+                                            }}
+                                        >
+                                            {transformCrossReferences(
+                                                cleanContentBody(page.content, page.isFirstSection ? page.chapterTitle : undefined, page.chapterNo), 
+                                                localChapters
+                                            )}
+                                        </ReactMarkdown>
+                                    </div>
+                                )}
 
                                 {/* Key Terminology Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTerminology && (
-                                    <div className="mt-8 p-6 bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0">
-                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-3">
-                                            <BookMarked size={18} className="text-emerald-600" />
+                                    <div className="mt-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50/50 rounded-xl border border-emerald-100 break-inside-avoid shadow-xs shrink-0">
+                                        <div className="flex items-center gap-2 text-emerald-900 font-bold mb-2">
+                                            <BookMarked size={16} className="text-emerald-600" />
                                             <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
                                         </div>
-                                        <div className="text-sm text-slate-700 leading-relaxed">
+                                        <div className="text-xs sm:text-sm text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTerminology)}
                                             </ReactMarkdown>
@@ -1562,12 +1804,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Key Takeaways Section (Rendered on Last Section) */}
                                 {page.isLastSection && page.keyTakeaways && (
-                                    <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0">
-                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-3">
-                                            <Lightbulb size={18} className="text-amber-500 fill-amber-500" />
+                                    <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50/50 rounded-xl border border-blue-100 break-inside-avoid shadow-xs shrink-0">
+                                        <div className="flex items-center gap-2 text-blue-900 font-bold mb-2">
+                                            <Lightbulb size={16} className="text-amber-500 fill-amber-500" />
                                             <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
                                         </div>
-                                        <div className="text-sm text-slate-700 leading-relaxed">
+                                        <div className="text-xs sm:text-sm text-slate-700 leading-relaxed">
                                             <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                                                 {sanitizeBookContent(page.keyTakeaways)}
                                             </ReactMarkdown>
@@ -1577,19 +1819,19 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* End of Chapter Ornament (Rendered on Last Section) */}
                                 {page.isLastSection && (
-                                    <div className="text-center my-8 text-slate-300 tracking-[0.5em] text-lg select-none shrink-0">
+                                    <div className="text-center my-4 text-slate-300 tracking-[0.5em] text-base select-none shrink-0">
                                         ❖ ❖ ❖
                                     </div>
                                 )}
                             </div>
 
                             {/* Running Footer at bottom of every page */}
-                            <div className="book-page-footer mt-8 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0">
+                            <div className="book-page-footer mt-4 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none shrink-0">
                                 <span className="truncate max-w-[240px] md:max-w-md text-slate-600 font-medium">
                                     {page.fullHeader}
                                 </span>
                                 <span className="text-slate-400 font-serif">❖</span>
-                                <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                                <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                                     หน้า {page.pageNumber}
                                 </span>
                             </div>
@@ -1603,7 +1845,6 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     data-page-num={aboutAuthorPageNumber}
                     data-chapter-full-header="เกี่ยวกับผู้เขียน (About the Author)"
                     className={`book-page scroll-mt-16 ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-white text-slate-800 p-8 md:p-16 lg:p-20 flex flex-col justify-between`}
-                    style={{ breakBefore: 'page', pageBreakBefore: 'always', breakAfter: 'page', pageBreakAfter: 'always' }}
                 >
                     {/* Running Header */}
                     <div className="book-page-header flex justify-between items-center border-b border-slate-200 pb-2.5 mb-8 text-xs text-slate-500 select-none">
@@ -1615,10 +1856,10 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         <div className="text-center mb-10">
                             <span className="text-xs font-semibold tracking-widest text-blue-600 uppercase">About the Author</span>
                             <h2 className="text-3xl font-bold tracking-tight text-slate-900 mt-1 font-serif">เกี่ยวกับผู้เขียน</h2>
-                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3" />
+                            <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-3 theme-accent-rule" />
                         </div>
 
-                        <div className="max-w-xl mx-auto space-y-4 text-slate-700 leading-relaxed text-justify">
+                        <div className="max-w-xl mx-auto space-y-4 text-slate-700 leading-relaxed text-left break-words">
                             <p className="text-indent-book">
                                 หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
                                 และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
@@ -1634,8 +1875,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         </div>
 
                         <div className="text-center pt-8 border-t border-slate-100 max-w-sm mx-auto mt-8">
-                            <p className="text-sm font-semibold text-slate-800">Ebook Creator Studio</p>
-                            <p className="text-xs text-slate-400 mt-1">www.aimar.cloud</p>
+                            <p className="text-sm font-semibold text-slate-800">{copyrightSettings.author || 'อดิศร เทพวัลย์ (เส-วิญ)'}</p>
+                            <p className="text-xs text-slate-500 mt-1">{copyrightSettings.publisher || 'Saewin Publishing'} • www.aimar.cloud</p>
                         </div>
                     </div>
 
@@ -1643,7 +1884,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     <div className="book-page-footer mt-auto pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500 select-none">
                         <span className="text-slate-600 font-medium">เกี่ยวกับผู้เขียน (About the Author)</span>
                         <span className="text-slate-400 font-serif">❖</span>
-                        <span className="font-mono font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
+                        <span className="tabular-nums font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded border border-slate-200">
                             หน้า {aboutAuthorPageNumber}
                         </span>
                     </div>
@@ -1655,7 +1896,6 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     data-page-num={totalPages}
                     data-chapter-full-header="ปกหลัง (Back Cover)"
                     className={`book-page book-cover relative ${pageSize === 'a4' ? 'page-a4' : 'page-a5'} ${viewMode === 'pages' ? 'page-sheet shadow-2xl mb-8' : 'w-full mb-12'} bg-slate-950 text-white overflow-hidden flex flex-col justify-between ${backCoverUrl ? 'has-custom-cover !p-0' : ''}`}
-                    style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
                 >
                     {backCoverUrl ? (
                         // Custom Full-Bleed Back Cover Image from computer
@@ -1719,20 +1959,20 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     {cleanProjectTitle}
                                 </h3>
                                 <p className="text-slate-300 text-sm md:text-base leading-relaxed mb-6 max-w-xl">
-                                    คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยีและระบบที่จับต้องได้จริง 
-                                    ออกแบบมาสำหรับผู้ที่ต้องการความก้าวหน้าและการเติบโตอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน
+                                    {project?.extraInfo?.coreMessage || 'คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยี AI Agent และระบบอัตโนมัติที่จับต้องได้จริง ออกแบบมาสำหรับผู้ประกอบการที่ต้องการคืนเวลา คืนชีวิต และคืนกำไรอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน'}
                                 </p>
                             </div>
 
                             <div className="pb-4 border-t border-slate-800 pt-8 flex items-end justify-between">
                                 <div>
                                     <p className="text-xs text-slate-400">Published by</p>
-                                    <p className="text-sm font-bold text-white">Saewin</p>
+                                    <p className="text-sm font-bold text-white">{copyrightSettings.author || 'Saewin'}</p>
+                                    <p className="text-xs text-slate-400 mt-0.5">{copyrightSettings.publisher || 'Saewin Publishing'}</p>
                                 </div>
                                 <div className="text-right">
                                     <span className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">STANDARD EDITION</span>
                                     <div className="font-mono text-xs text-slate-400 border border-slate-700 px-3 py-1 rounded bg-slate-900/50">
-                                        ISBN 978-0-00000-000-0
+                                        ISBN {copyrightSettings.isbn || '978-616-XXXX-XX-X (e-Book)'}
                                     </div>
                                 </div>
                             </div>
@@ -2296,6 +2536,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             />
 
             <style jsx global>{`
+                /* Ensure self-hosted Thai font (--font-sarabun) always covers headings, CIP, TOC, and badges */
+                .book-viewer-main,
+                .book-viewer-main .font-sans {
+                    font-family: var(--font-sarabun), var(--font-inter), 'Sarabun', 'Noto Sans Thai', ui-sans-serif, system-ui, sans-serif;
+                }
+                .book-viewer-main .font-serif {
+                    font-family: var(--font-sarabun), 'Noto Serif Thai', 'Sarabun', 'Noto Sans Thai', Georgia, serif;
+                }
+                .book-viewer-main .font-mono {
+                    font-family: var(--font-sarabun), 'Sarabun', 'Noto Sans Thai', ui-monospace, monospace;
+                }
+
                 /* Screen page simulation */
                 .page-a4 {
                     width: 100%;
@@ -2373,17 +2625,23 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
 
                 /* Continuous Section & Box Flow Styles */
-                .war-story-box.box-split-next::before {
+                .war-story-box.box-split-next:not([data-title])::before {
                     content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;
                 }
-                .case-study-box.box-split-next::before {
+                .case-study-box.box-split-next:not([data-title])::before {
                     content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important;
                 }
-                .key-terms-box.box-split-next::before {
+                .key-terms-box.box-split-next:not([data-title])::before {
                     content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important;
                 }
-                .action-checklist.box-split-next::before {
+                .action-checklist.box-split-next:not([data-title])::before {
                     content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important;
+                }
+                .war-story-box[data-title]::before,
+                .case-study-box[data-title]::before,
+                .key-terms-box[data-title]::before,
+                .action-checklist[data-title]::before {
+                    content: attr(data-title) !important;
                 }
 
                 .box-split-first {
@@ -2407,6 +2665,30 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     justify-content: flex-end;
                     align-items: center;
                     gap: 4px;
+                }
+
+                /* Table typography inside book body */
+                .book-body-content table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 14px 0;
+                    font-size: 0.9em;
+                    line-height: 1.5;
+                }
+                .book-body-content th,
+                .book-body-content td {
+                    border: 1px solid #cbd5e1;
+                    padding: 7px 10px;
+                    text-align: left;
+                    vertical-align: top;
+                }
+                .book-body-content th {
+                    background-color: #f1f5f9;
+                    font-weight: 700;
+                    color: #0f172a;
+                }
+                .book-body-content tr:nth-child(even) td {
+                    background-color: #f8fafc;
                 }
 
                 /* Constrain body images & figures so they never blow out page height */
@@ -2445,11 +2727,16 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         margin: 0 !important;
                         padding: 0 !important;
                         width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
+                        height: auto !important;
+                        overflow: visible !important;
                         -webkit-print-color-adjust: exact !important;
                         print-color-adjust: exact !important;
                     }
-                    .no-print, header, aside {
+                    .no-print, aside {
                         display: none !important;
+                    }
+                    .chapter-hero-header {
+                        display: block !important;
                     }
                     .print-content {
                         padding: 0 !important;
@@ -2461,8 +2748,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         margin: 0 !important;
                         width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
                         max-width: ${pageSize === 'a5' ? '148mm' : '210mm'} !important;
-                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        min-height: 0 !important;
+                        height: ${pageSize === 'a5' ? '209.5mm' : '296.5mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '209.5mm' : '296.5mm'} !important;
                         padding: ${pageSize === 'a5' ? '10mm 12mm' : '14mm 18mm'} !important;
                         box-sizing: border-box !important;
                         page-break-after: always !important;
@@ -2474,14 +2762,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                         justify-content: space-between !important;
                         overflow: hidden !important;
                     }
+                    .book-page:last-child {
+                        page-break-after: auto !important;
+                        break-after: auto !important;
+                    }
                     .book-page-header,
                     .book-page-footer {
                         display: flex !important;
                         flex-shrink: 0 !important;
                     }
                     .book-cover {
-                        height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
-                        max-height: ${pageSize === 'a5' ? '210mm' : '297mm'} !important;
+                        height: ${pageSize === 'a5' ? '209.5mm' : '296.5mm'} !important;
+                        max-height: ${pageSize === 'a5' ? '209.5mm' : '296.5mm'} !important;
                         display: flex !important;
                         flex-direction: column !important;
                         justify-content: space-between !important;
@@ -2491,7 +2783,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     .book-cover.has-custom-cover {
                         padding: 0 !important;
                     }
-                    .break-inside-avoid, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
+                    .break-inside-avoid, .diagram-box, .war-story-box, .case-study-box, .key-terms-box, .action-checklist {
                         break-inside: avoid !important;
                         page-break-inside: avoid !important;
                     }

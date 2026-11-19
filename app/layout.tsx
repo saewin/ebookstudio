@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body className={`${inter.variable} ${sarabun.variable} font-sans flex h-screen overflow-hidden bg-background text-foreground antialiased`}>
+      <body className={`${inter.variable} ${sarabun.variable} font-sans flex h-screen overflow-hidden bg-background text-foreground antialiased print:block print:h-auto print:overflow-visible`}>
         {/* Sidebar - White & Blue */}
         <aside className="w-64 border-r border-border bg-white flex flex-col shrink-0 no-print">
 
@@ -55,8 +55,8 @@ export default function RootLayout({
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto bg-white relative">
-          <div className="max-w-7xl mx-auto p-6 md:p-10">
+        <main className="flex-1 overflow-y-auto bg-white relative print:overflow-visible print:h-auto print:w-full">
+          <div className="max-w-7xl mx-auto p-6 md:p-10 print:max-w-none print:p-0 print:m-0">
             {children}
           </div>
         </main>

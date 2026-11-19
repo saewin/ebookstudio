@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const body = await request.json()
-        const { projectId, chapterNo, title, status, content, keyTakeaways, keyTerminology } = body
+        const { projectId, chapterNo, title, status, content, keyTakeaways, keyTerminology, image1Url, image2Url, image3Url, chapterImage, imagePrompt } = body
 
         if (!projectId || !title || chapterNo === undefined) {
             return NextResponse.json(
@@ -57,6 +57,11 @@ export async function POST(request: Request) {
             content: cleanContent,
             keyTakeaways: cleanTakeaways,
             keyTerminology: cleanTerminology,
+            ...(image1Url !== undefined ? { image1Url: String(image1Url).trim() } : {}),
+            ...(image2Url !== undefined ? { image2Url: String(image2Url).trim() } : {}),
+            ...(image3Url !== undefined ? { image3Url: String(image3Url).trim() } : {}),
+            ...(chapterImage !== undefined ? { chapterImage: String(chapterImage).trim() } : {}),
+            ...(imagePrompt !== undefined ? { imagePrompt: String(imagePrompt).trim() } : {}),
             hasContent: Boolean(cleanContent.trim()),
         })
 
@@ -73,7 +78,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
     try {
         const body = await request.json()
-        const { id, title, chapterNo, status, content, keyTakeaways, keyTerminology } = body
+        const { id, title, chapterNo, status, content, keyTakeaways, keyTerminology, image1Url, image2Url, image3Url, chapterImage, imagePrompt } = body
 
         if (!id) {
             return NextResponse.json({ error: 'Missing chapter id' }, { status: 400 })
@@ -96,6 +101,11 @@ export async function PUT(request: Request) {
             ...(cleanContent !== undefined ? { content: cleanContent } : {}),
             ...(cleanTakeaways !== undefined ? { keyTakeaways: cleanTakeaways } : {}),
             ...(cleanTerminology !== undefined ? { keyTerminology: cleanTerminology } : {}),
+            ...(image1Url !== undefined ? { image1Url: String(image1Url).trim() } : {}),
+            ...(image2Url !== undefined ? { image2Url: String(image2Url).trim() } : {}),
+            ...(image3Url !== undefined ? { image3Url: String(image3Url).trim() } : {}),
+            ...(chapterImage !== undefined ? { chapterImage: String(chapterImage).trim() } : {}),
+            ...(imagePrompt !== undefined ? { imagePrompt: String(imagePrompt).trim() } : {}),
             hasContent: cleanContent !== undefined ? Boolean(cleanContent.trim()) : existing.hasContent,
         })
 

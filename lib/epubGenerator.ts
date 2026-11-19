@@ -75,7 +75,7 @@ body {
     background-color: #ffffff;
     margin: 5% 8%;
     padding: 0;
-    text-align: justify;
+    text-align: left;
 }
 h1, h2, h3, h4 {
     font-weight: 700;
@@ -269,7 +269,8 @@ img {
         manifestItems.push(`<item id="${fileId}" href="${fileName}" media-type="application/xhtml+xml"/>`)
         spineItems.push(`<itemref idref="${fileId}"/>`)
 
-        const chapTitle = chap.title || `บทที่ ${chap.chapterNo}`
+        const chapLabel = chap.chapterNo === 0 ? 'คำนำ' : `บทที่ ${chap.chapterNo}`
+        const chapTitle = chap.title || chapLabel
         const bodyContent = await parseAndCleanToXhtml(chap.content || '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>')
 
         // Handle Chapter Hero Image if present
@@ -335,7 +336,8 @@ img {
 
     // 7. Navigation Document (OEBPS/nav.xhtml - EPUB 3 Standard)
     const navItems = chapters.map((c, i) => {
-        return `<li><a href="chapter_${i + 1}.xhtml">${escapeXml(c.title || `บทที่ ${c.chapterNo}`)}</a></li>`
+        const label = c.chapterNo === 0 ? 'คำนำ' : `บทที่ ${c.chapterNo}`
+        return `<li><a href="chapter_${i + 1}.xhtml">${escapeXml(c.title || label)}</a></li>`
     }).join('\n            ')
 
     const navXhtml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -369,9 +371,10 @@ img {
         playOrder++
     }
     chapters.forEach((c, i) => {
+        const label = c.chapterNo === 0 ? 'คำนำ' : `บทที่ ${c.chapterNo}`
         ncxPoints.push(`
     <navPoint id="navpoint-${playOrder}" playOrder="${playOrder}">
-      <navLabel><text>${escapeXml(c.title || `บทที่ ${c.chapterNo}`)}</text></navLabel>
+      <navLabel><text>${escapeXml(c.title || label)}</text></navLabel>
       <content src="chapter_${i + 1}.xhtml"/>
     </navPoint>`)
         playOrder++

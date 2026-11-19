@@ -36,17 +36,17 @@ export function sanitizeBookContent(raw?: string | null): string {
     // If a bullet point starts immediately after a tag or text without proper line break
     text = text.replace(/(<\/p>|<\/div>|<\/li>|<\/h[1-6]>)\s*([•\-\*]\s+)/gi, '$1\n\n$2');
 
-    // 4. Unwrap accidental markdown code blocks wrapping custom callout containers
+    // 4. Unwrap accidental markdown code blocks wrapping custom callout/diagram containers
     // E.g. ```html\n<div class="war-story-box"...>...</div>\n```
-    text = text.replace(/```(?:html|xml)?\s*\n?(<div\s+class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist)[^'"]*['"][\s\S]*?<\/div>)\s*\n?```/gi, '$1');
+    text = text.replace(/```(?:html|xml)?\s*\n?(<div\s+class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|diagram-box)[^'"]*['"][\s\S]*?<\/div>)\s*\n?```/gi, '$1');
 
     // 5. Remove leading indentation before HTML tags (prevent CommonMark 4-space indented code blocks)
     text = text.replace(/^[ \t]+(<)/gm, '$1');
 
-    // 6. Clean and auto-heal inside custom callout containers:
+    // 6. Clean and auto-heal inside custom callout/diagram containers:
     // - Remove 2+ spaces / tabs from the beginning of all lines inside callout containers
     // - Auto-heal any accidental <pre><code>...</code></pre> that got inserted inside callouts
-    text = text.replace(/(<div\s+class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist)[^'"]*['"][^>]*>)([\s\S]*?)(<\/div>)/gi, (match: string, open: string, inner: string, close: string) => {
+    text = text.replace(/(<div\s+class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|diagram-box)[^'"]*['"][^>]*>)([\s\S]*?)(<\/div>)/gi, (match: string, open: string, inner: string, close: string) => {
         let fixedInner = inner.replace(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, (_m2: string, codeContent: string) => {
             return codeContent
                 .replace(/&lt;/g, '<')

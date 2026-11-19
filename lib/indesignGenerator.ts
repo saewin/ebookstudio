@@ -72,7 +72,7 @@ function unwrapJsonHtml(raw: string): string {
 
 function cleanChapterTitle(title: string): string {
     if (!title) return '';
-    const cleaned = title.replace(/^(บทที่\s*\d+|บทนำ|Chapter\s*\d+|Introduction)[:\s.-]*/i, '').trim();
+    const cleaned = title.replace(/^(บทที่\s*\d+|คำนำ|บทนำ|Chapter\s*\d+|Introduction|Preface|Foreword)[:\s.-]*/i, '').trim();
     return cleaned || title.trim();
 }
 
@@ -94,8 +94,8 @@ export function stripHtmlToBlocks(rawHtml: string, chapterTitleToStrip?: string)
     let html = unwrapJsonHtml(rawHtml);
 
     // Remove duplicate top-level chapter heading if present at start of content
-    html = html.replace(/^\s*<h[12][^>]*>\s*(?:บทที่\s*\d+|Chapter\s*\d+)[^<]*<\/h[12]>\s*/i, '');
-    html = html.replace(/^\s*#{1,2}\s*(?:บทที่\s*\d+|Chapter\s*\d+)[^\n]*\n+/i, '');
+    html = html.replace(/^\s*<h[12][^>]*>\s*(?:บทที่\s*\d+|คำนำ|บทนำ|Chapter\s*\d+|Preface)[^<]*<\/h[12]>\s*/i, '');
+    html = html.replace(/^\s*#{1,2}\s*(?:บทที่\s*\d+|คำนำ|บทนำ|Chapter\s*\d+|Preface)[^\n]*\n+/i, '');
     if (chapterTitleToStrip) {
         const escapedTitle = chapterTitleToStrip.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         html = html.replace(new RegExp(`^\\s*<h[12][^>]*>[^<]*${escapedTitle}[^<]*<\\/h[12]>\\s*`, 'i'), '');
@@ -103,15 +103,16 @@ export function stripHtmlToBlocks(rawHtml: string, chapterTitleToStrip?: string)
 
     const blocks: ParsedBlock[] = [];
 
-    // 1. Convert special callout containers (<div class="war-story-box|case-study-box|..." data-title="...">...</div>)
+    // 1. Convert special callout & diagram containers (<div class="war-story-box|case-study-box|diagram-box|..." data-title="...">...</div>)
     html = html.replace(
-        /<div\b([^>]*class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist)[^'"]*['"][^>]*)>([\s\S]*?)<\/div>/gi,
+        /<div\b([^>]*class=['"][^'"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|diagram-box)[^'"]*['"][^>]*)>([\s\S]*?)<\/div>/gi,
         (_m, attrs: string, inner: string) => {
             const titleMatch = attrs.match(/data-title=['"]([^'"]+)['"]/i);
             let boxTitle = titleMatch ? titleMatch[1] : 'กรอบข้อมูลสำคัญ (Executive Insight)';
             if (/war-story-box/i.test(attrs) && !titleMatch) boxTitle = 'เรื่องเล่าจากสนามรบจริง (War Story)';
             if (/case-study-box/i.test(attrs) && !titleMatch) boxTitle = 'กรณีศึกษาและงานวิจัยรองรับ (Case Study)';
             if (/action-checklist/i.test(attrs) && !titleMatch) boxTitle = 'เช็กลิสต์ปฏิบัติการทันที (Action Checklist)';
+            if (/diagram-box/i.test(attrs) && !titleMatch) boxTitle = 'แผนภาพโครงสร้างระบบ (Architecture Diagram)';
 
             const innerLines = inner
                 .replace(/<\/(p|li|h[1-6]|div)>/gi, '$&\n')
@@ -651,7 +652,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
         buildParaXml('TOCTitle', 'สารบัญ (Table of Contents)');
 
     for (const plan of chapterPlans) {
-        const label = plan.chapter.chapterNo === 0 ? 'บทนำ' : `บทที่ ${plan.chapter.chapterNo}`;
+        const label = plan.chapter.chapterNo === 0 ? 'คำนำ' : `บทที่ ${plan.chapter.chapterNo}`;
         tocStoryXml += buildParaXml(
             'TOCItem',
             `${label}: ${plan.cleanTitle}  ..........  หน้า ${plan.startPage}`
@@ -665,7 +666,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
     zip.file('Stories/Story_uTOC.xml', buildStoryFileXml('uTOC', 'Table of Contents', tocStoryXml));
 
     // =========================================================================
-    // PAGES 4..N-2: CHAPTERS 1..12 (Multi-Page Threaded + Embedded Illustrations)
+    // PAGES 4..N-2: CHAPTERS 0..12 (Multi-Page Threaded + Embedded Illustrations)
     // =========================================================================
     for (let cIdx = 0; cIdx < chapterPlans.length; cIdx++) {
         const plan = chapterPlans[cIdx];
@@ -673,13 +674,14 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
         const storyId = plan.storyId;
         storyIds.push(storyId);
 
-        const chLabel = ch.chapterNo === 0 ? 'บทนำ (INTRODUCTION)' : `บทที่ ${ch.chapterNo} (CHAPTER ${ch.chapterNo})`;
+        const chLabel = ch.chapterNo === 0 ? 'คำนำ (PREFACE)' : `บทที่ ${ch.chapterNo} (CHAPTER ${ch.chapterNo})`;
+        const chShortLabel = ch.chapterNo === 0 ? 'คำนำ' : `บทที่ ${ch.chapterNo}`;
 
         // Build Chapter Story XML
         let chParasXml =
             buildParaXml('ChapterNumber', chLabel) +
             buildParaXml('ChapterTitle', plan.cleanTitle) +
-            buildParaXml('ImageCaption', `ภาพประกอบที่ ${ch.chapterNo}: ${plan.cleanTitle}`);
+            buildParaXml('ImageCaption', `ภาพประกอบ${chShortLabel}: ${plan.cleanTitle}`);
 
         for (const b of plan.blocks) {
             chParasXml += buildParaXml(b.style, b.text);
@@ -721,7 +723,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
             storyIds.push(hdrStoryId);
             const hdrXml = buildParaXml(
                 'RunningHeader',
-                `${cleanTitle.slice(0, 28)}  |  บทที่ ${ch.chapterNo}: ${plan.cleanTitle.slice(0, 26)}   —   หน้า ${pageNum}`
+                `${cleanTitle.slice(0, 28)}  |  ${chShortLabel}: ${plan.cleanTitle.slice(0, 26)}   —   หน้า ${pageNum}`
             );
             zip.file(`Stories/Story_${hdrStoryId}.xml`, buildStoryFileXml(hdrStoryId, `Header ${pageNum}`, hdrXml));
 
@@ -855,7 +857,7 @@ export function generateInDesignWordDoc(book: InDesignBookPayload): string {
         .map(
             (ch) => `
         <div style="page-break-before: always;">
-            <p class="ChapterNumber" style="font-family:'TH Sarabun New',sans-serif;font-size:14pt;font-weight:bold;color:#2563eb;text-transform:uppercase;margin-bottom:4pt;">บทที่ ${ch.chapterNo}</p>
+            <p class="ChapterNumber" style="font-family:'TH Sarabun New',sans-serif;font-size:14pt;font-weight:bold;color:#2563eb;text-transform:uppercase;margin-bottom:4pt;">${ch.chapterNo === 0 ? 'คำนำ' : `บทที่ ${ch.chapterNo}`}</p>
             <h1 class="ChapterTitle" style="font-family:'TH Sarabun New',sans-serif;font-size:26pt;font-weight:bold;color:#0f172a;margin-top:0;margin-bottom:14pt;">${cleanChapterTitle(ch.title)}</h1>
             <div class="ChapterBody" style="font-family:'TH Sarabun New',sans-serif;font-size:16pt;line-height:1.6;color:#1e293b;">
                 ${ch.content || ''}

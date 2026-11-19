@@ -126,13 +126,53 @@ function WritingContent() {
 
     // Image Modal states
     const [showImageModal, setShowImageModal] = useState(false)
-    const [imageSourceTab, setImageSourceTab] = useState<'local' | 'url'>('local')
+    const [imageSourceTab, setImageSourceTab] = useState<'local' | 'url' | 'ai'>('local')
     const [imageUrlInput, setImageUrlInput] = useState('')
     const [imageCaptionInput, setImageCaptionInput] = useState('')
+    const [aiImagePrompt, setAiImagePrompt] = useState('')
+    const [generatingAiImage, setGeneratingAiImage] = useState(false)
     const [savingImage, setSavingImage] = useState(false)
     const [uploadingFile, setUploadingFile] = useState(false)
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    async function handleGenerateAiImage() {
+        if (!data && !aiImagePrompt.trim()) return
+        setGeneratingAiImage(true)
+        try {
+            const defaultSubject = data
+                ? `Editorial business book illustration representing "${data.title}" (${data.chapterNo === 0 ? 'คำนำ' : `Chapter ${data.chapterNo}`})`
+                : 'Editorial business book illustration about modern AI leadership'
+            const promptToSend = aiImagePrompt.trim() || defaultSubject
+
+            const res = await fetch('/api/generate-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: promptToSend,
+                    chapterNo: data?.chapterNo,
+                    chapterTitle: data?.title,
+                    projectId: data?.projectId,
+                    targetType: 'inline',
+                    aspectRatio: '16:9',
+                    style: 'executive',
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok || !json.success || !json.url) {
+                alert('สร้างภาพด้วย AI ไม่สำเร็จ: ' + (json.error || 'Unknown error'))
+                return
+            }
+            setImageUrlInput(json.url)
+            if (!imageCaptionInput.trim() && data?.title) {
+                setImageCaptionInput(`ภาพประกอบ${data.chapterNo === 0 ? 'คำนำ' : `บทที่ ${data.chapterNo}`}: ${data.title}`)
+            }
+        } catch (err: any) {
+            alert('เกิดข้อผิดพลาดระหว่างสร้างภาพด้วย AI: ' + (err?.message || String(err)))
+        } finally {
+            setGeneratingAiImage(false)
+        }
+    }
 
     async function handleFileUpload(file: File) {
         if (!file) return
@@ -882,30 +922,42 @@ function WritingContent() {
                         </div>
 
                         {/* Source Mode Tabs */}
-                        <div className="flex p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+                        <div className="flex p-1 bg-slate-100 rounded-xl text-xs font-semibold gap-1">
                             <button
                                 type="button"
                                 onClick={() => setImageSourceTab('local')}
-                                className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                className={`flex-1 py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                                     imageSourceTab === 'local' 
                                         ? 'bg-white text-blue-700 shadow-xs' 
                                         : 'text-slate-500 hover:text-slate-800'
                                 }`}
                             >
-                                <Upload size={14} />
-                                <span>อัปโหลดจากคอมพิวเตอร์</span>
+                                <Upload size={13} />
+                                <span>อัปโหลดจากเครื่อง</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setImageSourceTab('ai')}
+                                className={`flex-1 py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    imageSourceTab === 'ai' 
+                                        ? 'bg-white text-indigo-700 shadow-xs' 
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                <Sparkles size={13} />
+                                <span>สร้างด้วย AI (Imagen)</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setImageSourceTab('url')}
-                                className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                className={`flex-1 py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                                     imageSourceTab === 'url' 
                                         ? 'bg-white text-blue-700 shadow-xs' 
                                         : 'text-slate-500 hover:text-slate-800'
                                 }`}
                             >
-                                <LinkIcon size={14} />
-                                <span>วางลิงก์ URL / Google Drive</span>
+                                <LinkIcon size={13} />
+                                <span>วางลิงก์ URL</span>
                             </button>
                         </div>
 
@@ -941,7 +993,7 @@ function WritingContent() {
                                             <span className="text-xs font-semibold text-slate-700">กำลังอัปโหลดรูปภาพจากคอมพิวเตอร์...</span>
                                             <span className="text-[11px] text-slate-400">กรุณารอสักครู่</span>
                                         </div>
-                                    ) : imageUrlInput && imageUrlInput.startsWith('/uploads/') ? (
+                                    ) : imageUrlInput && (imageUrlInput.startsWith('/uploads/') || imageUrlInput.startsWith('/api/uploads/')) ? (
                                         <div className="py-2 flex flex-col items-center gap-1.5">
                                             <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
                                                 <CheckCircle2 size={13} className="text-emerald-600" /> อัปโหลดสำเร็จแล้ว
@@ -966,7 +1018,39 @@ function WritingContent() {
                             </div>
                         )}
 
-                        {/* Tab 2: URL or Google Drive Link */}
+                        {/* Tab 2: AI Image Generation via Google Gemini / Imagen API */}
+                        {imageSourceTab === 'ai' && (
+                            <div className="space-y-3 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3.5">
+                                <div>
+                                    <label className="block text-xs font-semibold text-indigo-950 mb-1">
+                                        คำอธิบายภาพที่ต้องการ (Prompt ภาษาอังกฤษหรือไทย)
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={aiImagePrompt}
+                                        onChange={(e) => setAiImagePrompt(e.target.value)}
+                                        placeholder={data ? `เช่น ภาพประกอบ${data.chapterNo === 0 ? 'คำนำ' : `บทที่ ${data.chapterNo}`}: ${data.title} สไตล์โมเดิร์นสำหรับผู้บริหาร...` : 'อธิบายฉากและอารมณ์ภาพที่ต้องการ...'}
+                                        className="w-full text-xs p-2.5 border border-indigo-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] text-slate-500">
+                                        ใช้โมเดล Google Gemini/Imagen AI (ตระกูลเดียวกับ Google Flow)
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={handleGenerateAiImage}
+                                        disabled={generatingAiImage}
+                                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+                                    >
+                                        {generatingAiImage ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                                        <span>{generatingAiImage ? 'กำลังสร้างภาพ...' : 'สร้างภาพด้วย AI'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Tab 3: URL or Google Drive Link */}
                         {imageSourceTab === 'url' && (
                             <div className="space-y-2">
                                 <label className="block text-xs font-semibold text-slate-700">

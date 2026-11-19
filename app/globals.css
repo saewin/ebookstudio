@@ -192,6 +192,63 @@ body {
   border-bottom: 1px solid #d1fae5;
 }
 
+/* Honor explicit data-title attributes on callout boxes */
+.war-story-box[data-title]::before,
+.case-study-box[data-title]::before,
+.key-terms-box[data-title]::before,
+.action-checklist[data-title]::before {
+  content: attr(data-title);
+}
+
+/* Structured Architecture / Workflow Diagram Card */
+.diagram-box {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  border: 1.5px solid #cbd5e1;
+  border-top: 4px solid #1e3a8a;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin: 22px 0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  position: relative;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.diagram-box::before {
+  content: "📐 แผนภาพโครงสร้างระบบ (System Architecture Diagram)";
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e3a8a;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.diagram-box[data-title]::before {
+  content: "📐 " attr(data-title);
+}
+.diagram-box p,
+.diagram-box li {
+  text-indent: 0 !important;
+  text-align: left !important;
+  margin-bottom: 0.5em !important;
+  line-height: 1.65 !important;
+}
+.diagram-box .diagram-step {
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-left: 4px solid #2563eb;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.diagram-box .diagram-arrow {
+  text-align: center !important;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin: 4px 0 !important;
+}
+
 .cross-ref-badge {
   display: inline-flex;
   align-items: center;
@@ -218,6 +275,25 @@ body {
 .action-checklist p {
   text-indent: 0 !important;
   margin-bottom: 0.75em !important;
+}
+
+/* Remove literal Tailwind Typography backticks on inline <code> tags */
+.book-body-content code::before,
+.book-body-content code::after,
+.prose code::before,
+.prose code::after {
+  content: none !important;
+}
+.book-body-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  font-weight: 600;
+  background-color: #f1f5f9;
+  color: #0f172a;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  word-break: break-word;
 }
 
 /* Safety Net: Neutralize accidental <pre><code> code blocks inside callout boxes */
@@ -248,19 +324,20 @@ body {
   font-family: inherit !important;
   font-size: inherit !important;
   white-space: normal !important;
+  border: none !important;
 }
 
 /* Continuous Section & Box Flow Styles */
-.war-story-box.box-split-next::before {
+.war-story-box.box-split-next:not([data-title])::before {
   content: "⚔️ เรื่องเล่าจากสนามรบจริง (ต่อจากหน้าก่อน)" !important;
 }
-.case-study-box.box-split-next::before {
+.case-study-box.box-split-next:not([data-title])::before {
   content: "📊 กรณีศึกษา & งานวิจัยรองรับ (ต่อจากหน้าก่อน)" !important;
 }
-.key-terms-box.box-split-next::before {
+.key-terms-box.box-split-next:not([data-title])::before {
   content: "📖 คลังคำศัพท์สำคัญประจำบท (ต่อจากหน้าก่อน)" !important;
 }
-.action-checklist.box-split-next::before {
+.action-checklist.box-split-next:not([data-title])::before {
   content: "✅ เช็กลิสต์ปฏิบัติการทันที (ต่อจากหน้าก่อน)" !important;
 }
 
@@ -291,14 +368,19 @@ body {
 
 @media print {
   @page {
-    margin: 1.5cm 2cm;
+    margin: 0;
     size: A4;
   }
 
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  html, body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
     background: white !important;
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Hide UI elements */
@@ -317,6 +399,7 @@ body {
 
   /* Ensure content takes full width */
   main,
+  main > div,
   .print-content {
     width: 100% !important;
     margin: 0 !important;
