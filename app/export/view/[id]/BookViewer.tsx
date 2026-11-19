@@ -1104,7 +1104,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
             const footerH = footerEl.getBoundingClientRect().height + (parseFloat(footerStyle.marginTop) || 0);
 
             // Real usable height inside the printed page between running header and running footer
-            const safetyCushion = pageSize === 'a5' ? 12 : 14;
+            const safetyCushion = pageSize === 'a5' ? 30 : 28;
             const usableBodyH = Math.max(300, Math.floor(innerPageH - headerH - footerH - safetyCushion));
 
             const transformRefs = (s: string) => transformCrossReferences(s, localChapters);
