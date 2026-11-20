@@ -26,6 +26,7 @@ export interface BrainNote {
   tags: string[]
   pinned: boolean
   deadline?: string
+  imageUrl?: string
   content: string
   createdAt: string
   updatedAt: string

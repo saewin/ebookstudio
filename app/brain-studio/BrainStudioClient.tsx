@@ -46,7 +46,7 @@ export default function BrainStudioClient({
   async function handlePromoteNote(
     target: 'ebook' | 'course',
     payload: { noteId?: string; title: string; summary: string; content: string }
-  ) {
+  ): Promise<PromotionBanner | null> {
     try {
       const res = await fetch('/api/brain-studio/promote', {
         method: 'POST',
@@ -56,28 +56,31 @@ export default function BrainStudioClient({
       const json = await res.json()
       if (!json?.success) {
         alert(json?.error || 'ไม่สามารถส่งต่อโปรเจกต์ได้')
-        return
+        return null
       }
 
-      if (target === 'ebook') {
-        setPromoBanner({
-          target: 'ebook',
-          title: json.title,
-          primaryUrl: json.structureUrl,
-          primaryLabel: 'เปิดกระดานโครงสร้าง Ebook ทันที',
-          secondaryUrl: json.briefingUrl,
-          secondaryLabel: 'ไปห้องบรีฟงาน',
-        })
-      } else {
-        setPromoBanner({
-          target: 'course',
-          title: json.title,
-          primaryUrl: json.courseUrl,
-          primaryLabel: 'เปิดแก้ไขใน Course Studio ทันที',
-        })
-      }
+      const banner: PromotionBanner =
+        target === 'ebook'
+          ? {
+              target: 'ebook',
+              title: json.title,
+              primaryUrl: json.structureUrl,
+              primaryLabel: 'เปิดกระดานโครงสร้าง Ebook ทันที',
+              secondaryUrl: json.briefingUrl,
+              secondaryLabel: 'ไปห้องบรีฟงาน',
+            }
+          : {
+              target: 'course',
+              title: json.title,
+              primaryUrl: json.courseUrl,
+              primaryLabel: 'เปิดแก้ไขใน Course Studio ทันที',
+            }
+
+      setPromoBanner(banner)
+      return banner
     } catch {
       alert('เกิดข้อผิดพลาดในการส่งต่อโปรเจกต์')
+      return null
     }
   }
 
@@ -245,6 +248,24 @@ export default function BrainStudioClient({
             initialCategory={vaultCategory}
             onNotesChange={(notes) => setState((prev) => ({ ...prev, notes }))}
             onPromoteNote={(target, payload) => handlePromoteNote(target, payload)}
+            onAddFocusTask={async (taskText, delegateTo = 'ai-agent') => {
+              const nextTasks = [
+                ...state.focusTasks,
+                {
+                  id: `ft-${Date.now()}`,
+                  text: taskText,
+                  done: false,
+                  delegateTo,
+                  createdAt: new Date().toISOString(),
+                },
+              ]
+              setState((prev) => ({ ...prev, focusTasks: nextTasks }))
+              await fetch('/api/brain-studio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entity: 'focus-tasks', tasks: nextTasks }),
+              })
+            }}
           />
         )}
 

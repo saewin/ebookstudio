@@ -57,7 +57,7 @@ interface CockpitTabProps {
   onPromoteNote: (
     target: 'ebook' | 'course',
     payload: { noteId?: string; title: string; summary: string; content: string }
-  ) => Promise<void>
+  ) => Promise<unknown>
   onOpenVaultCategory: (cat: BrainCategory) => void
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import {
   Plus,
@@ -17,9 +18,21 @@ import {
   Sparkles,
   Calendar,
   ArrowRightCircle,
+  Image as ImageIcon,
+  Send,
+  ExternalLink,
+  Target,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
 import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
+import VoiceInputButton from './VoiceInputButton'
+
+interface PromoteResult {
+  target: 'ebook' | 'course'
+  title: string
+  primaryUrl: string
+  primaryLabel: string
+}
 
 interface VaultTabProps {
   notes: BrainNote[]
@@ -28,15 +41,24 @@ interface VaultTabProps {
   onPromoteNote: (
     target: 'ebook' | 'course',
     payload: { noteId: string; title: string; summary: string; content: string }
-  ) => Promise<void>
+  ) => Promise<PromoteResult | null>
+  onAddFocusTask?: (taskText: string, delegateTo?: 'self' | 'ai-agent') => Promise<void>
 }
+
+const CO_THINK_CHIPS = [
+  'ช่วยคิดไอเดียชื่อเว็บ/โดเมน 10 ชื่อพร้อมเหตุผล',
+  'แตกไอเดียนี้เป็นแผนลงมือทำทีละขั้น',
+  'เขียนโพสต์ขาย 3 มุม + Hook หยุดนิ้ว',
+]
 
 export default function VaultTab({
   notes,
   initialCategory = 'all',
   onNotesChange,
   onPromoteNote,
+  onAddFocusTask,
 }: VaultTabProps) {
+  const router = useRouter()
   const [categoryFilter, setCategoryFilter] = useState<BrainCategory | 'all'>(
     initialCategory
   )
@@ -48,8 +70,17 @@ export default function VaultTab({
   const [savedToast, setSavedToast] = useState(false)
   const [moveNotice, setMoveNotice] = useState<string | null>(null)
   const [moving, setMoving] = useState(false)
+
+  // AI Co-Thinker & Image Gen
   const [aiWorking, setAiWorking] = useState(false)
-  const [promoting, setPromoting] = useState<'ebook' | 'course' | null>(null)
+  const [coThinkPrompt, setCoThinkPrompt] = useState('')
+  const [generatingImage, setGeneratingImage] = useState(false)
+  const [imagePromptInput, setImagePromptInput] = useState('')
+
+  // Brain-to-Action feedback
+  const [promoting, setPromoting] = useState<'ebook' | 'course' | 'focus' | null>(null)
+  const [inlinePromo, setInlinePromo] = useState<PromoteResult | null>(null)
+  const [focusAddedNotice, setFocusAddedNotice] = useState(false)
 
   useEffect(() => {
     setCategoryFilter(initialCategory)
@@ -58,6 +89,8 @@ export default function VaultTab({
     )
     setSelectedId(matching[0]?.id || '')
     setDirty(false)
+    setInlinePromo(null)
+    setFocusAddedNotice(false)
   }, [initialCategory])
 
   const filteredNotes = notes.filter((n) => {
@@ -81,6 +114,8 @@ export default function VaultTab({
     const matching = notes.filter((n) => catId === 'all' || n.category === catId)
     setSelectedId(matching[0]?.id || '')
     setDirty(false)
+    setInlinePromo(null)
+    setFocusAddedNotice(false)
   }
 
   function updateActiveNote(patch: Partial<BrainNote>) {
@@ -91,14 +126,13 @@ export default function VaultTab({
     setDirty(true)
   }
 
-  async function handleSave() {
-    if (!activeNote || saving) return
+  async function persistNote(noteToSave: BrainNote) {
     setSaving(true)
     try {
       const res = await fetch('/api/brain-studio', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(activeNote),
+        body: JSON.stringify(noteToSave),
       })
       const json = await res.json()
       if (json?.success && json.note) {
@@ -112,6 +146,11 @@ export default function VaultTab({
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleSave() {
+    if (!activeNote || saving) return
+    await persistNote(activeNote)
   }
 
   async function handleMoveCategory(
@@ -206,24 +245,59 @@ export default function VaultTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'transform',
-          rawText: activeNote.content,
+          rawText: `หัวข้อ: ${activeNote.title}\n\n${activeNote.content}`,
           category: activeNote.category,
           instruction,
         }),
       })
       const json = await res.json()
       if (json?.success && json.data) {
-        updateActiveNote({
+        const updatedNote: BrainNote = {
+          ...activeNote,
           title: json.data.title || activeNote.title,
           summary: json.data.summary || activeNote.summary,
           content: json.data.content || activeNote.content,
-        })
+        }
+        await persistNote(updatedNote)
+        setCoThinkPrompt('')
         setEditorMode('preview')
       } else {
         alert(json?.error || 'AI ไม่สามารถประมวลผลได้')
       }
     } finally {
       setAiWorking(false)
+    }
+  }
+
+  async function handleGenerateImage() {
+    if (!activeNote || generatingImage) return
+    setGeneratingImage(true)
+    try {
+      const subject =
+        imagePromptInput.trim() ||
+        `Modern clean business conceptual illustration representing "${activeNote.title}". ${activeNote.summary || ''}`
+      const res = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: subject,
+          aspectRatio: '16:9',
+          style: 'executive',
+        }),
+      })
+      const json = await res.json()
+      if (json?.success && json.url) {
+        const updatedNote: BrainNote = {
+          ...activeNote,
+          imageUrl: json.url,
+        }
+        await persistNote(updatedNote)
+        setImagePromptInput('')
+      } else {
+        alert(json?.error || 'ไม่สามารถสร้างภาพได้ (ตรวจสอบ GEMINI_API_KEY)')
+      }
+    } finally {
+      setGeneratingImage(false)
     }
   }
 
@@ -290,7 +364,7 @@ export default function VaultTab({
       {/* Split Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left List */}
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col max-h-[680px]">
+        <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col max-h-[760px]">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
             <span className="text-xs font-bold text-slate-700">
               {getCategoryMeta(categoryFilter).label} ({filteredNotes.length})
@@ -314,6 +388,8 @@ export default function VaultTab({
                   onClick={() => {
                     setSelectedId(note.id)
                     setDirty(false)
+                    setInlinePromo(null)
+                    setFocusAddedNotice(false)
                   }}
                   className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer space-y-1.5 ${
                     active
@@ -328,6 +404,9 @@ export default function VaultTab({
                       {catInfo.short}
                     </span>
                     <div className="flex items-center gap-1.5">
+                      {note.imageUrl && (
+                        <ImageIcon size={12} className="text-indigo-500 shrink-0" />
+                      )}
                       {note.deadline && note.category === 'projects' && (
                         <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
                           ⏰ {note.deadline}
@@ -340,7 +419,7 @@ export default function VaultTab({
                     {note.title}
                   </div>
                   <div className="text-[11px] text-slate-500 line-clamp-2">
-                    {note.summary || 'คลิกเพื่ออ่านหรือต่อยอด'}
+                    {note.summary || 'คลิกเพื่ออ่าน แก้ไข หรือต่อยอด'}
                   </div>
                 </button>
               )
@@ -360,7 +439,7 @@ export default function VaultTab({
           </div>
         </div>
 
-        {/* Right Reader / Editor + P.A.R.A. Lifecycle + Brain-to-Action Bar */}
+        {/* Right Reader / Editor + AI Co-Thinker + AI Image + Brain-to-Action */}
         <div className="lg:col-span-8">
           {activeNote ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 flex flex-col space-y-4">
@@ -391,30 +470,27 @@ export default function VaultTab({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
-                    <button
-                      type="button"
-                      onClick={() => setEditorMode('preview')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 cursor-pointer ${
-                        editorMode === 'preview'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      <Eye size={12} /> อ่านสวยๆ
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditorMode('edit')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1 cursor-pointer ${
-                        editorMode === 'edit'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      <Edit3 size={12} /> แก้ไข
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditorMode((m) => (m === 'preview' ? 'edit' : 'preview'))
+                    }
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
+                      editorMode === 'edit'
+                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                    }`}
+                  >
+                    {editorMode === 'preview' ? (
+                      <>
+                        <Edit3 size={13} /> แก้ไขข้อความนี้
+                      </>
+                    ) : (
+                      <>
+                        <Eye size={13} /> กลับไปอ่านสวยๆ
+                      </>
+                    )}
+                  </button>
 
                   <button
                     type="button"
@@ -451,7 +527,7 @@ export default function VaultTab({
                 </div>
               </div>
 
-              {/* 1-Click P.A.R.A. Lifecycle Bar (contextual, no dropdown!) */}
+              {/* 1-Click P.A.R.A. Lifecycle Bar */}
               {(activeNote.category === 'inbox' ||
                 activeNote.category === 'resources' ||
                 activeNote.category === 'projects' ||
@@ -576,7 +652,7 @@ export default function VaultTab({
                     className="w-full px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 focus:outline-none focus:border-blue-600"
                   />
                   <textarea
-                    rows={14}
+                    rows={12}
                     value={activeNote.content}
                     onChange={(e) => updateActiveNote({ content: e.target.value })}
                     className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50/50 text-sm leading-relaxed text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white"
@@ -590,17 +666,118 @@ export default function VaultTab({
                       <p className="text-xs text-slate-500 mt-1">{activeNote.summary}</p>
                     )}
                   </div>
-                  <div className="prose prose-sm prose-slate max-w-none p-5 rounded-xl bg-slate-50/70 border border-slate-200 min-h-[260px]">
+                  <div
+                    onClick={() => setEditorMode('edit')}
+                    title="คลิกที่เนื้อหาเพื่อแก้ไขได้ทันที"
+                    className="prose prose-sm prose-slate max-w-none p-5 rounded-xl bg-slate-50/70 border border-slate-200 hover:border-blue-300 transition-colors min-h-[200px] cursor-text"
+                  >
                     <ReactMarkdown>{activeNote.content}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
+              {/* Generated Image Preview */}
+              {activeNote.imageUrl && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-indigo-900">
+                    <span className="flex items-center gap-1.5">
+                      <ImageIcon size={14} className="text-indigo-600" />
+                      ภาพประกอบไอเดีย (AI Generated)
+                    </span>
+                    <a
+                      href={activeNote.imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                    >
+                      เปิดภาพขนาดเต็ม <ExternalLink size={11} />
+                    </a>
+                  </div>
+                  <img
+                    src={activeNote.imageUrl}
+                    alt={activeNote.title}
+                    className="w-full max-h-72 object-cover rounded-lg border border-indigo-100"
+                  />
+                </div>
+              )}
+
+              {/* AI Co-Thinker + AI Image Bar */}
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Wand2 size={14} className="text-indigo-600" />
+                    สั่ง AI ช่วยคิดต่อยอด &amp; สร้างภาพจากไอเดียนี้
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CO_THINK_CHIPS.map((chip, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setCoThinkPrompt(chip)}
+                        className="px-2 py-0.5 rounded-full bg-white border border-indigo-200 hover:bg-indigo-100 text-[10px] font-semibold text-indigo-800 cursor-pointer"
+                      >
+                        + {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (!coThinkPrompt.trim()) return
+                    handleAiTransform(coThinkPrompt.trim())
+                  }}
+                  className="flex flex-wrap gap-2"
+                >
+                  <VoiceInputButton
+                    label="พูดสั่ง AI"
+                    onTranscript={(chunk) =>
+                      setCoThinkPrompt((prev) => (prev ? `${prev} ${chunk}` : chunk))
+                    }
+                  />
+                  <input
+                    type="text"
+                    value={coThinkPrompt}
+                    onChange={(e) => setCoThinkPrompt(e.target.value)}
+                    placeholder="เช่น ช่วยคิดชื่อเว็บเกี่ยวกับ one person do it 10 ชื่อ หรือขยายไอเดียนี้..."
+                    className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={aiWorking || !coThinkPrompt.trim()}
+                    className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <Send size={12} />
+                    {aiWorking ? 'AI กำลังคิด...' : 'AI ช่วยคิด'}
+                  </button>
+                </form>
+
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-indigo-100">
+                  <input
+                    type="text"
+                    value={imagePromptInput}
+                    onChange={(e) => setImagePromptInput(e.target.value)}
+                    placeholder="ระบุรายละเอียดภาพที่อยากสร้าง (หรือเว้นว่างให้ AI คิดภาพจากชื่อเรื่องให้เอง)"
+                    className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs focus:outline-none focus:border-indigo-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateImage}
+                    disabled={generatingImage}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer shrink-0"
+                  >
+                    <ImageIcon size={13} />
+                    {generatingImage ? 'กำลังวาดภาพ...' : '🎨 สร้างภาพประกอบไอเดีย'}
+                  </button>
+                </div>
+              </div>
+
               {/* BRAIN-TO-ACTION BAR */}
               <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-white p-4 space-y-3">
                 <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
                   <Sparkles size={14} className="text-blue-600" />
-                  Brain-to-Action — เปลี่ยนความรู้ใบนี้เป็นผลงานจริงทันทีใน 1 คลิก:
+                  Brain-to-Action — ส่งต่อไปทำงานจริงใน 1 คลิก:
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -608,12 +785,13 @@ export default function VaultTab({
                     disabled={promoting !== null}
                     onClick={async () => {
                       setPromoting('ebook')
-                      await onPromoteNote('ebook', {
+                      const res = await onPromoteNote('ebook', {
                         noteId: activeNote.id,
                         title: activeNote.title,
                         summary: activeNote.summary,
                         content: activeNote.content,
                       })
+                      if (res) setInlinePromo(res)
                       setPromoting(null)
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
@@ -629,12 +807,13 @@ export default function VaultTab({
                     disabled={promoting !== null}
                     onClick={async () => {
                       setPromoting('course')
-                      await onPromoteNote('course', {
+                      const res = await onPromoteNote('course', {
                         noteId: activeNote.id,
                         title: activeNote.title,
                         summary: activeNote.summary,
                         content: activeNote.content,
                       })
+                      if (res) setInlinePromo(res)
                       setPromoting(null)
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
@@ -644,6 +823,26 @@ export default function VaultTab({
                       ? 'กำลังสร้างคอร์สใหม่...'
                       : 'ส่งเป็นไอเดียคอร์สใหม่'}
                   </button>
+
+                  {onAddFocusTask && (
+                    <button
+                      type="button"
+                      disabled={promoting !== null}
+                      onClick={async () => {
+                        setPromoting('focus')
+                        await onAddFocusTask(activeNote.title, 'ai-agent')
+                        setFocusAddedNotice(true)
+                        setPromoting(null)
+                        setTimeout(() => setFocusAddedNotice(false), 3500)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      <Target size={14} />
+                      {promoting === 'focus'
+                        ? 'กำลังส่ง...'
+                        : 'ส่งเข้าโฟกัสวันนี้ (ให้ AI ทำ)'}
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -657,6 +856,28 @@ export default function VaultTab({
                       : activeMeta.aiActionLabel || 'AI ขัดเกลา / ต่อยอด'}
                   </button>
                 </div>
+
+                {/* Inline Feedback right next to the buttons so user never misses it! */}
+                {inlinePromo && (
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950">
+                    <span className="font-semibold">
+                      ✅ สร้างสำเร็จ: <strong>{inlinePromo.title}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => router.push(inlinePromo.primaryUrl)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                    >
+                      {inlinePromo.primaryLabel} <ExternalLink size={12} />
+                    </button>
+                  </div>
+                )}
+
+                {focusAddedNotice && (
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-900">
+                    ✅ ส่งเข้า &ldquo;โฟกัสสำคัญวันนี้ (โยน AI ทำ)&rdquo; ในหน้า Cockpit เรียบร้อยแล้ว!
+                  </div>
+                )}
               </div>
             </div>
           ) : (
