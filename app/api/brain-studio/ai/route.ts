@@ -5,28 +5,36 @@ import { getBrainNotes } from '@/lib/brainStudioDb'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { action, rawText, question, category } = body
+    const { action, rawText, question, category, instruction } = body
 
-    if (action === 'organize') {
+    if (action === 'organize' || action === 'transform') {
       if (!rawText || !String(rawText).trim()) {
         return NextResponse.json(
-          { success: false, error: 'กรุณาใส่ข้อความดิบหรือไอเดียที่ต้องการจัดระเบียบ' },
+          { success: false, error: 'กรุณาใส่ข้อความหรือเนื้อหาที่ต้องการให้ AI ช่วยทำ' },
           { status: 400 }
         )
       }
 
-      const prompt = `คุณคือผู้เชี่ยวชาญด้านการถอดความรู้และสร้างคลังสมอง (BrainStudio Knowledge Architect)
-กรุณานำข้อความดิบ/บันทึกความคิดต่อไปนี้มาจัดระเบียบเป็นไฟล์ความรู้ Markdown ภาษาไทยที่คม ชัด อ่านง่าย และพร้อมให้ AI Agents อ่านไปใช้งานต่อได้ทันที (หมวดหมู่: ${category || 'knowledge-vault'})
+      const taskInstruction =
+        instruction ||
+        'จัดระเบียบข้อความดิบนี้เป็นไฟล์ความรู้ Markdown ภาษาไทยที่คม ชัด อ่านง่าย และพร้อมใช้งานจริง'
+
+      const prompt = `คุณคือผู้ช่วยส่วนตัวระดับผู้บริหารประจำคลังสมอง (BrainStudio AI)
+หมวดหมู่ปัจจุบัน: ${category || 'knowledge-vault'}
+คำสั่งเฉพาะ: ${taskInstruction}
+
+กฎเหล็ก:
+- เขียนเป็นภาษาไทยที่อ่านลื่นไหล เป็นธรรมชาติ ตรงประเด็น นำไปใช้งานได้จริงทันที
+- จัดรูปแบบ Markdown ด้วยหัวข้อ ## และ bullet points ที่อ่านง่าย
 
 ตอบกลับเป็น JSON ล้วน (ห้ามใส่ markdown code fence):
 {
   "title": "ชื่อเรื่องที่กระชับและสื่อความหมาย",
   "summary": "สรุปใจความสำคัญ 1 ประโยค",
-  "tags": ["แท็ก1", "แท็ก2", "แท็ก3"],
-  "content": "เนื้อหา Markdown ฉบับสมบูรณ์ (ใช้ ## หัวข้อ, bullet points, และสรุปข้อนำไปใช้จริง)"
+  "content": "เนื้อหา Markdown ฉบับสมบูรณ์"
 }
 
-ข้อความดิบต้นฉบับ:
+ข้อมูลต้นฉบับ:
 ${rawText}`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
@@ -58,7 +66,7 @@ ${rawText}`
       const prompt = `คุณคือผู้ช่วยอัจฉริยะประจำคลังสมอง (BrainStudio AI) ที่อ่านฐานความรู้ทั้งหมดของเจ้าของธุรกิจด้านล่างนี้
 กฎเหล็ก:
 1. ตอบคำถามโดยอ้างอิงความรู้ น้ำเสียง และจุดยืนจากคลังสมองด้านล่างนี้เป็นหลัก
-2. ระบุชื่อไฟล์หรือหัวข้อในคลังสมองที่คุณดึงมาใช้ประกอบคำตอบด้วย
+2. ระบุชื่อหัวข้อในคลังสมองที่คุณดึงมาใช้ประกอบคำตอบด้วย
 3. ตอบเป็นภาษาไทยที่กระชับ เป็นธรรมชาติ และนำไปใช้งานต่อได้ทันที
 
 --- คลังสมอง (BrainStudio Knowledge Base) ---
