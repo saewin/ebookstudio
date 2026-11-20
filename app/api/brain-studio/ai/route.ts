@@ -16,6 +16,94 @@ function stripCodeFences(raw: string): string {
     .trim()
 }
 
+function escapeNewlinesInsideJsonStrings(input: string): string {
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]
+    if (escaped) {
+      out += ch
+      escaped = false
+      continue
+    }
+    if (ch === '\\' && inString) {
+      out += ch
+      escaped = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      out += ch
+      continue
+    }
+    if (inString) {
+      if (ch === '\n') {
+        out += '\\n'
+        continue
+      }
+      if (ch === '\r') {
+        out += '\\r'
+        continue
+      }
+      if (ch === '\t') {
+        out += '\\t'
+        continue
+      }
+    }
+    out += ch
+  }
+  return out
+}
+
+function safeParseJsonObject(raw: string): any {
+  const cleaned = stripCodeFences(raw)
+  const start = cleaned.indexOf('{')
+  const end = cleaned.lastIndexOf('}')
+  const slice = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned
+
+  try {
+    return JSON.parse(slice)
+  } catch {
+    const repaired = escapeNewlinesInsideJsonStrings(slice)
+    return JSON.parse(repaired)
+  }
+}
+
+function parseDelimitedTransform(raw: string): {
+  title?: string
+  summary?: string
+  content: string
+} {
+  const cleaned = stripCodeFences(raw)
+  if (cleaned.startsWith('{')) {
+    try {
+      const parsed = safeParseJsonObject(cleaned)
+      if (parsed && typeof parsed.content === 'string') {
+        return parsed
+      }
+    } catch {
+      // fall through to delimited parser
+    }
+  }
+
+  const marker = '---CONTENT---'
+  const markerIdx = cleaned.indexOf(marker)
+  if (markerIdx >= 0) {
+    const header = cleaned.slice(0, markerIdx)
+    const content = cleaned.slice(markerIdx + marker.length).trim()
+    const titleMatch = header.match(/^TITLE:\s*(.+)$/m)
+    const summaryMatch = header.match(/^SUMMARY:\s*(.+)$/m)
+    return {
+      title: titleMatch?.[1]?.trim(),
+      summary: summaryMatch?.[1]?.trim(),
+      content,
+    }
+  }
+
+  return { content: cleaned }
+}
+
 function mapInterviewTopicToCategory(topic: string): BrainCategory {
   switch (topic) {
     case 'vision':
@@ -80,7 +168,7 @@ export async function POST(request: NextRequest) {
 ${rawText}`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
       return NextResponse.json({ success: true, data: parsed })
     }
 
@@ -126,7 +214,7 @@ ${historyText || '(เพิ่งเริ่มสัมภาษณ์)'}
 }`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
       return NextResponse.json({ success: true, data: parsed })
     }
 
@@ -159,7 +247,7 @@ ${historyText}
 }`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
       return NextResponse.json({
         success: true,
         data: { ...parsed, category: targetCategory },
@@ -198,7 +286,7 @@ ${dilemma}
 }`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
       return NextResponse.json({ success: true, data: parsed })
     }
 
@@ -223,7 +311,7 @@ ${masterContext}
 }`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
       return NextResponse.json({ success: true, data: parsed })
     }
 
@@ -251,15 +339,14 @@ ${masterContext.slice(0, 3500)}
 ข้อมูลต้นฉบับ:
 ${rawText}
 
-ตอบกลับเป็น JSON ล้วน:
-{
-  "title": "ชื่อเรื่องที่กระชับและสื่อความหมาย",
-  "summary": "สรุปใจความสำคัญ 1 ประโยค",
-  "content": "เนื้อหา Markdown ฉบับสมบูรณ์"
-}`
+ตอบกลับตามรูปแบบนี้เท่านั้น (ไม่ต้องใส่ code fence):
+TITLE: ชื่อเรื่องที่กระชับและสื่อความหมาย
+SUMMARY: สรุปใจความสำคัญ 1 ประโยค
+---CONTENT---
+เนื้อหา Markdown ฉบับสมบูรณ์ภาษาไทย (คงรายละเอียดเดิมไว้และต่อยอดคำตอบให้ครบถ้วนพร้อมใช้งานจริง)`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = parseDelimitedTransform(raw)
       return NextResponse.json({ success: true, data: parsed })
     }
 
@@ -326,7 +413,7 @@ ${masterContext}
 }`
 
       const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
-      const parsed = JSON.parse(stripCodeFences(raw))
+      const parsed = safeParseJsonObject(raw)
 
       const now = new Date().toISOString()
       const savedNote = await saveBrainNote({
