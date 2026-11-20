@@ -623,6 +623,36 @@ export default function VaultTab({
                     onChange={(e) => updateActiveNote({ content: e.target.value })}
                     className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50/50 text-sm leading-relaxed text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditorMode('preview')}
+                      className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-600 cursor-pointer"
+                    >
+                      👁️ ดูแบบอ่านสวยๆ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      disabled={saving}
+                      className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                        savedToast
+                          ? 'bg-emerald-600 text-white'
+                          : dirty
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-slate-900 hover:bg-slate-800 text-white'
+                      }`}
+                    >
+                      <Save size={13} />
+                      {savedToast
+                        ? 'บันทึกแล้ว'
+                        : saving
+                          ? 'กำลังบันทึก...'
+                          : dirty
+                            ? 'บันทึกการแก้ไข*'
+                            : 'บันทึก'}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">

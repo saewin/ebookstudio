@@ -551,7 +551,7 @@ export async function callGeminiNative(
     return executeLLMCompletion({
         messages,
         provider,
-        maxTokens: 4000,
+        maxTokens: 8192,
         temperature: 0.7,
         jsonMode,
         model: modelName
