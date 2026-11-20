@@ -113,11 +113,11 @@ export default function BrainStudioClient({
                 BrainStudio 2.0
               </h1>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                FOUNDER&apos;S BRAIN 1 OS
+                INBOX + P.A.R.A. · BRAIN 1 OS
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              ระบบช่วยสมองที่ 1 ที่แท้จริง — เคลียร์สมองด้วยเสียง, AI สัมภาษณ์ถอดความรู้, ช่วยตัดสินใจตามเข็มทิศชีวิต, และส่งต่อสร้าง Ebook/คอร์สใน 1 คลิก
+              ระบบช่วยสมองที่ 1 แบบ Inbox + P.A.R.A. — เคลียร์สมองด้วยเสียงให้ AI คัดแยกลง P·A·R·A, สัมภาษณ์ถอดความรู้, ช่วยตัดสินใจ และส่งต่อสร้าง Ebook/คอร์สใน 1 คลิก
             </p>
           </div>
         </div>

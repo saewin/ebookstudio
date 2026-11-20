@@ -15,6 +15,8 @@ import {
   BookOpen,
   GraduationCap,
   Sparkles,
+  Calendar,
+  ArrowRightCircle,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
 import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
@@ -40,11 +42,12 @@ export default function VaultTab({
   )
   const [selectedId, setSelectedId] = useState<string>(notes[0]?.id || '')
   const [searchQuery, setSearchQuery] = useState('')
-  // Default to clean rendered preview so it feels executive & readable, not raw code!
   const [editorMode, setEditorMode] = useState<'preview' | 'edit'>('preview')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedToast, setSavedToast] = useState(false)
+  const [moveNotice, setMoveNotice] = useState<string | null>(null)
+  const [moving, setMoving] = useState(false)
   const [aiWorking, setAiWorking] = useState(false)
   const [promoting, setPromoting] = useState<'ebook' | 'course' | null>(null)
 
@@ -54,6 +57,7 @@ export default function VaultTab({
       (n) => initialCategory === 'all' || n.category === initialCategory
     )
     setSelectedId(matching[0]?.id || '')
+    setDirty(false)
   }, [initialCategory])
 
   const filteredNotes = notes.filter((n) => {
@@ -110,9 +114,50 @@ export default function VaultTab({
     }
   }
 
+  async function handleMoveCategory(
+    targetCategory: BrainCategory,
+    extraPatch?: Partial<BrainNote>
+  ) {
+    if (!activeNote || moving) return
+    setMoving(true)
+    try {
+      const payload: BrainNote = {
+        ...activeNote,
+        ...extraPatch,
+        category: targetCategory,
+      }
+      const res = await fetch('/api/brain-studio', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (json?.success && json.note) {
+        const updatedNotes = notes.map((n) =>
+          n.id === json.note.id ? json.note : n
+        )
+        onNotesChange(updatedNotes)
+        setDirty(false)
+
+        if (categoryFilter !== 'all' && categoryFilter !== targetCategory) {
+          const remaining = updatedNotes.filter(
+            (n) => n.category === categoryFilter
+          )
+          setSelectedId(remaining[0]?.id || '')
+        }
+
+        const targetLabel = getCategoryMeta(targetCategory).label
+        setMoveNotice(`ย้าย "${json.note.title}" ไปยัง ${targetLabel} เรียบร้อยแล้ว`)
+        setTimeout(() => setMoveNotice(null), 3200)
+      }
+    } finally {
+      setMoving(false)
+    }
+  }
+
   async function handleCreateNote() {
     const cat: BrainCategory =
-      categoryFilter === 'all' ? 'ideas-sparks' : categoryFilter
+      categoryFilter === 'all' ? 'inbox' : categoryFilter
     const meta = getCategoryMeta(cat)
     const res = await fetch('/api/brain-studio', {
       method: 'POST',
@@ -234,10 +279,18 @@ export default function VaultTab({
         </div>
       </div>
 
+      {/* Move Feedback Banner */}
+      {moveNotice && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 flex items-center gap-2">
+          <Check size={14} className="text-emerald-600 shrink-0" />
+          <span>{moveNotice}</span>
+        </div>
+      )}
+
       {/* Split Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left List */}
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col max-h-[650px]">
+        <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col max-h-[680px]">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
             <span className="text-xs font-bold text-slate-700">
               {getCategoryMeta(categoryFilter).label} ({filteredNotes.length})
@@ -274,7 +327,14 @@ export default function VaultTab({
                     >
                       {catInfo.short}
                     </span>
-                    {note.pinned && <Pin size={12} className="text-blue-600 shrink-0" />}
+                    <div className="flex items-center gap-1.5">
+                      {note.deadline && note.category === 'projects' && (
+                        <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                          ⏰ {note.deadline}
+                        </span>
+                      )}
+                      {note.pinned && <Pin size={12} className="text-blue-600 shrink-0" />}
+                    </div>
                   </div>
                   <div className="text-xs font-bold text-slate-900 line-clamp-1">
                     {note.title}
@@ -287,7 +347,7 @@ export default function VaultTab({
             })}
             {filteredNotes.length === 0 && (
               <div className="p-8 text-center space-y-3">
-                <p className="text-xs text-slate-400">ยังไม่มีบันทึกในหมวดนี้</p>
+                <p className="text-xs text-slate-400">ยังไม่มีบันทึกในกล่องนี้</p>
                 <button
                   type="button"
                   onClick={handleCreateNote}
@@ -300,18 +360,23 @@ export default function VaultTab({
           </div>
         </div>
 
-        {/* Right Reader / Editor + Brain-to-Action Bar */}
+        {/* Right Reader / Editor + P.A.R.A. Lifecycle + Brain-to-Action Bar */}
         <div className="lg:col-span-8">
           {activeNote ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 flex flex-col space-y-4">
               {/* Top Controls */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`px-2.5 py-1 rounded-full text-xs font-bold border ${activeMeta.color}`}
                   >
                     {activeMeta.label}
                   </span>
+                  {activeNote.deadline && activeNote.category === 'projects' && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      <Calendar size={12} /> เส้นตาย: {activeNote.deadline}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => updateActiveNote({ pinned: !activeNote.pinned })}
@@ -386,15 +451,123 @@ export default function VaultTab({
                 </div>
               </div>
 
-              {/* Title & Summary */}
+              {/* 1-Click P.A.R.A. Lifecycle Bar (contextual, no dropdown!) */}
+              {(activeNote.category === 'inbox' ||
+                activeNote.category === 'resources' ||
+                activeNote.category === 'projects' ||
+                activeNote.category === 'archives') && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                    <ArrowRightCircle size={13} className="text-blue-600" />
+                    วงจร P.A.R.A.:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {activeNote.category === 'inbox' && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={moving}
+                          onClick={() => handleMoveCategory('projects')}
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          🎯 เลื่อนเป็น Project (P)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={moving}
+                          onClick={() => handleMoveCategory('areas')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          🧭 เก็บเป็น Area (A)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={moving}
+                          onClick={() => handleMoveCategory('resources')}
+                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          📚 เก็บเป็น Resource (R)
+                        </button>
+                      </>
+                    )}
+
+                    {activeNote.category === 'resources' && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={moving}
+                          onClick={() => handleMoveCategory('projects')}
+                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          🎯 เลื่อนเป็น Project (P)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={moving}
+                          onClick={() =>
+                            handleMoveCategory('archives', { pinned: false })
+                          }
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          🗄️ เก็บเข้า Archive
+                        </button>
+                      </>
+                    )}
+
+                    {activeNote.category === 'projects' && (
+                      <button
+                        type="button"
+                        disabled={moving}
+                        onClick={() =>
+                          handleMoveCategory('archives', { pinned: false })
+                        }
+                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        ✅ ปิดจ๊อบ → Archive (A)
+                      </button>
+                    )}
+
+                    {activeNote.category === 'archives' && (
+                      <button
+                        type="button"
+                        disabled={moving}
+                        onClick={() => handleMoveCategory('projects')}
+                        className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        ♻️ ดึงกลับเป็น Project (P)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Title & Summary / Editor */}
               {editorMode === 'edit' ? (
                 <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={activeNote.title}
-                    onChange={(e) => updateActiveNote({ title: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 text-base font-bold text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      value={activeNote.title}
+                      onChange={(e) => updateActiveNote({ title: e.target.value })}
+                      className="flex-1 min-w-[240px] px-3.5 py-2 rounded-lg border border-slate-200 text-base font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                    {activeNote.category === 'projects' && (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50">
+                        <Calendar size={13} className="text-blue-600" />
+                        <span className="text-[11px] font-semibold text-slate-600">
+                          เส้นตาย:
+                        </span>
+                        <input
+                          type="date"
+                          value={activeNote.deadline || ''}
+                          onChange={(e) =>
+                            updateActiveNote({ deadline: e.target.value || undefined })
+                          }
+                          className="text-xs bg-transparent text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={activeNote.summary}
@@ -417,13 +590,13 @@ export default function VaultTab({
                       <p className="text-xs text-slate-500 mt-1">{activeNote.summary}</p>
                     )}
                   </div>
-                  <div className="prose prose-sm prose-slate max-w-none p-5 rounded-xl bg-slate-50/70 border border-slate-200 min-h-[280px]">
+                  <div className="prose prose-sm prose-slate max-w-none p-5 rounded-xl bg-slate-50/70 border border-slate-200 min-h-[260px]">
                     <ReactMarkdown>{activeNote.content}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
-              {/* BRAIN-TO-ACTION BAR (1-Click Real Studio Actions!) */}
+              {/* BRAIN-TO-ACTION BAR */}
               <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-white p-4 space-y-3">
                 <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
                   <Sparkles size={14} className="text-blue-600" />
@@ -489,14 +662,14 @@ export default function VaultTab({
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-12 text-center space-y-3">
               <p className="text-sm font-semibold text-slate-700">
-                ยังไม่มีบันทึกในหมวดนี้
+                ยังไม่มีบันทึกในกล่องนี้
               </p>
               <button
                 type="button"
                 onClick={handleCreateNote}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
               >
-                <Plus size={14} /> สร้างบันทึกใหม่ในหมวดนี้
+                <Plus size={14} /> สร้างบันทึกใหม่ในกล่องนี้
               </button>
             </div>
           )}

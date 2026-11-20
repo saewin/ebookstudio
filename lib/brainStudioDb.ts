@@ -3,12 +3,19 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 
 export type BrainCategory =
-  | 'vision-compass'
-  | 'brand-bible'
-  | 'ideas-sparks'
-  | 'active-focus'
-  | 'knowledge-vault'
-  | 'sop-framework'
+  | 'inbox'
+  | 'projects'
+  | 'areas'
+  | 'resources'
+  | 'archives'
+
+export const PARA_FOLDERS: Record<BrainCategory, string> = {
+  inbox: '00-Inbox',
+  projects: '01-Projects',
+  areas: '02-Areas',
+  resources: '03-Resources',
+  archives: '04-Archives',
+}
 
 export interface BrainNote {
   id: string
@@ -18,6 +25,7 @@ export interface BrainNote {
   summary: string
   tags: string[]
   pinned: boolean
+  deadline?: string
   content: string
   createdAt: string
   updatedAt: string
@@ -64,32 +72,66 @@ const DB_DIR = path.join(process.cwd(), 'public', 'uploads', 'db')
 const LEGACY_BRAIN_FILE = path.join(DB_DIR, 'brain_studio.json')
 const STATE_FILE = path.join(DB_DIR, 'brain_studio_state.json')
 
-const VALID_CATEGORIES = new Set<BrainCategory>([
-  'vision-compass',
-  'brand-bible',
-  'ideas-sparks',
-  'active-focus',
-  'knowledge-vault',
-  'sop-framework',
-])
-
-function normalizeCategory(cat: string): BrainCategory {
-  if (VALID_CATEGORIES.has(cat as BrainCategory)) {
-    return cat as BrainCategory
+export function normalizeCategory(cat: string): BrainCategory {
+  switch (cat) {
+    case 'inbox':
+    case 'ideas-sparks':
+      return 'inbox'
+    case 'projects':
+    case 'active-focus':
+      return 'projects'
+    case 'areas':
+    case 'vision-compass':
+    case 'brand-bible':
+    case 'sop-framework':
+      return 'areas'
+    case 'resources':
+    case 'knowledge-vault':
+      return 'resources'
+    case 'archives':
+      return 'archives'
+    default:
+      return 'resources'
   }
-  return 'knowledge-vault'
 }
 
 export function createSeedBrainNotes(): BrainNote[] {
   const now = new Date().toISOString()
   return [
     {
+      id: 'brain-proj-workshop-2',
+      category: 'projects',
+      title: 'เปิดตัว Workshop สด 1 วัน: ฉันนี่แหละประธานบริษัท 2.0',
+      slug: 'proj-workshop-2-0.md',
+      summary: 'โปรเจกต์หลักไตรมาสนี้: ปั้นสไลด์, Sales Page, โพสต์เปิดตัว และ Google Antigravity Starter Kit ให้พร้อมสอนรุ่นแรก',
+      tags: ['Project', 'Flagship', 'Workshop'],
+      pinned: true,
+      deadline: '2026-12-15',
+      content: `# Project: เปิดตัว Workshop สด 1 วัน "ฉันนี่แหละประธานบริษัท 2.0"
+
+## เป้าหมายและเส้นตาย
+- **เป้าหมาย:** จัด Workshop สด 1 วันเต็ม ด้วยแนวคิด *"สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1"*
+- **เส้นตาย:** 15 ธ.ค. 2026
+
+## งานที่ต้องทำให้จบ (Milestones)
+- [x] วางโครงสร้าง Course Outline และสไลด์สอนใน Course Studio
+- [x] จัดทำ Google Antigravity Starter Kit (.zip) แจกผู้เรียนในห้อง
+- [ ] อัดคลิปสั้นโปรโมต 3 ชิ้น และปล่อยโพสต์เปิดตัวใน Facebook & LINE OA
+- [ ] เปิดรับลงทะเบียนรอบ Early Bird 15 ที่นั่งแรก
+
+## เกณฑ์เมื่อจบโปรเจกต์
+> เมื่อสอนรุ่นที่ 1 จบเรียบร้อย กด **"ปิดจ๊อบ → Archive"** เพื่อสรุปบทเรียนเก็บเข้า \`04-Archives\` ได้ทันที
+`,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
       id: 'brain-vision-compass',
-      category: 'vision-compass',
+      category: 'areas',
       title: 'Vision & Life Compass (เข็มทิศชีวิต & การตัดสินใจ)',
       slug: 'vision-life-compass.md',
-      summary: 'เป้าหมาย 3 เสาหลัก (มั่งคั่ง · มีเวลา · สุขภาพดี) และกฎการตัดสินใจของสมองที่ 1',
-      tags: ['สมองที่ 1', 'เข็มทิศชีวิต', 'Wealth-Time-Health'],
+      summary: 'พื้นที่ดูแลตลอดชีวิต: เป้าหมาย 3 เสาหลัก (มั่งคั่ง · มีเวลา · สุขภาพดี) และกฎการตัดสินใจของสมองที่ 1',
+      tags: ['Areas', 'สมองที่ 1', 'Wealth-Time-Health'],
       pinned: true,
       content: `# Vision & Life Compass — เข็มทิศชีวิตและการตัดสินใจ
 
@@ -107,11 +149,11 @@ export function createSeedBrainNotes(): BrainNote[] {
     },
     {
       id: 'brain-brand-bible',
-      category: 'brand-bible',
+      category: 'areas',
       title: 'Brand Bible & Founder Voice (ตัวตนและน้ำเสียงของฉัน)',
       slug: 'brand-bible.md',
       summary: 'แก่นตัวตน น้ำเสียง จุดยืน และคำต้องห้าม เพื่อให้ AI ทุกตัวพูดเหมือนเรา 100%',
-      tags: ['แกนหลัก', 'Founder Voice', 'Brand'],
+      tags: ['Areas', 'Brand Bible', 'Founder Voice'],
       pinned: true,
       content: `# Brand Bible & Founder Voice
 
@@ -132,53 +174,31 @@ export function createSeedBrainNotes(): BrainNote[] {
       updatedAt: now,
     },
     {
-      id: 'brain-ideas-sparks',
-      category: 'ideas-sparks',
-      title: 'Inbox ไอเดียฉับพลัน (Ideas & Sparks)',
-      slug: 'ideas-inbox.md',
-      summary: 'ที่โยนทุกไอเดียที่แวบเข้ามาในหัว ก่อนจะลืม แล้วค่อยให้ AI ช่วยจัดระเบียบและต่อยอด',
-      tags: ['ไอเดีย', 'Inbox สมอง'],
+      id: 'brain-sop-quality',
+      category: 'areas',
+      title: 'Company SOP & Quality Gate สำหรับ AI Agents',
+      slug: 'sop-quality-gate.md',
+      summary: 'มาตรฐานการทำงานที่ทุก Agent ต้องตรวจสอบก่อนส่งงานให้เจ้าของ',
+      tags: ['Areas', 'SOP', 'Quality Gate'],
       pinned: false,
-      content: `# Ideas & Sparks — กล่องรับไอเดียฉับพลัน
+      content: `# Company SOP & Quality Gate
 
-> **กฎของหมวดนี้:** สมองมีไว้คิด ไม่ได้มีไว้จำ — นึกอะไรออกให้โยนลงตรงนี้ทันที ไม่ต้องจัดสวย แล้วค่อยกดปุ่ม AI แปลงเป็นโพสต์/คลิป หรือส่งสร้าง Ebook/คอร์ส
-
-## ไอเดียที่เพิ่งแวบเข้ามา
-- [ ] คลิปสั้นเปรียบเทียบ "แอดมินของ AI" vs "ประธานบริษัทที่มีสมองที่ 3 (AI CEO)"
-- [ ] ทำ Ebook แจกฟรีเรื่อง "เช็กลิสต์ 8 AI Agents สำหรับบริษัทคนเดียว"
-- [ ] โชว์เคสเบื้องหลังการสร้าง Ebook Studio & BrainStudio ด้วย Google Antigravity
-`,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'brain-active-focus',
-      category: 'active-focus',
-      title: 'Active Focus — โปรเจกต์หลักที่โฟกัสไตรมาสนี้',
-      slug: 'active-focus.md',
-      summary: '1–3 โปรเจกต์สำคัญที่สุดในตอนนี้ เพื่อให้ AI CEO รู้ลำดับความสำคัญและไม่พาออกนอกเรื่อง',
-      tags: ['โฟกัส', 'Q-Goals', 'โปรเจกต์หลัก'],
-      pinned: false,
-      content: `# Active Focus — โปรเจกต์หลักที่โฟกัสตอนนี้
-
-## ลำดับความสำคัญสูงสุด (Top 3 Only)
-1. **เปิดตัว Workshop สด 1 วัน: "ฉันนี่แหละประธานบริษัท 2.0"**
-   - เป้าหมาย: ปั้นสไลด์, Sales Page, โพสต์เปิดตัว และ Google Antigravity Starter Kit ให้พร้อมสอนรุ่นแรก
-2. **พัฒนา Ebook Studio + BrainStudio + Course Studio**
-   - เป้าหมาย: ใช้เป็นทั้งเครื่องมือทำงานจริงของตัวเอง และเป็น Case Study โชว์ในห้องเรียน
-3. **เตรียมต่อยอดคอร์ส B: One-Person Brandformance & AI Revenue Engine**
-   - เป้าหมาย: วางบันไดต่อยอดสำหรับศิษย์เก่าที่อยากเร่งยอดขายไว
+## กฎเหล็ก 4 ข้อก่อนส่งงานทุกชิ้น
+1. อ่าน Vision & Life Compass และ Brand Bible ก่อนเริ่มงานเสมอ
+2. ห้ามมั่วข้อมูลหรือสถิติ หากข้อมูลไม่ครบให้ระบุชัดเจน
+3. งานทุกชิ้นต้องพร้อมนำไปใช้งานจริงได้ทันที (Copy-Paste Ready)
+4. ผ่านการตรวจจาก AI CEO (Quality Gate) ว่าตรงน้ำเสียงแบรนด์และไม่เบียดเบียนเวลาชีวิตเจ้าของก่อนส่งถึงสมองที่ 1
 `,
       createdAt: now,
       updatedAt: now,
     },
     {
       id: 'brain-knowledge-3brains',
-      category: 'knowledge-vault',
+      category: 'resources',
       title: 'กรอบความคิด: ระบบ 3 สมองของประธานบริษัท 2.0',
       slug: 'three-brains-framework.md',
-      summary: 'องค์ความรู้หลักเรื่องการแบ่งสมอง 1-2-3 บน Google Antigravity',
-      tags: ['3 สมอง', 'Google Antigravity', 'Framework'],
+      summary: 'คลังองค์ความรู้หลักเรื่องการแบ่งสมอง 1-2-3 บน Google Antigravity พร้อมหยิบไปทำสื่อ/Ebook/คอร์ส',
+      tags: ['Resources', '3 สมอง', 'Google Antigravity'],
       pinned: false,
       content: `# ระบบ 3 สมองของประธานบริษัท 2.0
 
@@ -195,20 +215,44 @@ export function createSeedBrainNotes(): BrainNote[] {
       updatedAt: now,
     },
     {
-      id: 'brain-sop-quality',
-      category: 'sop-framework',
-      title: 'Company SOP & Quality Gate สำหรับ AI Agents',
-      slug: 'sop-quality-gate.md',
-      summary: 'มาตรฐานการทำงานที่ทุก Agent ต้องตรวจสอบก่อนส่งงานให้เจ้าของ',
-      tags: ['SOP', 'Quality Gate'],
+      id: 'brain-ideas-sparks',
+      category: 'inbox',
+      title: 'Inbox ไอเดียฉับพลัน (รอ AI คัดแยก)',
+      slug: 'ideas-inbox.md',
+      summary: 'ที่พักความคิดฉับพลัน ก่อนคัดแยกเป็น Project, Area หรือ Resource',
+      tags: ['Inbox', 'ไอเดีย'],
       pinned: false,
-      content: `# Company SOP & Quality Gate
+      content: `# Inbox — กล่องรับไอเดียฉับพลัน
 
-## กฎเหล็ก 4 ข้อก่อนส่งงานทุกชิ้น
-1. อ่าน Vision & Life Compass และ Brand Bible ก่อนเริ่มงานเสมอ
-2. ห้ามมั่วข้อมูลหรือสถิติ หากข้อมูลไม่ครบให้ระบุชัดเจน
-3. งานทุกชิ้นต้องพร้อมนำไปใช้งานจริงได้ทันที (Copy-Paste Ready)
-4. ผ่านการตรวจจาก AI CEO (Quality Gate) ว่าตรงน้ำเสียงแบรนด์และไม่เบียดเบียนเวลาชีวิตเจ้าของก่อนส่งถึงสมองที่ 1
+> **หลักการ Inbox + P.A.R.A.:** สมองมีไว้คิด ไม่ได้มีไว้จำ — โยนทุกอย่างลง Inbox ก่อน แล้วกดเลื่อนขั้นเป็น Project / Area / Resource เมื่อพร้อม
+
+## ไอเดียที่เพิ่งแวบเข้ามา
+- [ ] คลิปสั้นเปรียบเทียบ "แอดมินของ AI" vs "ประธานบริษัทที่มีสมองที่ 3 (AI CEO)"
+- [ ] ทำ Ebook แจกฟรีเรื่อง "เช็กลิสต์ 8 AI Agents สำหรับบริษัทคนเดียว"
+- [ ] โชว์เคสเบื้องหลังการสร้าง Ebook Studio & BrainStudio ด้วย Google Antigravity
+`,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'brain-archive-v1',
+      category: 'archives',
+      title: 'บทเรียนจากคอร์สฉันนี่แหละประธานบริษัท รุ่นแรก (5 ปีก่อน)',
+      slug: 'archive-course-v1-lessons.md',
+      summary: 'สรุปแก่นคอร์สเก่าที่ปิดรุ่นไปแล้ว — เก็บพ้นสายตาใน Archives แต่ AI ยังค้นมาอ้างอิงได้',
+      tags: ['Archives', 'Post-Mortem', 'V1'],
+      pinned: false,
+      content: `# Archives: บทเรียนจากคอร์ส "ฉันนี่แหละประธานบริษัท" รุ่นแรก (150 สไลด์)
+
+## สิ่งที่ยังคงเป็น DNA อมตะ (เก็บมาต่อยอดใน 2.0)
+- ปรัชญา **"ตัวเบา กระเป๋าตังค์หนัก"** (Privilege · Simplicity · Speed · Lean · Resilience)
+- เป้าหมายความสำเร็จท่ามกลางธรรมชาติ: มั่งคั่ง มีเวลา และสุขภาพดี
+- โมเดล **3 ทางเลือกสินค้า** (สินค้าคนอื่น / สินค้าคอลแลบ / สินค้าตัวเอง)
+- แนวคิด **P.A.R.A.** และ **ระบบ 3 สมอง**
+
+## สิ่งที่ปลดระวางแล้วในยุค 2026
+- การจัด P.A.R.A. ด้วยมือใน Notion (เปลี่ยนเป็น AI Auto-Triage ใน BrainStudio)
+- การลากเส้น Workflow แบบ n8n / Zapier (เปลี่ยนเป็น AI CEO Orchestrator บน Google Antigravity)
 `,
       createdAt: now,
       updatedAt: now,
@@ -250,7 +294,7 @@ function createSeedState(existingNotes?: BrainNote[]): BrainStudioState {
         wealthScore: 4,
         timeScore: 4,
         healthScore: 4,
-        reflection: 'กำลังวางระบบ 3 สมองเพื่อลดงานซ้ำซ้อนและคืนเวลาให้ชีวิตมากขึ้น',
+        reflection: 'จัดระเบียบสมองที่ 1 แบบ Inbox + P.A.R.A. เพื่อคืนเวลาให้ชีวิตมากขึ้น',
       },
     ],
     decisions: [],
@@ -291,9 +335,15 @@ export async function getBrainStudioState(): Promise<BrainStudioState> {
     try {
       const raw = await readFile(STATE_FILE, 'utf-8')
       const parsed = JSON.parse(raw) as Partial<BrainStudioState>
-      const notes = Array.isArray(parsed.notes) && parsed.notes.length > 0
-        ? sortNotes(parsed.notes.map((n) => ({ ...n, category: normalizeCategory(n.category) })))
-        : createSeedBrainNotes()
+      const notes =
+        Array.isArray(parsed.notes) && parsed.notes.length > 0
+          ? sortNotes(
+              parsed.notes.map((n) => ({
+                ...n,
+                category: normalizeCategory(n.category),
+              }))
+            )
+          : createSeedBrainNotes()
       return {
         notes,
         focusTasks: Array.isArray(parsed.focusTasks) ? parsed.focusTasks : [],
@@ -401,9 +451,17 @@ export async function deleteDecisionRecord(id: string): Promise<DecisionRecord[]
   return state.decisions
 }
 
+const PARA_CONTEXT_ORDER: { category: BrainCategory; heading: string }[] = [
+  { category: 'projects', heading: '01-Projects (โปรเจกต์ที่มีเป้าหมายและเส้นตายชัดเจน)' },
+  { category: 'areas', heading: '02-Areas (มาตรฐานดูแลตลอดชีวิต: เข็มทิศชีวิต · Brand Bible · SOP)' },
+  { category: 'resources', heading: '03-Resources (คลังความรู้ เรื่องเล่า และเคสจริง)' },
+  { category: 'inbox', heading: '00-Inbox (ไอเดียฉับพลันที่รอคัดแยก)' },
+  { category: 'archives', heading: '04-Archives (โปรเจกต์ที่จบแล้วหรือพักไว้)' },
+]
+
 export function buildMasterBrainContext(state: BrainStudioState): string {
   const sections: string[] = [
-    '# 00-MASTER-BRAIN-CONTEXT (สมองที่ 1 ของเจ้าของ)',
+    '# 00-MASTER-BRAIN-CONTEXT (สมองที่ 1 — ระบบ Inbox + P.A.R.A.)',
     '',
     '> เอกสารรวมศูนย์บริบทของเจ้าของธุรกิจสำหรับส่งให้ AI Agents (สมองที่ 2) และ AI CEO (สมองที่ 3) บน Google Antigravity',
     '',
@@ -418,13 +476,22 @@ export function buildMasterBrainContext(state: BrainStudioState): string {
     sections.push('')
   }
 
-  for (const n of state.notes) {
-    sections.push(`---`)
-    sections.push(`## [${n.category}] ${n.title}`)
-    if (n.summary) sections.push(`*สรุป:* ${n.summary}`)
+  for (const bucket of PARA_CONTEXT_ORDER) {
+    const bucketNotes = state.notes.filter((n) => n.category === bucket.category)
+    if (bucketNotes.length === 0) continue
+
+    sections.push(`====================================`)
+    sections.push(`# ${bucket.heading}`)
     sections.push('')
-    sections.push(n.content)
-    sections.push('')
+
+    for (const n of bucketNotes) {
+      sections.push(`## [${PARA_FOLDERS[n.category]}] ${n.title}`)
+      if (n.deadline) sections.push(`- **เส้นตาย (Deadline):** ${n.deadline}`)
+      if (n.summary) sections.push(`- **สรุป:** ${n.summary}`)
+      sections.push('')
+      sections.push(n.content)
+      sections.push('')
+    }
   }
 
   return sections.join('\n')

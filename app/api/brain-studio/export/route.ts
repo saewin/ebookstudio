@@ -3,6 +3,7 @@ import JSZip from 'jszip'
 import {
   buildMasterBrainContext,
   getBrainStudioState,
+  PARA_FOLDERS,
 } from '@/lib/brainStudioDb'
 
 export async function GET() {
@@ -14,23 +15,29 @@ export async function GET() {
     // 1. Master combined context file (drop directly into Google Antigravity)
     root.file('00-MASTER-BRAIN-CONTEXT.md', buildMasterBrainContext(state))
 
-    // 2. Index
+    // 2. Index with P.A.R.A. structure
     const indexLines = [
-      '# 01-BrainStudio — คลังสมองที่ 1 ของเจ้าของ',
+      '# 01-BrainStudio — คลังสมองที่ 1 (Inbox + P.A.R.A.)',
       '',
       'ส่งออกจาก BrainStudio พร้อมเปิดใช้งานร่วมกับ **Google Antigravity**, ทีม 8 AI Agents และ AI CEO ทันที',
       '',
-      '## ไฟล์สำคัญที่สุด',
+      '## โครงสร้างมาตรฐาน P.A.R.A.',
       '- `00-MASTER-BRAIN-CONTEXT.md` — รวมบริบทสมองที่ 1 ทั้งหมดในไฟล์เดียว',
+      '- `00-Inbox/` — ไอเดียฉับพลันที่รอคัดแยก',
+      '- `01-Projects/` — โปรเจกต์ที่มีเป้าหมายและเส้นตายชัดเจน',
+      '- `02-Areas/` — มาตรฐานดูแลตลอดชีวิต (เข็มทิศชีวิต · Brand Bible · SOP)',
+      '- `03-Resources/` — คลังความรู้ เรื่องเล่า และเคสจริง',
+      '- `04-Archives/` — โปรเจกต์ที่จบแล้วหรือพักไว้',
       '',
-      '## รายการบันทึกแยกตามหมวด',
-      ...state.notes.map((n) => `- \`${n.category}/${n.slug}\` — ${n.title}`),
+      '## รายการไฟล์ทั้งหมด',
+      ...state.notes.map((n) => `- \`${PARA_FOLDERS[n.category]}/${n.slug}\` — ${n.title}`),
     ]
     root.file('INDEX.md', indexLines.join('\n'))
 
-    // 3. Individual notes
+    // 3. Individual notes inside standardized P.A.R.A. folders
     for (const note of state.notes) {
-      root.file(`${note.category}/${note.slug}`, note.content || '')
+      const folderName = PARA_FOLDERS[note.category] || '03-Resources'
+      root.file(`${folderName}/${note.slug}`, note.content || '')
     }
 
     // 4. Decisions log if present

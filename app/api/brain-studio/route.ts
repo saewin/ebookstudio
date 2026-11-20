@@ -4,6 +4,7 @@ import {
   deleteBrainNote,
   deleteDecisionRecord,
   getBrainStudioState,
+  normalizeCategory,
   saveBrainNote,
   saveFocusTasks,
   upsertLifePulse,
@@ -63,15 +64,17 @@ export async function POST(request: NextRequest) {
       const savedNotes: BrainNote[] = []
       const now = new Date().toISOString()
       for (let i = 0; i < body.notes.length; i++) {
-        const item = body.notes[i] as Partial<BrainNote>
+        const item = body.notes[i] as Partial<BrainNote> & { category?: string }
+        const cat = normalizeCategory(item.category || 'inbox')
         const note: BrainNote = {
           id: item.id || `brain-${Date.now()}-${i}`,
-          category: item.category || 'ideas-sparks',
+          category: cat,
           title: item.title?.trim() || 'บันทึกความรู้ใหม่',
-          slug: item.slug?.trim() || `${item.category || 'note'}-${Date.now()}-${i}.md`,
+          slug: item.slug?.trim() || `${cat}-${Date.now()}-${i}.md`,
           summary: item.summary?.trim() || '',
           tags: Array.isArray(item.tags) ? item.tags : [],
           pinned: Boolean(item.pinned),
+          deadline: typeof item.deadline === 'string' && item.deadline.trim() ? item.deadline.trim() : undefined,
           content: item.content || '',
           createdAt: item.createdAt || now,
           updatedAt: now,
@@ -86,14 +89,16 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
+    const cat = normalizeCategory(body.category || 'inbox')
     const note: BrainNote = {
       id: body.id || `brain-${Date.now()}`,
-      category: body.category || 'ideas-sparks',
+      category: cat,
       title: body.title?.trim() || 'บันทึกความรู้ใหม่',
-      slug: body.slug?.trim() || `${body.category || 'note'}-${Date.now()}.md`,
+      slug: body.slug?.trim() || `${cat}-${Date.now()}.md`,
       summary: body.summary?.trim() || '',
       tags: Array.isArray(body.tags) ? body.tags : [],
       pinned: Boolean(body.pinned),
+      deadline: typeof body.deadline === 'string' && body.deadline.trim() ? body.deadline.trim() : undefined,
       content: body.content || '# บันทึกความรู้ใหม่\n\n',
       createdAt: body.createdAt || now,
       updatedAt: now,

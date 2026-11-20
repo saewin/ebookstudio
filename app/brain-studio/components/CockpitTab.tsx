@@ -25,7 +25,7 @@ import type {
   FocusTask,
   LifePulseEntry,
 } from '@/lib/brainStudioDb'
-import { getCategoryMeta } from './brainMeta'
+import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
 import VoiceInputButton from './VoiceInputButton'
 
 interface TriagedItem {
@@ -33,6 +33,7 @@ interface TriagedItem {
   title: string
   summary: string
   tags: string[]
+  deadline?: string
   content: string
   selected?: boolean
 }
@@ -64,7 +65,6 @@ export default function CockpitTab({
   onPromoteNote,
   onOpenVaultCategory,
 }: CockpitTabProps) {
-  // Brain Dump & Auto-Triage
   const [dumpText, setDumpText] = useState('')
   const [triaging, setTriaging] = useState(false)
   const [triageSummary, setTriageSummary] = useState('')
@@ -73,11 +73,9 @@ export default function CockpitTab({
   const [savingTriaged, setSavingTriaged] = useState(false)
   const [savedNotice, setSavedNotice] = useState('')
 
-  // Focus Tasks (Top 3)
   const [newTaskText, setNewTaskText] = useState('')
   const [newTaskOwner, setNewTaskOwner] = useState<'self' | 'ai-agent'>('self')
 
-  // 3-Pillar Life Pulse
   const today = new Date().toISOString().slice(0, 10)
   const todayPulse = state.pulseHistory.find((p) => p.date === today) || {
     date: today,
@@ -89,7 +87,6 @@ export default function CockpitTab({
   const [pulse, setPulse] = useState<LifePulseEntry>(todayPulse)
   const [pulseSaved, setPulseSaved] = useState(false)
 
-  // Connection Spark
   const [sparks, setSparks] = useState<SparkItem[]>([])
   const [sparkLoading, setSparkLoading] = useState(false)
   const [promotingKey, setPromotingKey] = useState<string | null>(null)
@@ -109,7 +106,7 @@ export default function CockpitTab({
       })
       const json = await res.json()
       if (json?.success && json.data) {
-        setTriageSummary(json.data.summaryMessage || 'คัดแยกความคิดเรียบร้อยแล้ว')
+        setTriageSummary(json.data.summaryMessage || 'คัดแยกลงระบบ P.A.R.A. เรียบร้อยแล้ว')
         const items = Array.isArray(json.data.items)
           ? json.data.items.map((it: any) => ({ ...it, selected: true }))
           : []
@@ -139,6 +136,7 @@ export default function CockpitTab({
             title: it.title,
             summary: it.summary,
             tags: it.tags || [],
+            deadline: it.deadline || undefined,
             content: it.content,
           })),
         }),
@@ -149,7 +147,7 @@ export default function CockpitTab({
         setTriagedItems([])
         setTriageSummary('')
         setDumpText('')
-        setSavedNotice(`เก็บลงคลังสมองเรียบร้อย ${selected.length} รายการ! สมองโล่งพร้อมลุยต่อแล้วครับ`)
+        setSavedNotice(`เก็บลงกล่อง P.A.R.A. เรียบร้อย ${selected.length} รายการ! สมองโล่งพร้อมลุยต่อแล้วครับ`)
         setTimeout(() => setSavedNotice(''), 4000)
       }
     } finally {
@@ -219,22 +217,28 @@ export default function CockpitTab({
     }
   }
 
-  const visionNote = state.notes.find((n) => n.category === 'vision-compass')
+  const visionNote = state.notes.find(
+    (n) =>
+      n.id === 'brain-vision-compass' ||
+      (n.category === 'areas' && n.title.toLowerCase().includes('vision'))
+  )
+
+  const paraBuckets = BRAIN_CATEGORIES.filter((c) => c.id !== 'all')
 
   return (
     <div className="space-y-6">
-      {/* 1. HERO BRAIN DUMP (Zero-Friction Voice + Text + AI Auto-Triage) */}
+      {/* 1. HERO BRAIN DUMP (Zero-Friction Voice + Text + AI Auto-Triage into P.A.R.A.) */}
       <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/90 via-white to-indigo-50/40 p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-600 text-white">
-              <Sparkles size={12} /> เคลียร์สมองทันที (ZERO-FRICTION BRAIN DUMP)
+              <Sparkles size={12} /> เคลียร์สมองทันที (VOICE &amp; TEXT → AI คัดลง P.A.R.A.)
             </div>
             <h2 className="text-lg font-bold text-slate-900 mt-1.5">
-              ตอนนี้ในหัวคุณมีไอเดีย ปัญหา หรือเรื่องอะไรค้างคาอยู่? โยนลงมาเลยไม่ต้องจัดหมวด!
+              ตอนนี้ในหัวคุณมีไอเดีย โปรเจกต์ หรือเรื่องอะไรค้างคาอยู่? โยนลงมาเลยไม่ต้องจัดหมวดเอง!
             </h2>
             <p className="text-xs text-slate-500">
-              กดปุ่มไมโครโฟนพูดรัวๆ หรือพิมพ์หลายเรื่องปนกันได้เลย — เดี๋ยว AI แยกประเด็นและจัดเก็บลงคลังสมองให้เอง
+              กดปุ่มไมโครโฟนพูดรัวๆ หรือพิมพ์หลายเรื่องปนกันได้เลย — AI จะคัดแยกลงกล่อง <strong>Projects · Areas · Resources · Archives</strong> ให้เองอัตโนมัติ
             </p>
           </div>
           <VoiceInputButton
@@ -249,7 +253,7 @@ export default function CockpitTab({
           rows={4}
           value={dumpText}
           onChange={(e) => setDumpText(e.target.value)}
-          placeholder="ตัวอย่าง: วันนี้นึกไอเดียคลิปเรื่องทำไมคนใช้ AI แล้วยิ่งเหนื่อย... แล้วก็สัปดาห์หน้าต้องปิดสไลด์คอร์สประธาน 2.0 ให้เสร็จ ส่วนกฎส่วนตัวคือหลัง 6 โมงเย็นจะไม่รับงานด่วนแล้วเพื่อไปออกกำลังกาย..."
+          placeholder="ตัวอย่าง: วันนี้นึกไอเดียคลิปเรื่องทำไมคนใช้ AI แล้วยิ่งเหนื่อย... แล้วก็ภายในสิ้นเดือนนี้ต้องปิดโปรเจกต์สไลด์คอร์สประธาน 2.0 ให้เสร็จ ส่วนกฎส่วนตัวคือหลัง 6 โมงเย็นจะไม่รับงานด่วนแล้วเพื่อไปออกกำลังกาย..."
           className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 leading-relaxed"
         />
 
@@ -260,7 +264,7 @@ export default function CockpitTab({
                 <Check size={14} /> {savedNotice}
               </span>
             ) : (
-              '💡 สมองมีไว้คิด ไม่ได้มีไว้จำ — โยนทุกอย่างลงที่นี่แล้วปล่อยให้ AI จัดระเบียบ'
+              '💡 ยุคเก่าจัด P.A.R.A. ด้วยมือจนเหนื่อย — ยุค 2.0 พูดหรือพิมพ์ทิ้งไว้ แล้วปล่อยให้ AI คัดแยกให้'
             )}
           </div>
           <button
@@ -270,7 +274,7 @@ export default function CockpitTab({
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer"
           >
             <Sparkles size={14} />
-            {triaging ? 'AI กำลังแยกประเด็นและจัดหมวด...' : 'ให้ AI แยกและจัดเก็บอัตโนมัติ'}
+            {triaging ? 'AI กำลังคัดแยกลง P.A.R.A....' : 'ให้ AI คัดแยกลง P.A.R.A. อัตโนมัติ'}
           </button>
         </div>
 
@@ -290,7 +294,7 @@ export default function CockpitTab({
                 <Check size={14} />
                 {savingTriaged
                   ? 'กำลังบันทึก...'
-                  : `ยืนยันเก็บเข้าคลังสมอง (${triagedItems.filter((i) => i.selected).length} รายการ)`}
+                  : `ยืนยันเก็บเข้า P.A.R.A. (${triagedItems.filter((i) => i.selected).length} รายการ)`}
               </button>
             </div>
 
@@ -325,6 +329,11 @@ export default function CockpitTab({
                     </div>
                     <div className="text-sm font-bold text-slate-900">{item.title}</div>
                     <p className="text-xs text-slate-600">{item.summary}</p>
+                    {item.deadline && (
+                      <div className="text-[11px] font-semibold text-blue-700">
+                        ⏰ เส้นตาย: {item.deadline}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -346,7 +355,37 @@ export default function CockpitTab({
         )}
       </div>
 
-      {/* 2. TOP 3 ACTIVE FOCUS + 3-PILLAR LIFE PULSE */}
+      {/* 2. INBOX + P.A.R.A. SUMMARY STRIP */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {paraBuckets.map((bucket) => {
+          const Icon = bucket.icon
+          const count = state.notes.filter((n) => n.category === bucket.id).length
+          return (
+            <button
+              key={bucket.id}
+              type="button"
+              onClick={() => onOpenVaultCategory(bucket.id as BrainCategory)}
+              className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-blue-300 hover:shadow-xs transition-all text-left cursor-pointer group space-y-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${bucket.color}`}
+                >
+                  <Icon size={11} /> {bucket.short}
+                </span>
+                <span className="text-lg font-extrabold text-slate-900 group-hover:text-blue-600">
+                  {count}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500 line-clamp-1">
+                {bucket.label}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* 3. TOP 3 ACTIVE FOCUS + 3-PILLAR LIFE PULSE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Top 3 Focus Today */}
         <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
@@ -550,26 +589,26 @@ export default function CockpitTab({
             {visionNote && (
               <button
                 type="button"
-                onClick={() => onOpenVaultCategory('vision-compass')}
+                onClick={() => onOpenVaultCategory('areas')}
                 className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
               >
-                เปิดทบทวนเข็มทิศชีวิตของคุณ <ArrowRight size={12} />
+                เปิดทบทวน Areas (เข็มทิศชีวิต &amp; แบรนด์ของคุณ) <ArrowRight size={12} />
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* 3. AI CONNECTION SPARK (Synthesize Cross-Note Insights + Brain-to-Action) */}
+      {/* 4. AI CONNECTION SPARK */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Zap size={16} className="text-amber-500" />
-              AI จุดประกายเชื่อมโยงความคิด (Connection Spark)
+              AI จุดประกายเชื่อมโยงความคิดข้าม P.A.R.A. (Connection Spark)
             </h3>
             <p className="text-xs text-slate-500">
-              ให้ AI อ่านบันทึกทั้ง {state.notes.length} ใบในสมองคุณ แล้วจับคู่เสนอ 3 ไอเดียต่อยอดใหม่ที่พร้อมส่งสร้าง Ebook หรือคอร์สทันที
+              ให้ AI อ่านทั้ง Projects · Areas · Resources · Archives ({state.notes.length} บันทึก) แล้วจับคู่เสนอ 3 ไอเดียต่อยอดสร้าง Ebook/คอร์สทันที
             </p>
           </div>
           <button

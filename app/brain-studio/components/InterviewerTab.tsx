@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Compass,
   BookMarked,
-  FileText,
+  BookOpen,
   ShieldCheck,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
@@ -25,15 +25,21 @@ interface InterviewerTabProps {
   onNoteCreated: (note: BrainNote) => void
 }
 
+type InterviewTopicKey = 'vision' | 'brand' | 'resource' | 'sop'
+
 const INTERVIEW_TOPICS: {
-  id: BrainCategory
+  topicKey: InterviewTopicKey
+  targetCategory: BrainCategory
+  bucketLabel: string
   label: string
   subtitle: string
   icon: any
   openingQuestion: string
 }[] = [
   {
-    id: 'vision-compass',
+    topicKey: 'vision',
+    targetCategory: 'areas',
+    bucketLabel: 'Areas',
     label: 'ถอดเข็มทิศชีวิต & การตัดสินใจ',
     subtitle: 'ตั้งเป้า มั่งคั่ง · เวลา · สุขภาพ และกฎการปฏิเสธงาน',
     icon: Compass,
@@ -41,7 +47,9 @@ const INTERVIEW_TOPICS: {
       'สวัสดีครับ มาถอดเข็มทิศชีวิตกันแบบสบายๆ — คำถามที่ 1: ถ้าอีก 6 เดือนข้างหน้าชีวิตและธุรกิจของคุณลงตัวที่สุด รายได้ต่อเดือนควรอยู่ที่เท่าไหร่ และคุณอยากเหลือเวลาพักผ่อน/ออกกำลังกายวันละกี่ชั่วโมงครับ?',
   },
   {
-    id: 'brand-bible',
+    topicKey: 'brand',
+    targetCategory: 'areas',
+    bucketLabel: 'Areas',
     label: 'ถอด Brand Bible & น้ำเสียงเจ้าของ',
     subtitle: 'ให้ AI รู้จักตัวตน คำพูดติดปาก และสิ่งที่ห้ามพูดเด็ดขาด',
     icon: BookMarked,
@@ -49,15 +57,19 @@ const INTERVIEW_TOPICS: {
       'มาถอด DNA แบรนด์ของคุณกันครับ — คำถามที่ 1: ถ้าลูกค้าพูดถึงคุณลับหลัง คุณอยากให้เขาจำคุณว่าเป็นคนแบบไหน และอะไรคือความเชื่อหรือจุดยืนที่คุณยึดมั่นต่างจากคู่แข่งในตลาดครับ?',
   },
   {
-    id: 'knowledge-vault',
+    topicKey: 'resource',
+    targetCategory: 'resources',
+    bucketLabel: 'Resources',
     label: 'ถอดเรื่องเล่า & เคสจริงจากประสบการณ์',
     subtitle: 'เปลี่ยนประสบการณ์ในหัวเป็นบทเรียนเอาไปทำ Ebook/คอร์ส',
-    icon: FileText,
+    icon: BookOpen,
     openingQuestion:
       'มาถอดเรื่องเล่าล้ำค่าจากประสบการณ์จริงกันครับ — คำถามที่ 1: มีเหตุการณ์หรือเคสลูกค้า/ธุรกิจเรื่องไหนที่คุณทำสำเร็จหรือได้บทเรียนราคาแพงที่สุดที่อยากเล่าให้คนอื่นฟังไหมครับ? เล่าสั้นๆ แบบคุยกับเพื่อนได้เลย',
   },
   {
-    id: 'sop-framework',
+    topicKey: 'sop',
+    targetCategory: 'areas',
+    bucketLabel: 'Areas',
     label: 'ถอดวิธีทำงานเก่งให้เป็น SOP',
     subtitle: 'ถ่ายทอดมาตรฐานของคุณให้ทีม AI ทำตามได้เป๊ะ',
     icon: ShieldCheck,
@@ -75,7 +87,6 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
   const [asking, setAsking] = useState(false)
   const [readyToSynthesize, setReadyToSynthesize] = useState(false)
 
-  // Synthesized Preview
   const [synthesizing, setSynthesizing] = useState(false)
   const [draftNote, setDraftNote] = useState<{
     category: BrainCategory
@@ -111,7 +122,7 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'interview-next',
-          topic: selectedTopic.id,
+          topic: selectedTopic.topicKey,
           messages: nextMessages,
         }),
       })
@@ -141,14 +152,14 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'interview-synthesize',
-          topic: selectedTopic.id,
+          topic: selectedTopic.topicKey,
           messages,
         }),
       })
       const json = await res.json()
       if (json?.success && json.data) {
         setDraftNote({
-          category: selectedTopic.id,
+          category: json.data.category || selectedTopic.targetCategory,
           title: json.data.title || selectedTopic.label,
           summary: json.data.summary || '',
           tags: Array.isArray(json.data.tags) ? json.data.tags : [],
@@ -187,10 +198,10 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {INTERVIEW_TOPICS.map((topic) => {
           const Icon = topic.icon
-          const active = selectedTopic.id === topic.id
+          const active = selectedTopic.topicKey === topic.topicKey
           return (
             <button
-              key={topic.id}
+              key={topic.topicKey}
               type="button"
               onClick={() => startTopic(topic)}
               className={`p-4 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 ${
@@ -199,9 +210,14 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
                   : 'bg-white border-slate-200 hover:bg-slate-50'
               }`}
             >
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                <span>{topic.label}</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                  <Icon size={15} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                  <span>{topic.label}</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 shrink-0">
+                  {topic.bucketLabel}
+                </span>
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
                 {topic.subtitle}
@@ -238,7 +254,7 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
                 }`}
               >
                 <Sparkles size={12} />
-                {synthesizing ? 'กำลังสังเคราะห์...' : 'สังเคราะห์ลงคลังสมอง'}
+                {synthesizing ? 'กำลังสังเคราะห์...' : 'สังเคราะห์ลงคลัง P.A.R.A.'}
               </button>
             </div>
           </div>
@@ -301,7 +317,7 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
               <div className="space-y-3 overflow-y-auto max-h-[440px]">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                    ✨ ผลลัพธ์พร้อมบันทึก
+                    ✨ พร้อมบันทึกลง {selectedTopic.bucketLabel}
                   </span>
                   {savedSuccess && (
                     <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
@@ -324,10 +340,10 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
               >
                 <Check size={15} />
                 {savedSuccess
-                  ? 'บันทึกเข้าคลังสมองเรียบร้อยแล้ว'
+                  ? `บันทึกลง ${selectedTopic.bucketLabel} เรียบร้อยแล้ว`
                   : saving
                     ? 'กำลังบันทึก...'
-                    : 'บันทึกไฟล์นี้เข้า BrainStudio ทันที'}
+                    : `บันทึกไฟล์นี้เข้า ${selectedTopic.bucketLabel} ทันที`}
               </button>
             </>
           ) : (
@@ -338,7 +354,7 @@ export default function InterviewerTab({ onNoteCreated }: InterviewerTabProps) {
               </div>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
                 แค่ตอบคำถามสั้นๆ 3–5 ข้อทางฝั่งซ้าย (จะพิมพ์หรือกดไมค์พูดก็ได้) แล้วกดปุ่ม{' '}
-                <strong>&ldquo;สังเคราะห์ลงคลังสมอง&rdquo;</strong> AI จะเรียบเรียงออกมาเป็นเอกสารสวยๆ ตรงนี้ทันที
+                <strong>&ldquo;สังเคราะห์ลงคลัง P.A.R.A.&rdquo;</strong> AI จะเรียบเรียงและเก็บลงกล่อง {selectedTopic.bucketLabel} ให้ทันที
               </p>
             </div>
           )}

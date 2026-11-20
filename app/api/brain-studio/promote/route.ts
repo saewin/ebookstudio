@@ -10,7 +10,12 @@ export async function POST(request: NextRequest) {
 
     const state = await getBrainStudioState()
     const note = noteId ? state.notes.find((n) => n.id === noteId) : undefined
-    const brandBible = state.notes.find((n) => n.category === 'brand-bible')
+    const brandBible = state.notes.find(
+      (n) =>
+        n.id === 'brain-brand-bible' ||
+        n.slug.toLowerCase().includes('brand') ||
+        (n.category === 'areas' && n.title.toLowerCase().includes('brand'))
+    )
 
     const finalTitle = (title || note?.title || 'โปรเจกต์ใหม่จาก BrainStudio').trim()
     const finalSummary = (summary || note?.summary || '').trim()
