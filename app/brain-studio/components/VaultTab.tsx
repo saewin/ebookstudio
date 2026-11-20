@@ -68,7 +68,10 @@ export default function VaultTab({
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedToast, setSavedToast] = useState(false)
-  const [moveNotice, setMoveNotice] = useState<string | null>(null)
+  const [moveNotice, setMoveNotice] = useState<{
+    message: string
+    targetCategory: BrainCategory
+  } | null>(null)
   const [moving, setMoving] = useState(false)
 
   // AI Co-Thinker & Image Gen
@@ -186,8 +189,11 @@ export default function VaultTab({
         }
 
         const targetLabel = getCategoryMeta(targetCategory).label
-        setMoveNotice(`ย้าย "${json.note.title}" ไปยัง ${targetLabel} เรียบร้อยแล้ว`)
-        setTimeout(() => setMoveNotice(null), 3200)
+        setMoveNotice({
+          message: `ส่ง "${json.note.title}" ไปยัง ${targetLabel} เรียบร้อยแล้ว`,
+          targetCategory,
+        })
+        setTimeout(() => setMoveNotice(null), 4500)
       }
     } finally {
       setMoving(false)
@@ -355,9 +361,18 @@ export default function VaultTab({
 
       {/* Move Feedback Banner */}
       {moveNotice && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 flex items-center gap-2">
-          <Check size={14} className="text-emerald-600 shrink-0" />
-          <span>{moveNotice}</span>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 flex flex-wrap items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <Check size={14} className="text-emerald-600 shrink-0" />
+            <span>{moveNotice.message}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => handleSelectCategory(moveNotice.targetCategory)}
+            className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+          >
+            เปิดดูใน {getCategoryMeta(moveNotice.targetCategory).short} →
+          </button>
         </div>
       )}
 
@@ -527,95 +542,46 @@ export default function VaultTab({
                 </div>
               </div>
 
-              {/* 1-Click P.A.R.A. Lifecycle Bar */}
-              {(activeNote.category === 'inbox' ||
-                activeNote.category === 'resources' ||
-                activeNote.category === 'projects' ||
-                activeNote.category === 'archives') && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
-                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                    <ArrowRightCircle size={13} className="text-blue-600" />
-                    วงจร P.A.R.A.:
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {activeNote.category === 'inbox' && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() => handleMoveCategory('projects')}
-                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          🎯 เลื่อนเป็น Project (P)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() => handleMoveCategory('areas')}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          🧭 เก็บเป็น Area (A)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() => handleMoveCategory('resources')}
-                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          📚 เก็บเป็น Resource (R)
-                        </button>
-                      </>
-                    )}
-
-                    {activeNote.category === 'resources' && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() => handleMoveCategory('projects')}
-                          className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          🎯 เลื่อนเป็น Project (P)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() =>
-                            handleMoveCategory('archives', { pinned: false })
-                          }
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          🗄️ เก็บเข้า Archive
-                        </button>
-                      </>
-                    )}
-
-                    {activeNote.category === 'projects' && (
+              {/* Universal 1-Click P.A.R.A. Send / Move Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+                <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                  <ArrowRightCircle size={13} className="text-blue-600" />
+                  ส่งต่อไปกล่อง P.A.R.A.:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'inbox', label: '📥 Inbox' },
+                      { id: 'projects', label: '🎯 Projects' },
+                      { id: 'areas', label: '🧭 Areas' },
+                      { id: 'resources', label: '📚 Resources' },
+                      { id: 'archives', label: '🗄️ Archives' },
+                    ] as { id: BrainCategory; label: string }[]
+                  ).map((bucket) => {
+                    const isCurrent = activeNote.category === bucket.id
+                    return (
                       <button
+                        key={bucket.id}
                         type="button"
-                        disabled={moving}
+                        disabled={moving || isCurrent}
                         onClick={() =>
-                          handleMoveCategory('archives', { pinned: false })
+                          handleMoveCategory(
+                            bucket.id,
+                            bucket.id === 'archives' ? { pinned: false } : undefined
+                          )
                         }
-                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                          isCurrent
+                            ? 'bg-blue-600 text-white border-blue-600 cursor-default'
+                            : 'bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border-slate-200 hover:border-blue-300 cursor-pointer disabled:opacity-50'
+                        }`}
                       >
-                        ✅ ปิดจ๊อบ → Archive (A)
+                        {isCurrent ? `✓ ${bucket.label}` : `→ ${bucket.label}`}
                       </button>
-                    )}
-
-                    {activeNote.category === 'archives' && (
-                      <button
-                        type="button"
-                        disabled={moving}
-                        onClick={() => handleMoveCategory('projects')}
-                        className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
-                      >
-                        ♻️ ดึงกลับเป็น Project (P)
-                      </button>
-                    )}
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
 
               {/* Title & Summary / Editor */}
               {editorMode === 'edit' ? (
