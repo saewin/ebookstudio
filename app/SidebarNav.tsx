@@ -13,10 +13,12 @@ import {
   GraduationCap,
   Landmark,
   Presentation,
+  Brain,
 } from 'lucide-react'
 
 const productionLinks: { href: string; icon: any; label: string; badge?: string }[] = [
   { href: '/', icon: LayoutDashboard, label: 'แดชบอร์ด' },
+  { href: '/brain-studio', icon: Brain, label: 'BrainStudio', badge: 'AI' },
   { href: '/briefing', icon: FileText, label: 'ห้องบรีฟงาน' },
   { href: '/structure', icon: ListOrdered, label: 'กระดานโครงสร้าง' },
   { href: '/writing', icon: PenTool, label: 'โต๊ะเขียนงาน' },
