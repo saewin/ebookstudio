@@ -100,6 +100,45 @@ export default function CockpitTab({
   const [sparks, setSparks] = useState<SparkItem[]>([])
   const [sparkLoading, setSparkLoading] = useState(false)
   const [promotingKey, setPromotingKey] = useState<string | null>(null)
+  const [directSaving, setDirectSaving] = useState<BrainCategory | null>(null)
+
+  async function handleDirectSave(targetCategory: BrainCategory) {
+    const raw = dumpText.trim()
+    if (!raw || directSaving) return
+    setDirectSaving(targetCategory)
+    setSavedNotice(null)
+    try {
+      const firstLine = raw.split('\n')[0].trim()
+      const title = firstLine.length > 72 ? `${firstLine.slice(0, 72)}...` : firstLine
+      const res = await fetch('/api/brain-studio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: targetCategory,
+          title,
+          summary: raw.length > 120 ? `${raw.slice(0, 120)}...` : raw,
+          content: `# ${title}\n\n${raw}\n`,
+        }),
+      })
+      const json = await res.json()
+      if (json?.success && json.note) {
+        onNotesAdded([json.note, ...state.notes])
+        setDumpText('')
+        setTriagedItems([])
+        setTriageSummary('')
+        setSuggestedFocus('')
+        const meta = getCategoryMeta(targetCategory)
+        setSavedNotice({
+          message: `บันทึก "${title}" ลง ${meta.label} เรียบร้อยแล้ว`,
+          targetCategory,
+        })
+      } else {
+        alert(json?.error || 'บันทึกไม่สำเร็จ')
+      }
+    } finally {
+      setDirectSaving(null)
+    }
+  }
 
   async function handleAutoTriage() {
     if (!dumpText.trim() || triaging) return
@@ -318,32 +357,53 @@ export default function CockpitTab({
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">
-            {savedNotice ? (
-              <span className="inline-flex flex-wrap items-center gap-2 text-emerald-700 font-semibold">
-                <Check size={14} /> {savedNotice.message}
-                <button
-                  type="button"
-                  onClick={() => onOpenVaultCategory(savedNotice.targetCategory)}
-                  className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
-                >
-                  เปิดดูในคลังสมอง →
-                </button>
-              </span>
-            ) : (
-              '💡 ยุคเก่าจัด P.A.R.A. ด้วยมือจนเหนื่อย — ยุค 2.0 พูดหรือพิมพ์ทิ้งไว้ แล้วปล่อยให้ AI คัดแยกให้'
-            )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-600 mr-1">
+              เลือกเก็บเองเลย:
+            </span>
+            {(
+              [
+                { id: 'inbox', label: '📥 ใส่ Inbox' },
+                { id: 'projects', label: '🎯 ใส่ Projects' },
+                { id: 'areas', label: '🧭 ใส่ Areas' },
+                { id: 'resources', label: '📚 ใส่ Resources' },
+              ] as { id: BrainCategory; label: string }[]
+            ).map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                disabled={!dumpText.trim() || directSaving !== null || triaging}
+                onClick={() => handleDirectSave(btn.id)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-blue-300 disabled:opacity-40 text-[11px] font-bold text-slate-700 cursor-pointer transition-colors"
+              >
+                {directSaving === btn.id ? 'กำลังบันทึก...' : btn.label}
+              </button>
+            ))}
           </div>
+
           <button
             type="button"
             onClick={handleAutoTriage}
-            disabled={triaging || !dumpText.trim()}
+            disabled={triaging || directSaving !== null || !dumpText.trim()}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer"
           >
             <Sparkles size={14} />
             {triaging ? 'AI กำลังคัดแยกลง P.A.R.A....' : 'ให้ AI คัดแยกลง P.A.R.A. อัตโนมัติ'}
           </button>
         </div>
+
+        {savedNotice && (
+          <div className="text-xs text-emerald-700 font-semibold flex flex-wrap items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3.5 py-2">
+            <Check size={14} /> {savedNotice.message}
+            <button
+              type="button"
+              onClick={() => onOpenVaultCategory(savedNotice.targetCategory)}
+              className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+            >
+              เปิดดูในคลังสมอง →
+            </button>
+          </div>
+        )}
 
         {/* AI Triage Preview Cards */}
         {triagedItems.length > 0 && (
@@ -401,6 +461,39 @@ export default function CockpitTab({
                         ⏰ เส้นตาย: {item.deadline}
                       </div>
                     )}
+                    <div
+                      className="flex flex-wrap items-center gap-1 pt-2 border-t border-slate-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[10px] text-slate-400 mr-1">ย้ายกล่อง:</span>
+                      {(
+                        [
+                          { id: 'inbox', label: 'Inbox' },
+                          { id: 'projects', label: 'Projects' },
+                          { id: 'areas', label: 'Areas' },
+                          { id: 'resources', label: 'Resources' },
+                        ] as { id: BrainCategory; label: string }[]
+                      ).map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() =>
+                            setTriagedItems((prev) =>
+                              prev.map((it, i) =>
+                                i === idx ? { ...it, category: b.id } : it
+                              )
+                            )
+                          }
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                            item.category === b.id
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )
               })}
