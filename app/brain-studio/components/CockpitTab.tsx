@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import {
   Sparkles,
   Plus,
@@ -17,6 +18,9 @@ import {
   GraduationCap,
   Check,
   ArrowRight,
+  Play,
+  FileText,
+  X,
 } from 'lucide-react'
 import type {
   BrainCategory,
@@ -52,7 +56,7 @@ interface CockpitTabProps {
   onPulseUpdated: (history: LifePulseEntry[]) => void
   onPromoteNote: (
     target: 'ebook' | 'course',
-    payload: { title: string; summary: string; content: string }
+    payload: { noteId?: string; title: string; summary: string; content: string }
   ) => Promise<void>
   onOpenVaultCategory: (cat: BrainCategory) => void
 }
@@ -70,11 +74,17 @@ export default function CockpitTab({
   const [triageSummary, setTriageSummary] = useState('')
   const [triagedItems, setTriagedItems] = useState<TriagedItem[]>([])
   const [suggestedFocus, setSuggestedFocus] = useState('')
+  const [includeSuggestedFocus, setIncludeSuggestedFocus] = useState(true)
   const [savingTriaged, setSavingTriaged] = useState(false)
-  const [savedNotice, setSavedNotice] = useState('')
+  const [savedNotice, setSavedNotice] = useState<{
+    message: string
+    targetCategory: BrainCategory
+  } | null>(null)
 
   const [newTaskText, setNewTaskText] = useState('')
   const [newTaskOwner, setNewTaskOwner] = useState<'self' | 'ai-agent'>('self')
+  const [executingTaskId, setExecutingTaskId] = useState<string | null>(null)
+  const [aiDeliverable, setAiDeliverable] = useState<BrainNote | null>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const todayPulse = state.pulseHistory.find((p) => p.date === today) || {
@@ -97,7 +107,8 @@ export default function CockpitTab({
     setTriageSummary('')
     setTriagedItems([])
     setSuggestedFocus('')
-    setSavedNotice('')
+    setIncludeSuggestedFocus(true)
+    setSavedNotice(null)
     try {
       const res = await fetch('/api/brain-studio/ai', {
         method: 'POST',
@@ -144,11 +155,34 @@ export default function CockpitTab({
       const json = await res.json()
       if (json?.success && Array.isArray(json.notes)) {
         onNotesAdded(json.notes)
+
+        let addedFocus = false
+        if (includeSuggestedFocus && suggestedFocus.trim()) {
+          const nextTasks: FocusTask[] = [
+            ...state.focusTasks,
+            {
+              id: `ft-${Date.now()}`,
+              text: suggestedFocus.trim(),
+              done: false,
+              delegateTo: 'ai-agent',
+              createdAt: new Date().toISOString(),
+            },
+          ]
+          await persistFocusTasks(nextTasks)
+          addedFocus = true
+        }
+
+        const primaryCat = selected[0].category || 'projects'
         setTriagedItems([])
         setTriageSummary('')
+        setSuggestedFocus('')
         setDumpText('')
-        setSavedNotice(`เก็บลงกล่อง P.A.R.A. เรียบร้อย ${selected.length} รายการ! สมองโล่งพร้อมลุยต่อแล้วครับ`)
-        setTimeout(() => setSavedNotice(''), 4000)
+        setSavedNotice({
+          message: `บันทึกเข้า P.A.R.A. สำเร็จ ${selected.length} รายการ${
+            addedFocus ? ' + เพิ่มเข้าโฟกัสวันนี้แล้ว' : ''
+          }`,
+          targetCategory: primaryCat,
+        })
       }
     } finally {
       setSavingTriaged(false)
@@ -180,6 +214,32 @@ export default function CockpitTab({
     await persistFocusTasks(next)
     if (!textOverride) setNewTaskText('')
     if (textOverride) setSuggestedFocus('')
+  }
+
+  async function handleExecuteAiTask(task: FocusTask) {
+    if (executingTaskId) return
+    setExecutingTaskId(task.id)
+    try {
+      const res = await fetch('/api/brain-studio/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'execute-focus-task',
+          taskId: task.id,
+          taskText: task.text,
+        }),
+      })
+      const json = await res.json()
+      if (json?.success && json.note) {
+        if (Array.isArray(json.notes)) onNotesAdded(json.notes)
+        if (Array.isArray(json.focusTasks)) onFocusTasksUpdated(json.focusTasks)
+        setAiDeliverable(json.note)
+      } else {
+        alert(json?.error || 'AI ไม่สามารถทำงานนี้ได้')
+      }
+    } finally {
+      setExecutingTaskId(null)
+    }
   }
 
   async function handleSavePulse(nextPulse: LifePulseEntry) {
@@ -227,7 +287,7 @@ export default function CockpitTab({
 
   return (
     <div className="space-y-6">
-      {/* 1. HERO BRAIN DUMP (Zero-Friction Voice + Text + AI Auto-Triage into P.A.R.A.) */}
+      {/* 1. HERO BRAIN DUMP */}
       <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50/90 via-white to-indigo-50/40 p-6 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -253,15 +313,22 @@ export default function CockpitTab({
           rows={4}
           value={dumpText}
           onChange={(e) => setDumpText(e.target.value)}
-          placeholder="ตัวอย่าง: วันนี้นึกไอเดียคลิปเรื่องทำไมคนใช้ AI แล้วยิ่งเหนื่อย... แล้วก็ภายในสิ้นเดือนนี้ต้องปิดโปรเจกต์สไลด์คอร์สประธาน 2.0 ให้เสร็จ ส่วนกฎส่วนตัวคือหลัง 6 โมงเย็นจะไม่รับงานด่วนแล้วเพื่อไปออกกำลังกาย..."
+          placeholder="ตัวอย่าง: อยากทำคอร์สออนไลน์ให้ได้รายได้เดือนละ 1 แสน ภายในสิ้นเดือนนี้... แล้วก็กฎส่วนตัวคือหลัง 6 โมงเย็นจะไม่รับงานด่วนแล้วเพื่อไปออกกำลังกาย..."
           className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 leading-relaxed"
         />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-slate-500">
             {savedNotice ? (
-              <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                <Check size={14} /> {savedNotice}
+              <span className="inline-flex flex-wrap items-center gap-2 text-emerald-700 font-semibold">
+                <Check size={14} /> {savedNotice.message}
+                <button
+                  type="button"
+                  onClick={() => onOpenVaultCategory(savedNotice.targetCategory)}
+                  className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  เปิดดูในคลังสมอง →
+                </button>
               </span>
             ) : (
               '💡 ยุคเก่าจัด P.A.R.A. ด้วยมือจนเหนื่อย — ยุค 2.0 พูดหรือพิมพ์ทิ้งไว้ แล้วปล่อยให้ AI คัดแยกให้'
@@ -289,12 +356,12 @@ export default function CockpitTab({
                 type="button"
                 onClick={handleCommitTriaged}
                 disabled={savingTriaged}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 <Check size={14} />
                 {savingTriaged
                   ? 'กำลังบันทึก...'
-                  : `ยืนยันเก็บเข้า P.A.R.A. (${triagedItems.filter((i) => i.selected).length} รายการ)`}
+                  : `ยืนยันบันทึกเข้า P.A.R.A. (${triagedItems.filter((i) => i.selected).length} รายการ)`}
               </button>
             </div>
 
@@ -340,16 +407,18 @@ export default function CockpitTab({
             </div>
 
             {suggestedFocus && (
-              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
-                <span>🎯 AI พบงานที่ควรโฟกัสวันนี้: <strong>{suggestedFocus}</strong></span>
-                <button
-                  type="button"
-                  onClick={() => handleAddFocusTask(suggestedFocus)}
-                  className="px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
-                >
-                  + เพิ่มเข้า Top Focus
-                </button>
-              </div>
+              <label className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSuggestedFocus}
+                  onChange={(e) => setIncludeSuggestedFocus(e.target.checked)}
+                  className="rounded border-amber-400 text-emerald-600"
+                />
+                <span>
+                  🎯 เพิ่มเข้า <strong>&ldquo;โฟกัสสำคัญวันนี้ (โยน AI ทำ)&rdquo;</strong> ไปพร้อมกันด้วย:{' '}
+                  <strong>{suggestedFocus}</strong>
+                </span>
+              </label>
             )}
           </div>
         )}
@@ -387,101 +456,137 @@ export default function CockpitTab({
 
       {/* 3. TOP 3 ACTIVE FOCUS + 3-PILLAR LIFE PULSE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Top 3 Focus Today */}
+        {/* Top Focus Today (with real AI execution!) */}
         <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                🎯 โฟกัสสำคัญวันนี้ (จำกัดไม่เกิน 3 เรื่อง เพื่อไม่ให้สมองล้า)
+                🎯 โฟกัสสำคัญวันนี้ (แยกงานสมองที่ 1 vs งานที่สั่ง AI ทำจริง)
               </h3>
               <p className="text-xs text-slate-500">
-                แยกให้ชัดว่าเรื่องไหน <strong>สมองที่ 1 ทำเอง</strong> และเรื่องไหน <strong>โยนให้ AI ทำแทน</strong>
+                งานไหนเลือก <strong>โยน AI ทำ</strong> กดปุ่ม <strong>&ldquo;⚡ ให้ AI ทำเดี๋ยวนี้&rdquo;</strong> ได้เลย — ผลลัพธ์จะถูกบันทึกเข้าคลังสมองอัตโนมัติ
               </p>
             </div>
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 shrink-0">
               เสร็จแล้ว {state.focusTasks.filter((t) => t.done).length}/{state.focusTasks.length}
             </span>
           </div>
 
           <div className="space-y-2">
-            {state.focusTasks.map((task) => (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${
-                  task.done
-                    ? 'bg-slate-50 border-slate-200 opacity-70'
-                    : 'bg-white border-slate-200 hover:border-blue-200'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    persistFocusTasks(
-                      state.focusTasks.map((t) =>
-                        t.id === task.id ? { ...t, done: !t.done } : t
-                      )
-                    )
-                  }
-                  className="flex items-start gap-2.5 text-left min-w-0 flex-1 cursor-pointer"
+            {state.focusTasks.map((task) => {
+              const linkedNote = task.resultNoteId
+                ? state.notes.find((n) => n.id === task.resultNoteId)
+                : undefined
+              const isRunning = executingTaskId === task.id
+              return (
+                <div
+                  key={task.id}
+                  className={`flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-xl border transition-colors ${
+                    task.done
+                      ? 'bg-slate-50 border-slate-200 opacity-80'
+                      : 'bg-white border-slate-200 hover:border-blue-200'
+                  }`}
                 >
-                  {task.done ? (
-                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <Circle size={18} className="text-slate-300 shrink-0 mt-0.5" />
-                  )}
-                  <span
-                    className={`text-sm ${
-                      task.done ? 'line-through text-slate-400' : 'text-slate-800 font-medium'
-                    }`}
-                  >
-                    {task.text}
-                  </span>
-                </button>
-
-                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={() =>
                       persistFocusTasks(
                         state.focusTasks.map((t) =>
-                          t.id === task.id
-                            ? {
-                                ...t,
-                                delegateTo: t.delegateTo === 'self' ? 'ai-agent' : 'self',
-                              }
-                            : t
+                          t.id === task.id ? { ...t, done: !t.done } : t
                         )
                       )
                     }
-                    title="คลิกเพื่อสลับระหว่างทำเอง กับ โยนให้ AI ทำ"
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer ${
-                      task.delegateTo === 'ai-agent'
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                        : 'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}
+                    className="flex items-start gap-2.5 text-left min-w-[200px] flex-1 cursor-pointer"
                   >
-                    {task.delegateTo === 'ai-agent' ? (
-                      <>
-                        <Bot size={11} /> โยน AI ทำ
-                      </>
+                    {task.done ? (
+                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                     ) : (
-                      <>
-                        <User size={11} /> สมอง 1 ทำเอง
-                      </>
+                      <Circle size={18} className="text-slate-300 shrink-0 mt-0.5" />
                     )}
+                    <span
+                      className={`text-sm ${
+                        task.done ? 'line-through text-slate-400' : 'text-slate-800 font-medium'
+                      }`}
+                    >
+                      {task.text}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      persistFocusTasks(state.focusTasks.filter((t) => t.id !== task.id))
-                    }
-                    className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                    {task.delegateTo === 'ai-agent' && (
+                      <button
+                        type="button"
+                        disabled={executingTaskId !== null}
+                        onClick={() =>
+                          linkedNote ? setAiDeliverable(linkedNote) : handleExecuteAiTask(task)
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer disabled:opacity-50 ${
+                          linkedNote
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                        }`}
+                      >
+                        {isRunning ? (
+                          <>
+                            <Sparkles size={11} className="animate-spin" /> AI กำลังทำ...
+                          </>
+                        ) : linkedNote ? (
+                          <>
+                            <FileText size={11} /> ดูผลงาน AI
+                          </>
+                        ) : (
+                          <>
+                            <Play size={11} /> ให้ AI ทำเดี๋ยวนี้
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        persistFocusTasks(
+                          state.focusTasks.map((t) =>
+                            t.id === task.id
+                              ? {
+                                  ...t,
+                                  delegateTo: t.delegateTo === 'self' ? 'ai-agent' : 'self',
+                                }
+                              : t
+                          )
+                        )
+                      }
+                      title="คลิกเพื่อสลับระหว่างทำเอง กับ โยนให้ AI ทำ"
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer ${
+                        task.delegateTo === 'ai-agent'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}
+                    >
+                      {task.delegateTo === 'ai-agent' ? (
+                        <>
+                          <Bot size={11} /> โยน AI ทำ
+                        </>
+                      ) : (
+                        <>
+                          <User size={11} /> สมอง 1 ทำเอง
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        persistFocusTasks(state.focusTasks.filter((t) => t.id !== task.id))
+                      }
+                      className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
@@ -598,6 +703,71 @@ export default function CockpitTab({
           </div>
         </div>
       </div>
+
+      {/* Inline AI Task Deliverable Viewer */}
+      {aiDeliverable && (
+        <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/30 p-6 space-y-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-emerald-200">
+            <div>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                ✓ AI ทำงานเสร็จแล้ว &amp; บันทึกเข้าคลังสมอง ({getCategoryMeta(aiDeliverable.category).short})
+              </span>
+              <h3 className="text-lg font-bold text-slate-900 mt-1.5">
+                {aiDeliverable.title}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiDeliverable(null)}
+              className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="prose prose-sm prose-slate max-w-none bg-white p-5 rounded-xl border border-emerald-100 max-h-[380px] overflow-y-auto">
+            <ReactMarkdown>{aiDeliverable.content}</ReactMarkdown>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenVaultCategory(aiDeliverable.category)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
+            >
+              เปิดดูในคลังสมอง (Vault) →
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onPromoteNote('ebook', {
+                  noteId: aiDeliverable.id,
+                  title: aiDeliverable.title,
+                  summary: aiDeliverable.summary,
+                  content: aiDeliverable.content,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+            >
+              <BookOpen size={14} /> ส่งไปสร้างโปรเจกต์ Ebook ใหม่
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onPromoteNote('course', {
+                  noteId: aiDeliverable.id,
+                  title: aiDeliverable.title,
+                  summary: aiDeliverable.summary,
+                  content: aiDeliverable.content,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+            >
+              <GraduationCap size={14} /> ส่งเป็นไอเดียคอร์สใหม่
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 4. AI CONNECTION SPARK */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">

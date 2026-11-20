@@ -36,6 +36,7 @@ export interface FocusTask {
   text: string
   done: boolean
   delegateTo: 'self' | 'ai-agent'
+  resultNoteId?: string
   createdAt: string
 }
 

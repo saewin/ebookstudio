@@ -3,6 +3,8 @@ import { callGeminiNative } from '@/lib/actions'
 import {
   buildMasterBrainContext,
   getBrainStudioState,
+  saveBrainNote,
+  saveFocusTasks,
   type BrainCategory,
 } from '@/lib/brainStudioDb'
 
@@ -292,6 +294,69 @@ ${question}`
 
       const answer = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
       return NextResponse.json({ success: true, answer: answer.trim() })
+    }
+
+    // 8. EXECUTE-FOCUS-TASK: Actually run an AI-delegated focus task and save output into BrainStudio Vault
+    if (action === 'execute-focus-task') {
+      const taskText = String(body.taskText || '').trim()
+      const taskId = typeof body.taskId === 'string' ? body.taskId : ''
+      if (!taskText) {
+        return NextResponse.json(
+          { success: false, error: 'กรุณาระบุงานที่ต้องการให้ AI ทำ' },
+          { status: 400 }
+        )
+      }
+
+      const prompt = `คุณคือ "ทีม 8 AI Agents & AI CEO" ประจำบริษัทคนเดียวของผู้ใช้
+เจ้าของได้กดปุ่ม **"โยนให้ AI ทำเดี๋ยวนี้"** สำหรับภารกิจต่อไปนี้:
+"${taskText}"
+
+จงอ้างอิง **Brand Bible**, **เข็มทิศชีวิต (Areas)** และ **Projects** ในคลังสมองด้านล่างนี้ แล้ว **ลงมือทำงานนี้ให้เสร็จสมบูรณ์พร้อมใช้งานจริงทันที** (ไม่ใช่แค่แนะนำวิธีทำ แต่ให้ผลิตชิ้นงานจริงออกมาเลย เช่น โครงสร้าง, กลุ่มเป้าหมาย, สคริปต์, โพสต์, หรือแผนปฏิบัติการ)
+
+--- คลังสมองที่ 1 (Inbox + P.A.R.A.) ---
+${masterContext}
+
+ตอบกลับเป็น JSON ล้วน (ห้ามใส่ markdown code fence):
+{
+  "title": "ชื่อผลงานที่ชัดเจนและน่าอ่าน",
+  "summary": "สรุปผลลัพธ์ที่ได้ 1 บรรทัด",
+  "category": "resources",
+  "tags": ["AI-Output", "Deliverable"],
+  "content": "เนื้อหาผลงานฉบับสมบูรณ์ในรูปแบบ Markdown ภาษาไทย (ใช้ ## หัวข้อ, bullet points, และตาราง/สคริปต์ที่นำไปใช้จริงได้ทันที)"
+}`
+
+      const raw = await callGeminiNative([{ role: 'user', content: prompt }], 'gemini-2.5-flash')
+      const parsed = JSON.parse(stripCodeFences(raw))
+
+      const now = new Date().toISOString()
+      const savedNote = await saveBrainNote({
+        id: `ai-task-${Date.now()}`,
+        category: parsed.category === 'projects' ? 'projects' : 'resources',
+        title: parsed.title || taskText,
+        slug: `ai-result-${Date.now()}.md`,
+        summary: parsed.summary || `ผลงานจาก AI: ${taskText}`,
+        tags: Array.isArray(parsed.tags) ? parsed.tags : ['AI-Output'],
+        pinned: false,
+        content: parsed.content || '',
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      let updatedTasks = state.focusTasks
+      if (taskId) {
+        updatedTasks = state.focusTasks.map((t) =>
+          t.id === taskId ? { ...t, done: true, resultNoteId: savedNote.id } : t
+        )
+        await saveFocusTasks(updatedTasks)
+      }
+
+      const refreshedState = await getBrainStudioState()
+      return NextResponse.json({
+        success: true,
+        note: savedNote,
+        notes: refreshedState.notes,
+        focusTasks: updatedTasks,
+      })
     }
 
     return NextResponse.json({ success: false, error: 'Unsupported action' }, { status: 400 })
