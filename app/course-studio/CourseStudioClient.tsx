@@ -26,11 +26,17 @@ type StudioTab = 'outline' | 'slides' | 'sales' | 'starter-kit' | 'teaching-kit'
 
 export default function CourseStudioClient({
   initialCourses,
+  initialActiveId,
 }: {
   initialCourses: CourseProject[]
+  initialActiveId?: string
 }) {
   const [courses, setCourses] = useState<CourseProject[]>(initialCourses)
-  const [activeId, setActiveId] = useState<string>(initialCourses[0]?.id || '')
+  const [activeId, setActiveId] = useState<string>(
+    (initialActiveId && initialCourses.some((c) => c.id === initialActiveId)
+      ? initialActiveId
+      : initialCourses[0]?.id) || ''
+  )
   const [activeTab, setActiveTab] = useState<StudioTab>('outline')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)

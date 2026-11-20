@@ -23,10 +23,64 @@ export interface BrainNote {
   updatedAt: string
 }
 
-const DB_DIR = path.join(process.cwd(), 'public', 'uploads', 'db')
-const BRAIN_FILE = path.join(DB_DIR, 'brain_studio.json')
+export interface FocusTask {
+  id: string
+  text: string
+  done: boolean
+  delegateTo: 'self' | 'ai-agent'
+  createdAt: string
+}
 
-function createSeedBrainNotes(): BrainNote[] {
+export interface LifePulseEntry {
+  date: string // YYYY-MM-DD
+  wealthScore: number // 1-5
+  timeScore: number // 1-5
+  healthScore: number // 1-5
+  reflection: string
+}
+
+export interface DecisionRecord {
+  id: string
+  dilemma: string
+  alignmentScore: number // 0-100
+  verdict: 'do-self' | 'delegate-ai' | 'say-no'
+  verdictLabel: string
+  wealthImpact: string
+  timeImpact: string
+  healthImpact: string
+  reasoning: string
+  nextStep: string
+  createdAt: string
+}
+
+export interface BrainStudioState {
+  notes: BrainNote[]
+  focusTasks: FocusTask[]
+  pulseHistory: LifePulseEntry[]
+  decisions: DecisionRecord[]
+}
+
+const DB_DIR = path.join(process.cwd(), 'public', 'uploads', 'db')
+const LEGACY_BRAIN_FILE = path.join(DB_DIR, 'brain_studio.json')
+const STATE_FILE = path.join(DB_DIR, 'brain_studio_state.json')
+
+const VALID_CATEGORIES = new Set<BrainCategory>([
+  'vision-compass',
+  'brand-bible',
+  'ideas-sparks',
+  'active-focus',
+  'knowledge-vault',
+  'sop-framework',
+])
+
+function normalizeCategory(cat: string): BrainCategory {
+  if (VALID_CATEGORIES.has(cat as BrainCategory)) {
+    return cat as BrainCategory
+  }
+  return 'knowledge-vault'
+}
+
+export function createSeedBrainNotes(): BrainNote[] {
   const now = new Date().toISOString()
   return [
     {
@@ -87,7 +141,7 @@ function createSeedBrainNotes(): BrainNote[] {
       pinned: false,
       content: `# Ideas & Sparks — กล่องรับไอเดียฉับพลัน
 
-> **กฎของหมวดนี้:** สมองมีไว้คิด ไม่ได้มีไว้จำ — นึกอะไรออกให้โยนลงตรงนี้ทันที ไม่ต้องจัดสวย แล้วค่อยกดปุ่ม **"AI จัดระเบียบโน้ตดิบ"**
+> **กฎของหมวดนี้:** สมองมีไว้คิด ไม่ได้มีไว้จำ — นึกอะไรออกให้โยนลงตรงนี้ทันที ไม่ต้องจัดสวย แล้วค่อยกดปุ่ม AI แปลงเป็นโพสต์/คลิป หรือส่งสร้าง Ebook/คอร์ส
 
 ## ไอเดียที่เพิ่งแวบเข้ามา
 - [ ] คลิปสั้นเปรียบเทียบ "แอดมินของ AI" vs "ประธานบริษัทที่มีสมองที่ 3 (AI CEO)"
@@ -162,69 +216,216 @@ function createSeedBrainNotes(): BrainNote[] {
   ]
 }
 
+function createSeedState(existingNotes?: BrainNote[]): BrainStudioState {
+  const now = new Date().toISOString()
+  const today = now.slice(0, 10)
+  return {
+    notes: existingNotes && existingNotes.length > 0 ? existingNotes : createSeedBrainNotes(),
+    focusTasks: [
+      {
+        id: 'ft-1',
+        text: 'ตรวจสไลด์และ Sales Page คอร์ส "ฉันนี่แหละประธานบริษัท 2.0"',
+        done: false,
+        delegateTo: 'self',
+        createdAt: now,
+      },
+      {
+        id: 'ft-2',
+        text: 'ให้ AI Agent ช่วยเขียนโพสต์เปิดตัวคอร์ส 3 ช่องทาง (FB / TikTok / LINE)',
+        done: false,
+        delegateTo: 'ai-agent',
+        createdAt: now,
+      },
+      {
+        id: 'ft-3',
+        text: 'ออกกำลังกายอย่างน้อย 30 นาที และพักสายตาตามเข็มทิศสุขภาพ',
+        done: false,
+        delegateTo: 'self',
+        createdAt: now,
+      },
+    ],
+    pulseHistory: [
+      {
+        date: today,
+        wealthScore: 4,
+        timeScore: 4,
+        healthScore: 4,
+        reflection: 'กำลังวางระบบ 3 สมองเพื่อลดงานซ้ำซ้อนและคืนเวลาให้ชีวิตมากขึ้น',
+      },
+    ],
+    decisions: [],
+  }
+}
+
 async function ensureDir(): Promise<void> {
   if (!existsSync(DB_DIR)) {
     await mkdir(DB_DIR, { recursive: true })
   }
 }
 
-async function writeNotes(notes: BrainNote[]): Promise<void> {
+function sortNotes(notes: BrainNote[]): BrainNote[] {
+  return [...notes].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+  })
+}
+
+async function writeState(state: BrainStudioState): Promise<void> {
   await ensureDir()
-  await writeFile(BRAIN_FILE, JSON.stringify(notes, null, 2), 'utf-8')
+  const cleaned: BrainStudioState = {
+    ...state,
+    notes: sortNotes(
+      state.notes.map((n) => ({
+        ...n,
+        category: normalizeCategory(n.category),
+      }))
+    ),
+  }
+  await writeFile(STATE_FILE, JSON.stringify(cleaned, null, 2), 'utf-8')
+}
+
+export async function getBrainStudioState(): Promise<BrainStudioState> {
+  await ensureDir()
+
+  if (existsSync(STATE_FILE)) {
+    try {
+      const raw = await readFile(STATE_FILE, 'utf-8')
+      const parsed = JSON.parse(raw) as Partial<BrainStudioState>
+      const notes = Array.isArray(parsed.notes) && parsed.notes.length > 0
+        ? sortNotes(parsed.notes.map((n) => ({ ...n, category: normalizeCategory(n.category) })))
+        : createSeedBrainNotes()
+      return {
+        notes,
+        focusTasks: Array.isArray(parsed.focusTasks) ? parsed.focusTasks : [],
+        pulseHistory: Array.isArray(parsed.pulseHistory) ? parsed.pulseHistory : [],
+        decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+      }
+    } catch {
+      // Fall through to seed
+    }
+  }
+
+  // Migrate legacy brain_studio.json if it exists
+  let legacyNotes: BrainNote[] | undefined
+  if (existsSync(LEGACY_BRAIN_FILE)) {
+    try {
+      const raw = await readFile(LEGACY_BRAIN_FILE, 'utf-8')
+      const parsed = JSON.parse(raw) as BrainNote[]
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        legacyNotes = parsed.map((n) => ({
+          ...n,
+          category: normalizeCategory(n.category),
+        }))
+      }
+    } catch {
+      legacyNotes = undefined
+    }
+  }
+
+  const seeded = createSeedState(legacyNotes)
+  await writeState(seeded)
+  return seeded
 }
 
 export async function getBrainNotes(): Promise<BrainNote[]> {
-  await ensureDir()
-  if (!existsSync(BRAIN_FILE)) {
-    const seed = createSeedBrainNotes()
-    await writeNotes(seed)
-    return seed
-  }
-  try {
-    const raw = await readFile(BRAIN_FILE, 'utf-8')
-    const parsed = JSON.parse(raw) as BrainNote[]
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      const seed = createSeedBrainNotes()
-      await writeNotes(seed)
-      return seed
-    }
-    return parsed.sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-      return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
-    })
-  } catch {
-    const seed = createSeedBrainNotes()
-    await writeNotes(seed)
-    return seed
-  }
+  const state = await getBrainStudioState()
+  return state.notes
 }
 
 export async function saveBrainNote(note: BrainNote): Promise<BrainNote> {
-  const notes = await getBrainNotes()
+  const state = await getBrainStudioState()
   const now = new Date().toISOString()
   const cleanSlug = (note.slug || `${note.id}.md`)
     .trim()
     .replace(/[^a-zA-Z0-9._-]/g, '-')
   const updated: BrainNote = {
     ...note,
+    category: normalizeCategory(note.category),
     slug: cleanSlug.endsWith('.md') ? cleanSlug : `${cleanSlug}.md`,
     createdAt: note.createdAt || now,
     updatedAt: now,
   }
-  const idx = notes.findIndex((n) => n.id === updated.id)
+  const idx = state.notes.findIndex((n) => n.id === updated.id)
   if (idx >= 0) {
-    notes[idx] = updated
+    state.notes[idx] = updated
   } else {
-    notes.unshift(updated)
+    state.notes.unshift(updated)
   }
-  await writeNotes(notes)
+  await writeState(state)
   return updated
 }
 
 export async function deleteBrainNote(id: string): Promise<boolean> {
-  const notes = await getBrainNotes()
-  const next = notes.filter((n) => n.id !== id)
-  if (next.length === notes.length) return false
-  await writeNotes(next)
+  const state = await getBrainStudioState()
+  const next = state.notes.filter((n) => n.id !== id)
+  if (next.length === state.notes.length) return false
+  state.notes = next
+  await writeState(state)
   return true
+}
+
+export async function saveFocusTasks(tasks: FocusTask[]): Promise<FocusTask[]> {
+  const state = await getBrainStudioState()
+  state.focusTasks = tasks
+  await writeState(state)
+  return tasks
+}
+
+export async function upsertLifePulse(entry: LifePulseEntry): Promise<LifePulseEntry[]> {
+  const state = await getBrainStudioState()
+  const idx = state.pulseHistory.findIndex((p) => p.date === entry.date)
+  if (idx >= 0) {
+    state.pulseHistory[idx] = entry
+  } else {
+    state.pulseHistory.unshift(entry)
+  }
+  state.pulseHistory = state.pulseHistory
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 30)
+  await writeState(state)
+  return state.pulseHistory
+}
+
+export async function addDecisionRecord(record: DecisionRecord): Promise<DecisionRecord[]> {
+  const state = await getBrainStudioState()
+  state.decisions.unshift(record)
+  state.decisions = state.decisions.slice(0, 50)
+  await writeState(state)
+  return state.decisions
+}
+
+export async function deleteDecisionRecord(id: string): Promise<DecisionRecord[]> {
+  const state = await getBrainStudioState()
+  state.decisions = state.decisions.filter((d) => d.id !== id)
+  await writeState(state)
+  return state.decisions
+}
+
+export function buildMasterBrainContext(state: BrainStudioState): string {
+  const sections: string[] = [
+    '# 00-MASTER-BRAIN-CONTEXT (สมองที่ 1 ของเจ้าของ)',
+    '',
+    '> เอกสารรวมศูนย์บริบทของเจ้าของธุรกิจสำหรับส่งให้ AI Agents (สมองที่ 2) และ AI CEO (สมองที่ 3) บน Google Antigravity',
+    '',
+  ]
+
+  if (state.focusTasks.length > 0) {
+    sections.push('## โฟกัสหลักวันนี้ (Top Focus)')
+    for (const t of state.focusTasks) {
+      const owner = t.delegateTo === 'ai-agent' ? '[โยน AI ทำ]' : '[ทำเอง - สมอง 1]'
+      sections.push(`- [${t.done ? 'x' : ' '}] ${owner} ${t.text}`)
+    }
+    sections.push('')
+  }
+
+  for (const n of state.notes) {
+    sections.push(`---`)
+    sections.push(`## [${n.category}] ${n.title}`)
+    if (n.summary) sections.push(`*สรุป:* ${n.summary}`)
+    sections.push('')
+    sections.push(n.content)
+    sections.push('')
+  }
+
+  return sections.join('\n')
 }
