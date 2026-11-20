@@ -12,15 +12,17 @@ import {
   BookUp,
   GraduationCap,
   Landmark,
+  Presentation,
 } from 'lucide-react'
 
-const productionLinks = [
+const productionLinks: { href: string; icon: any; label: string; badge?: string }[] = [
   { href: '/', icon: LayoutDashboard, label: 'แดชบอร์ด' },
   { href: '/briefing', icon: FileText, label: 'ห้องบรีฟงาน' },
   { href: '/structure', icon: ListOrdered, label: 'กระดานโครงสร้าง' },
   { href: '/writing', icon: PenTool, label: 'โต๊ะเขียนงาน' },
   { href: '/gallery', icon: ImageIcon, label: 'แกลเลอรี่ภาพ' },
   { href: '/export', icon: BookUp, label: 'โรงงานประกอบเล่ม' },
+  { href: '/course-studio', icon: Presentation, label: 'สร้างคอร์ส', badge: 'PRO' },
   { href: '/course-builder', icon: GraduationCap, label: 'สร้างบทเรียน' },
 ]
 
@@ -33,7 +35,7 @@ const financialLinks = [
   },
 ]
 
-const systemLinks = [
+const systemLinks: { href: string; icon: any; label: string; badge?: string }[] = [
   { href: '/settings', icon: Settings, label: 'ตั้งค่า' },
 ]
 
@@ -58,6 +60,7 @@ export default function SidebarNav() {
               href={item.href}
               icon={item.icon}
               label={item.label}
+              badge={item.badge}
               active={isActive(item.href)}
             />
           ))}
@@ -93,6 +96,7 @@ export default function SidebarNav() {
               href={item.href}
               icon={item.icon}
               label={item.label}
+              badge={item.badge}
               active={isActive(item.href)}
             />
           ))}
