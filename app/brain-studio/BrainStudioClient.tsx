@@ -13,7 +13,9 @@ import {
   Pin,
   MessageSquare,
   FileText,
-  Users,
+  Compass,
+  Lightbulb,
+  Crosshair,
   BookMarked,
   ShieldCheck,
   Send,
@@ -36,6 +38,13 @@ const CATEGORIES: {
     color: 'bg-slate-100 text-slate-700 border-slate-200',
   },
   {
+    id: 'vision-compass',
+    label: 'Vision & Life Compass',
+    short: 'เข็มทิศชีวิต',
+    icon: Compass,
+    color: 'bg-sky-50 text-sky-700 border-sky-200',
+  },
+  {
     id: 'brand-bible',
     label: 'Brand Bible',
     short: 'Brand Bible',
@@ -43,10 +52,17 @@ const CATEGORIES: {
     color: 'bg-blue-50 text-blue-700 border-blue-200',
   },
   {
-    id: 'customer-persona',
-    label: 'Customer Persona',
-    short: 'ลูกค้า',
-    icon: Users,
+    id: 'ideas-sparks',
+    label: 'Ideas & Sparks',
+    short: 'คลังไอเดีย',
+    icon: Lightbulb,
+    color: 'bg-yellow-50 text-yellow-800 border-yellow-200',
+  },
+  {
+    id: 'active-focus',
+    label: 'Active Focus',
+    short: 'โฟกัสตอนนี้',
+    icon: Crosshair,
     color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   },
   {
@@ -238,7 +254,7 @@ export default function BrainStudioClient({
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              บันทึกและจัดเก็บความรู้ Brand Bible, ลูกค้า, เรื่องเล่า และ SOP เพื่อส่งต่อให้ทีม 8 AI Agents &amp; AI CEO บน Google Antigravity
+              คลังสมองที่ 1 ของเจ้าของ: เข็มทิศชีวิต, Brand Bible, คลังไอเดีย, โฟกัสหลัก, ความรู้ และ SOP เพื่อส่งต่อให้ทีม 8 AI Agents &amp; AI CEO บน Google Antigravity
             </p>
           </div>
         </div>
@@ -424,9 +440,11 @@ export default function BrainStudioClient({
                   }
                   className="px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-semibold bg-white"
                 >
-                  <option value="brand-bible">Brand Bible</option>
-                  <option value="customer-persona">Customer Persona</option>
-                  <option value="knowledge-vault">Knowledge Vault</option>
+                  <option value="vision-compass">Vision &amp; Life Compass (เข็มทิศชีวิต)</option>
+                  <option value="brand-bible">Brand Bible (ตัวตน &amp; น้ำเสียง)</option>
+                  <option value="ideas-sparks">Ideas &amp; Sparks (คลังไอเดีย)</option>
+                  <option value="active-focus">Active Focus (โปรเจกต์ที่โฟกัส)</option>
+                  <option value="knowledge-vault">Knowledge Vault (คลังความรู้)</option>
                   <option value="sop-framework">SOP &amp; Frameworks</option>
                 </select>
                 <button

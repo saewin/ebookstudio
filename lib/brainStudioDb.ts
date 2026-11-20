@@ -3,8 +3,10 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 
 export type BrainCategory =
+  | 'vision-compass'
   | 'brand-bible'
-  | 'customer-persona'
+  | 'ideas-sparks'
+  | 'active-focus'
   | 'knowledge-vault'
   | 'sop-framework'
 
@@ -28,6 +30,28 @@ function createSeedBrainNotes(): BrainNote[] {
   const now = new Date().toISOString()
   return [
     {
+      id: 'brain-vision-compass',
+      category: 'vision-compass',
+      title: 'Vision & Life Compass (เข็มทิศชีวิต & การตัดสินใจ)',
+      slug: 'vision-life-compass.md',
+      summary: 'เป้าหมาย 3 เสาหลัก (มั่งคั่ง · มีเวลา · สุขภาพดี) และกฎการตัดสินใจของสมองที่ 1',
+      tags: ['สมองที่ 1', 'เข็มทิศชีวิต', 'Wealth-Time-Health'],
+      pinned: true,
+      content: `# Vision & Life Compass — เข็มทิศชีวิตและการตัดสินใจ
+
+## 1. เป้าหมาย 3 เสาหลักของความมั่งคั่งที่แท้จริง
+- **ความมั่งคั่ง (Wealth):** ธุรกิจเติบโตแบบตัวเบา กระเป๋าตังค์หนัก กำไรสุทธิแข็งแรงและขยายตัวได้ด้วยระบบ
+- **เวลา (Time):** มีอิสรภาพทางเวลา ไม่ต้องนั่งทำงานซ้ำๆ เองทุกวัน เหลือเวลาคิดกลยุทธ์และอยู่กับคนที่รัก
+- **สุขภาพ (Health):** นอนหลับเต็มอิ่ม ออกกำลังกายสม่ำเสมอ เติบโตอย่างยั่งยืนท่ามกลางเสียงนก กบร้อง
+
+## 2. กฎการตัดสินใจ (Decision Principles)
+- **สิ่งที่ตอบ "ใช่":** งานที่สร้าง Asset ระยะยาว, งานที่ต่อยอดด้วย AI/ระบบได้, งานที่สอดคล้องกับคุณภาพชีวิต
+- **สิ่งที่ต้อง "ปฏิเสธ":** งานที่ต้องเพิ่มคนเพิ่มภาระโดยไม่จำเป็น, งานเร่งด่วนที่ไม่พาไปถึงเป้าหมายหลัก, งานที่แลกด้วยสุขภาพ
+`,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
       id: 'brain-brand-bible',
       category: 'brand-bible',
       title: 'Brand Bible & Founder Voice (ตัวตนและน้ำเสียงของฉัน)',
@@ -38,8 +62,7 @@ function createSeedBrainNotes(): BrainNote[] {
       content: `# Brand Bible & Founder Voice
 
 ## 1. ตัวตนและพันธกิจ (Mission)
-- **แนวคิดหลัก:** "สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1"
-- **เป้าหมายชีวิตและธุรกิจ:** เติบโตอย่างมั่งคั่ง มีเวลาใช้ชีวิต และสุขภาพดี ท่ามกลางเสียงนก กบร้อง
+- **Big Idea:** "สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1"
 - **ปรัชญาบริษัทคนเดียว:** ตัวเบา กระเป๋าตังค์หนัก — เรียบง่าย รวดเร็ว ยืดหยุ่น (Privilege · Simplicity · Speed · Lean · Resilience)
 
 ## 2. น้ำเสียงและสไตล์การสื่อสาร (Tone of Voice)
@@ -55,23 +78,42 @@ function createSeedBrainNotes(): BrainNote[] {
       updatedAt: now,
     },
     {
-      id: 'brain-customer-persona',
-      category: 'customer-persona',
-      title: 'Customer Persona & Painkiller Map',
-      slug: 'customer-persona.md',
-      summary: 'ลูกค้าตัวจริงคือใคร อาการคันที่ต้องรีบแก้ และข้อโต้แย้งก่อนตัดสินใจซื้อ',
-      tags: ['ลูกค้า', 'Painkiller', 'Persona'],
-      pinned: true,
-      content: `# Customer Persona & Painkiller Map
+      id: 'brain-ideas-sparks',
+      category: 'ideas-sparks',
+      title: 'Inbox ไอเดียฉับพลัน (Ideas & Sparks)',
+      slug: 'ideas-inbox.md',
+      summary: 'ที่โยนทุกไอเดียที่แวบเข้ามาในหัว ก่อนจะลืม แล้วค่อยให้ AI ช่วยจัดระเบียบและต่อยอด',
+      tags: ['ไอเดีย', 'Inbox สมอง'],
+      pinned: false,
+      content: `# Ideas & Sparks — กล่องรับไอเดียฉับพลัน
 
-## ลูกค้าในอุดมคติ
-- เจ้าของธุรกิจ SME, Solopreneur, ผู้ประกอบการอิสระ และผู้เชี่ยวชาญที่มีองค์ความรู้ในหัว
-- อยากขยายรายได้และกำไร โดยไม่ต้องแบกทีมใหญ่และไม่ต้องแลกเวลา-สุขภาพ
+> **กฎของหมวดนี้:** สมองมีไว้คิด ไม่ได้มีไว้จำ — นึกอะไรออกให้โยนลงตรงนี้ทันที ไม่ต้องจัดสวย แล้วค่อยกดปุ่ม **"AI จัดระเบียบโน้ตดิบ"**
 
-## อาการคันที่เจ็บที่สุด (Painkiller Triggers)
-1. ยิ่งใช้ AI กลับยิ่งเหนื่อย เพราะต้องนั่งพิมพ์ Prompt ใหม่และก๊อปงานเองทุกวันเหมือนเป็น "แอดมินของ AI"
-2. หยุดทำเมื่อไหร่งานหยุดเมื่อนั้น ไม่มีระบบทำงานแทน 24 ชม.
-3. มีความรู้และประสบการณ์ดีๆ เต็มหัว แต่ไม่มีเวลาถอดออกมาสร้างเป็นระบบ คอนเทนต์ หรือสินค้าดิจิทัล
+## ไอเดียที่เพิ่งแวบเข้ามา
+- [ ] คลิปสั้นเปรียบเทียบ "แอดมินของ AI" vs "ประธานบริษัทที่มีสมองที่ 3 (AI CEO)"
+- [ ] ทำ Ebook แจกฟรีเรื่อง "เช็กลิสต์ 8 AI Agents สำหรับบริษัทคนเดียว"
+- [ ] โชว์เคสเบื้องหลังการสร้าง Ebook Studio & BrainStudio ด้วย Google Antigravity
+`,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'brain-active-focus',
+      category: 'active-focus',
+      title: 'Active Focus — โปรเจกต์หลักที่โฟกัสไตรมาสนี้',
+      slug: 'active-focus.md',
+      summary: '1–3 โปรเจกต์สำคัญที่สุดในตอนนี้ เพื่อให้ AI CEO รู้ลำดับความสำคัญและไม่พาออกนอกเรื่อง',
+      tags: ['โฟกัส', 'Q-Goals', 'โปรเจกต์หลัก'],
+      pinned: false,
+      content: `# Active Focus — โปรเจกต์หลักที่โฟกัสตอนนี้
+
+## ลำดับความสำคัญสูงสุด (Top 3 Only)
+1. **เปิดตัว Workshop สด 1 วัน: "ฉันนี่แหละประธานบริษัท 2.0"**
+   - เป้าหมาย: ปั้นสไลด์, Sales Page, โพสต์เปิดตัว และ Google Antigravity Starter Kit ให้พร้อมสอนรุ่นแรก
+2. **พัฒนา Ebook Studio + BrainStudio + Course Studio**
+   - เป้าหมาย: ใช้เป็นทั้งเครื่องมือทำงานจริงของตัวเอง และเป็น Case Study โชว์ในห้องเรียน
+3. **เตรียมต่อยอดคอร์ส B: One-Person Brandformance & AI Revenue Engine**
+   - เป้าหมาย: วางบันไดต่อยอดสำหรับศิษย์เก่าที่อยากเร่งยอดขายไว
 `,
       createdAt: now,
       updatedAt: now,
@@ -109,10 +151,10 @@ function createSeedBrainNotes(): BrainNote[] {
       content: `# Company SOP & Quality Gate
 
 ## กฎเหล็ก 4 ข้อก่อนส่งงานทุกชิ้น
-1. อ่าน Brand Bible และ Customer Persona ก่อนเริ่มงานเสมอ
+1. อ่าน Vision & Life Compass และ Brand Bible ก่อนเริ่มงานเสมอ
 2. ห้ามมั่วข้อมูลหรือสถิติ หากข้อมูลไม่ครบให้ระบุชัดเจน
 3. งานทุกชิ้นต้องพร้อมนำไปใช้งานจริงได้ทันที (Copy-Paste Ready)
-4. ผ่านการตรวจจาก AI CEO (Quality Gate) ว่าตรงน้ำเสียงแบรนด์ก่อนส่งถึงสมองที่ 1
+4. ผ่านการตรวจจาก AI CEO (Quality Gate) ว่าตรงน้ำเสียงแบรนด์และไม่เบียดเบียนเวลาชีวิตเจ้าของก่อนส่งถึงสมองที่ 1
 `,
       createdAt: now,
       updatedAt: now,
