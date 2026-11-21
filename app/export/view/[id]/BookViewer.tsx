@@ -3040,6 +3040,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     text-align: justify;
                     text-justify: inter-cluster;
                     text-align-last: left;
+                    text-wrap: pretty;
+                    word-spacing: -0.02em;
                     line-height: ${pageSize === 'a5' ? '1.75' : '1.8'};
                     word-break: normal;
                     overflow-wrap: break-word;
@@ -3061,7 +3063,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p.split-paragraph-first {
                     margin-bottom: 0 !important;
-                    text-align-last: justify;
+                    text-align-last: left;
                 }
                 .book-body-content p.continued-list-item {
                     text-indent: 0 !important;

@@ -337,7 +337,6 @@ export function blockToMeasureHtml(
     // Convert inline markdown bold/code if any remain inside HTML
     html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
 
-    const pMb = pageSize === 'a5' ? 'mb-2.5' : 'mb-3.5';
     const h2Spacing = pageSize === 'a5' ? 'mt-3.5 mb-2' : 'mt-5 mb-2.5';
     const h3Spacing = pageSize === 'a5' ? 'mt-3 mb-1.5' : 'mt-4 mb-2';
     const listClasses = pageSize === 'a5' ? 'pl-5 space-y-1 my-2 text-slate-800' : 'pl-6 space-y-1.5 my-3 text-slate-800';
@@ -356,7 +355,7 @@ export function blockToMeasureHtml(
         .replace(/<p(\b[^>]*)>/gi, (_, a) => {
             const isCont = /continued-paragraph|continued-list-item/i.test(a);
             const isSplitFirst = /split-paragraph-first/i.test(a);
-            const extra = `${isSplitFirst ? 'mb-0' : pMb} leading-relaxed text-slate-800 ${isCont ? '' : 'text-indent-book'}`;
+            const extra = `${isSplitFirst ? 'mb-0' : ''} text-slate-800 ${isCont ? '' : 'text-indent-book'}`.trim();
             return `<p${addClassToTag(a, extra)}>`;
         })
         .replace(/<ul(\b[^>]*)>/gi, (_, a) => `<ul${addClassToTag(a, `list-disc ${listClasses}`)}>`)
