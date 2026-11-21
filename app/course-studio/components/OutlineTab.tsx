@@ -12,6 +12,7 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Brain,
 } from 'lucide-react'
 import type { CourseProject, CourseSession } from '@/lib/courseStudioTypes'
 
@@ -118,7 +119,20 @@ export default function OutlineTab({ course, onChange }: OutlineTabProps) {
             />
           </div>
 
-          <div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              ชื่อซีรีส์ / แบรนด์หลัก (บรรทัดแรก)
+            </label>
+            <input
+              type="text"
+              value={course.seriesTitle || ''}
+              onChange={(e) => updateField('seriesTitle', e.target.value)}
+              placeholder="เช่น ฉันนี่แหล่ะประธานบริษัท 2.0"
+              className="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-blue-700 focus:outline-none focus:border-blue-600"
+            />
+          </div>
+
+          <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               ชื่อคอร์ส
             </label>
@@ -167,6 +181,64 @@ export default function OutlineTab({ course, onChange }: OutlineTabProps) {
           </div>
         </div>
       </div>
+
+      {/* แก่นแนวคิด: ระบบ "3 สมอง" */}
+      {course.salesPage?.threeBrains?.length > 0 && (
+        <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/60 via-white to-white p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Brain size={18} className="text-indigo-600" />
+              แก่นแนวคิด: ระบบ &ldquo;3 สมอง&rdquo;
+            </h2>
+            <span className="text-xs text-slate-500">
+              เชื่อมต่อกับ Sales Page อัตโนมัติ
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {course.salesPage.threeBrains.map((item, idx) => (
+              <div
+                key={idx}
+                className="rounded-lg border border-indigo-100 bg-white p-4 space-y-2 shadow-sm"
+              >
+                <input
+                  type="text"
+                  value={item.brain}
+                  onChange={(e) => {
+                    const next = course.salesPage.threeBrains.map((b, i) =>
+                      i === idx ? { ...b, brain: e.target.value } : b
+                    )
+                    updateField('salesPage', { ...course.salesPage, threeBrains: next })
+                  }}
+                  className="w-full text-sm font-bold text-indigo-900 bg-transparent border-b border-transparent focus:border-indigo-300 focus:outline-none pb-0.5"
+                />
+                <input
+                  type="text"
+                  value={item.role}
+                  onChange={(e) => {
+                    const next = course.salesPage.threeBrains.map((b, i) =>
+                      i === idx ? { ...b, role: e.target.value } : b
+                    )
+                    updateField('salesPage', { ...course.salesPage, threeBrains: next })
+                  }}
+                  className="w-full text-xs font-medium text-indigo-600 bg-transparent border-b border-transparent focus:border-indigo-200 focus:outline-none"
+                />
+                <textarea
+                  rows={4}
+                  value={item.description}
+                  onChange={(e) => {
+                    const next = course.salesPage.threeBrains.map((b, i) =>
+                      i === idx ? { ...b, description: e.target.value } : b
+                    )
+                    updateField('salesPage', { ...course.salesPage, threeBrains: next })
+                  }}
+                  className="w-full text-xs leading-relaxed text-slate-700 bg-slate-50/70 rounded-md p-2 border border-slate-200 focus:outline-none focus:border-indigo-400"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Run-of-Show & Sessions */}
       <div className="space-y-4">

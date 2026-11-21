@@ -129,6 +129,7 @@ export interface TeachingKit {
 
 export interface CourseProject {
   id: string
+  seriesTitle?: string
   title: string
   subtitle: string
   bigIdea: string

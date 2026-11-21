@@ -7,7 +7,8 @@ export function createFlagshipPrototypeCourse(): CourseProject {
 
   return {
     id: FLAGSHIP_PROTOTYPE_ID,
-    title: 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur',
+    seriesTitle: 'ฉันนี่แหล่ะประธานบริษัท 2.0',
+    title: 'Unleash Your Mind, Build Your AI Workforce - ปลดปล่อยพลังสมอง ปั้น AI Agents ทำงานแทนคุณ',
     subtitle: 'Workshop สด 1 วัน — ระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity',
     bigIdea: 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1',
     format: 'workshop-1day',
@@ -202,10 +203,10 @@ export function createFlagshipPrototypeCourse(): CourseProject {
         layout: 'hero',
         theme: 'executive-blue',
         kicker: 'FLAGSHIP 1-DAY LIVE WORKSHOP · 2026 EDITION',
-        title: 'ฉันนี่แหละประธานบริษัท 2.0',
-        subtitle: 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1',
+        title: 'ฉันนี่แหล่ะประธานบริษัท 2.0',
+        subtitle: 'Unleash Your Mind, Build Your AI Workforce - ปลดปล่อยพลังสมอง ปั้น AI Agents ทำงานแทนคุณ',
         bullets: [
-          'The AI-Native Solopreneur บน Google Antigravity',
+          'ระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity',
           'เติบโตอย่างมั่งคั่ง มีเวลาใช้ชีวิต และสุขภาพดี',
           'โดย อดิศร เทพวัลย์',
         ],
@@ -606,19 +607,19 @@ export function createFlagshipPrototypeCourse(): CourseProject {
           brain: 'สมองที่ 1 (ตัวคุณ — Founder)',
           role: 'วิสัยทัศน์ · ชีวิตที่สมดุล · การตัดสินใจสำคัญ',
           description:
-            'โฟกัสเฉพาะเรื่องที่สร้างมูลค่าสูงสุด: โมเดลธุรกิจ 3 ทางเลือกสินค้า ความสัมพันธ์กับลูกค้าสำคัญ การดูแลสุขภาพ และเวลาของชีวิต',
+            'โฟกัสเฉพาะวิสัยทัศน์ โมเดลธุรกิจ ความสัมพันธ์สำคัญ การตัดสินใจใหญ่ รวมถึงเวลาชีวิตและสุขภาพ',
         },
         {
           brain: 'สมองที่ 2 (ทีม 8 AI Agents)',
           role: 'พนักงานเฉพาะแผนกที่อ่านคลังความรู้ BrainStudio ของคุณ',
           description:
-            'แตกสมองออกไปทำแทน 8 แผนก: รีเสิร์ช, คอนเทนต์ 7P, Brandformance/แอด, ปิดการขาย, วิเคราะห์ข้อมูล eRFM, ผลิตสื่อ/Ebook, SOP และสร้างเครื่องมือ',
+            'พนักงาน AI เฉพาะทาง 8 แผนก (Research, Content, Brandformance/Ads, Sales, Data/eRFM, Media/Ebook, Ops/SOP, Builder) ที่ดึงความรู้จากคลัง BrainStudio ของคุณไปทำงาน',
         },
         {
           brain: 'สมองที่ 3 (AI CEO บน Google Antigravity)',
           role: 'Orchestrator / Chief of Staff คุมทีม 8 Agents อีกที',
           description:
-            'รับคำสั่งภาพใหญ่จากคุณเพียงครั้งเดียว แล้ววางแผน กระจายงาน เชื่อมต่อ Google Drive ผ่าน MCP ตรวจคุณภาพตาม Brand Bible และสรุป 1 หน้าให้คุณกดอนุมัติ',
+            'Orchestrator / Chief of Staff คอยรับคำสั่งภาพใหญ่ครั้งเดียว แล้วกระจายงานให้ 8 Agents เชื่อมต่อ Google Drive ผ่าน MCP ตรวจคุณภาพตาม Brand Bible และสรุป 1 หน้าให้คุณกดอนุมัติ',
         },
       ],
       deliverables: [
