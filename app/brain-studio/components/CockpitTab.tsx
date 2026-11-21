@@ -55,8 +55,15 @@ interface CockpitTabProps {
   onFocusTasksUpdated: (tasks: FocusTask[]) => void
   onPulseUpdated: (history: LifePulseEntry[]) => void
   onPromoteNote: (
-    target: 'ebook' | 'course',
-    payload: { noteId?: string; title: string; summary: string; content: string }
+    target: 'ebook' | 'course' | 'healthscale',
+    payload: {
+      noteId?: string
+      title: string
+      summary: string
+      content: string
+      productCode?: string
+      targetRole?: string
+    }
   ) => Promise<unknown>
   onOpenVaultCategory: (cat: BrainCategory) => void
 }
@@ -858,6 +865,21 @@ export default function CockpitTab({
             >
               <GraduationCap size={14} /> ส่งเป็นไอเดียคอร์สใหม่
             </button>
+            <button
+              type="button"
+              onClick={() =>
+                onPromoteNote('healthscale', {
+                  noteId: aiDeliverable.id,
+                  title: aiDeliverable.title,
+                  summary: aiDeliverable.summary,
+                  content: aiDeliverable.content,
+                  targetRole: 'auto',
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold cursor-pointer"
+            >
+              <Zap size={14} /> ส่งให้ AI HealthScale
+            </button>
           </div>
         </div>
       )}
@@ -942,6 +964,23 @@ export default function CockpitTab({
                     className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
                   >
                     <GraduationCap size={12} /> สร้างคอร์ส
+                  </button>
+                  <button
+                    type="button"
+                    disabled={promotingKey === `hs-${i}`}
+                    onClick={async () => {
+                      setPromotingKey(`hs-${i}`)
+                      await onPromoteNote('healthscale', {
+                        title: sp.title,
+                        summary: sp.whyItWorks,
+                        content: `# ${sp.title}\n\n${sp.whyItWorks}\n\n${sp.actionIdea}`,
+                        targetRole: 'auto',
+                      })
+                      setPromotingKey(null)
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    <Zap size={12} /> ส่ง HealthScale
                   </button>
                 </div>
               </div>

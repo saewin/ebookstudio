@@ -6,7 +6,7 @@ import { createBlankCourse, saveCourse } from '@/lib/courseStudioDb'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { target, noteId, title, summary, content } = body
+    const { target, noteId, title, summary, content, productCode, targetRole } = body
 
     const state = await getBrainStudioState()
     const note = noteId ? state.notes.find((n) => n.id === noteId) : undefined
@@ -83,8 +83,64 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (target === 'healthscale') {
+      const baseUrl = (
+        process.env.HEALTHSCALE_API_URL || 'https://dashboard.aimar.cloud'
+      ).replace(/\/$/, '')
+      const secret =
+        process.env.HEALTHSCALE_BRIDGE_SECRET || process.env.ORCHESTRATOR_SECRET || ''
+
+      if (!secret) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'ยังไม่ได้ตั้งค่า HEALTHSCALE_BRIDGE_SECRET ใน .env ของ ebookStudio (ต้องตั้งให้ตรงกับ ORCHESTRATOR_SECRET ของ HealthScale)',
+          },
+          { status: 400 }
+        )
+      }
+
+      const bridgeRes = await fetch(`${baseUrl}/api/bridge/brain-idea`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret-key': secret,
+        },
+        body: JSON.stringify({
+          title: finalTitle,
+          summary: finalSummary,
+          content: finalContent,
+          sourceNoteId: note?.id || null,
+          productCode: typeof productCode === 'string' ? productCode : '',
+          targetRole: typeof targetRole === 'string' ? targetRole : 'auto',
+        }),
+      })
+
+      const bridgeData = await bridgeRes.json().catch(() => null)
+      if (!bridgeRes.ok || !bridgeData?.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              bridgeData?.error || `HealthScale Bridge error (${bridgeRes.status})`,
+          },
+          { status: bridgeRes.status >= 400 ? bridgeRes.status : 502 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        target: 'healthscale',
+        title: finalTitle,
+        tasksCreated: bridgeData.tasksCreated || 1,
+        productName: bridgeData.product?.name || '',
+        healthScaleUrl: `${baseUrl}${bridgeData.dashboardUrl || '/dashboard/master'}`,
+      })
+    }
+
     return NextResponse.json(
-      { success: false, error: 'Unsupported target (use ebook or course)' },
+      { success: false, error: 'Unsupported target (use ebook, course, or healthscale)' },
       { status: 400 }
     )
   } catch (error: any) {

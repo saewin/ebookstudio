@@ -24,7 +24,7 @@ import AskExportTab from './components/AskExportTab'
 type BrainTab = 'cockpit' | 'interviewer' | 'decision' | 'vault' | 'ask-export'
 
 interface PromotionBanner {
-  target: 'ebook' | 'course'
+  target: 'ebook' | 'course' | 'healthscale'
   title: string
   primaryUrl: string
   primaryLabel: string
@@ -44,8 +44,15 @@ export default function BrainStudioClient({
   const [promoBanner, setPromoBanner] = useState<PromotionBanner | null>(null)
 
   async function handlePromoteNote(
-    target: 'ebook' | 'course',
-    payload: { noteId?: string; title: string; summary: string; content: string }
+    target: 'ebook' | 'course' | 'healthscale',
+    payload: {
+      noteId?: string
+      title: string
+      summary: string
+      content: string
+      productCode?: string
+      targetRole?: string
+    }
   ): Promise<PromotionBanner | null> {
     try {
       const res = await fetch('/api/brain-studio/promote', {
@@ -69,12 +76,19 @@ export default function BrainStudioClient({
               secondaryUrl: json.briefingUrl,
               secondaryLabel: 'ไปห้องบรีฟงาน',
             }
-          : {
-              target: 'course',
-              title: json.title,
-              primaryUrl: json.courseUrl,
-              primaryLabel: 'เปิดแก้ไขใน Course Studio ทันที',
-            }
+          : target === 'course'
+            ? {
+                target: 'course',
+                title: json.title,
+                primaryUrl: json.courseUrl,
+                primaryLabel: 'เปิดแก้ไขใน Course Studio ทันที',
+              }
+            : {
+                target: 'healthscale',
+                title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน HealthScale${json.productName ? ` · ${json.productName}` : ''})`,
+                primaryUrl: json.healthScaleUrl,
+                primaryLabel: 'เปิดดูภารกิจใน HealthScale Command Center',
+              }
 
       setPromoBanner(banner)
       return banner
@@ -139,14 +153,22 @@ export default function BrainStudioClient({
           <div className="flex items-center gap-2.5 text-sm text-emerald-950">
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             <span>
-              สร้าง{promoBanner.target === 'ebook' ? 'โปรเจกต์ Ebook ใหม่' : 'ไอเดียคอร์สใหม่'}สำเร็จ:{' '}
+              {promoBanner.target === 'healthscale'
+                ? 'ส่งต่อทีม AI HealthScale สำเร็จ:'
+                : `สร้าง${promoBanner.target === 'ebook' ? 'โปรเจกต์ Ebook ใหม่' : 'ไอเดียคอร์สใหม่'}สำเร็จ:`}{' '}
               <strong>&ldquo;{promoBanner.title}&rdquo;</strong>
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => router.push(promoBanner.primaryUrl)}
+              onClick={() => {
+                if (promoBanner.primaryUrl.startsWith('http')) {
+                  window.open(promoBanner.primaryUrl, '_blank', 'noopener,noreferrer')
+                } else {
+                  router.push(promoBanner.primaryUrl)
+                }
+              }}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
             >
               {promoBanner.primaryLabel} <ExternalLink size={13} />

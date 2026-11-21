@@ -22,13 +22,14 @@ import {
   Send,
   ExternalLink,
   Target,
+  Zap,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
 import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
 import VoiceInputButton from './VoiceInputButton'
 
 interface PromoteResult {
-  target: 'ebook' | 'course'
+  target: 'ebook' | 'course' | 'healthscale'
   title: string
   primaryUrl: string
   primaryLabel: string
@@ -39,8 +40,15 @@ interface VaultTabProps {
   initialCategory?: BrainCategory | 'all'
   onNotesChange: (notes: BrainNote[]) => void
   onPromoteNote: (
-    target: 'ebook' | 'course',
-    payload: { noteId: string; title: string; summary: string; content: string }
+    target: 'ebook' | 'course' | 'healthscale',
+    payload: {
+      noteId: string
+      title: string
+      summary: string
+      content: string
+      productCode?: string
+      targetRole?: string
+    }
   ) => Promise<PromoteResult | null>
   onAddFocusTask?: (taskText: string, delegateTo?: 'self' | 'ai-agent') => Promise<void>
 }
@@ -81,9 +89,13 @@ export default function VaultTab({
   const [imagePromptInput, setImagePromptInput] = useState('')
 
   // Brain-to-Action feedback
-  const [promoting, setPromoting] = useState<'ebook' | 'course' | 'focus' | null>(null)
+  const [promoting, setPromoting] = useState<
+    'ebook' | 'course' | 'focus' | 'healthscale' | null
+  >(null)
   const [inlinePromo, setInlinePromo] = useState<PromoteResult | null>(null)
   const [focusAddedNotice, setFocusAddedNotice] = useState(false)
+  const [hsTargetRole, setHsTargetRole] = useState('auto')
+  const [hsProductCode, setHsProductCode] = useState('')
 
   useEffect(() => {
     setCategoryFilter(initialCategory)
@@ -853,6 +865,62 @@ export default function VaultTab({
                   </button>
                 </div>
 
+                {/* HealthScale Bridge Controls */}
+                <div className="pt-3 border-t border-blue-100 flex flex-wrap items-center gap-2">
+                  <select
+                    value={hsTargetRole}
+                    onChange={(e) => setHsTargetRole(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
+                    title="เลือกทีม AI ใน HealthScale"
+                  >
+                    <option value="auto">🧠 CEO Brain แตกงานอัตโนมัติ</option>
+                    <option value="brand_builder">🏗️ Brand Builder</option>
+                    <option value="content_writer">🎨 Content Studio</option>
+                    <option value="webmaster">🌐 Webmaster &amp; SEO Agent</option>
+                    <option value="ads_manager">📢 Ads Manager</option>
+                    <option value="facebook_poster">📘 Facebook Poster</option>
+                    <option value="ai_influencer">🎬 AI Influencer Studio</option>
+                    <option value="crm_agent">📊 Intelligence CRM &amp; RFM</option>
+                    <option value="lead_hunter">📍 Lead Hunter</option>
+                  </select>
+
+                  <select
+                    value={hsProductCode}
+                    onChange={(e) => setHsProductCode(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
+                    title="เลือกสินค้าปลายทางใน HealthScale"
+                  >
+                    <option value="">สินค้าหลัก (Default)</option>
+                    <option value="NL">ผักเม็ดนิวไลฟ์ (NL)</option>
+                    <option value="WG">ผักเม็ดจีบีโอ (WG)</option>
+                    <option value="ACR">Alpha Chlorella (ACR)</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={promoting !== null}
+                    onClick={async () => {
+                      setPromoting('healthscale')
+                      const res = await onPromoteNote('healthscale', {
+                        noteId: activeNote.id,
+                        title: activeNote.title,
+                        summary: activeNote.summary,
+                        content: activeNote.content,
+                        targetRole: hsTargetRole,
+                        productCode: hsProductCode,
+                      })
+                      if (res) setInlinePromo(res)
+                      setPromoting(null)
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    <Zap size={14} />
+                    {promoting === 'healthscale'
+                      ? 'กำลังส่งเข้า HealthScale...'
+                      : 'ส่งให้ทีม AI HealthScale ทำจริง'}
+                  </button>
+                </div>
+
                 {/* Inline Feedback right next to the buttons so user never misses it! */}
                 {inlinePromo && (
                   <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950">
@@ -861,7 +929,13 @@ export default function VaultTab({
                     </span>
                     <button
                       type="button"
-                      onClick={() => router.push(inlinePromo.primaryUrl)}
+                      onClick={() => {
+                        if (inlinePromo.primaryUrl.startsWith('http')) {
+                          window.open(inlinePromo.primaryUrl, '_blank', 'noopener,noreferrer')
+                        } else {
+                          router.push(inlinePromo.primaryUrl)
+                        }
+                      }}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
                     >
                       {inlinePromo.primaryLabel} <ExternalLink size={12} />
