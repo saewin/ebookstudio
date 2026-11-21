@@ -40,7 +40,7 @@ export async function getCourses(): Promise<CourseProject[]> {
       if (c.id === FLAGSHIP_PROTOTYPE_ID) {
         const needsTitleMigration =
           c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle
-        const needsSlidesMigration = !c.slides || c.slides.length <= 25
+        const needsSlidesMigration = !c.slides || c.slides.length <= 54
         if (needsTitleMigration || needsSlidesMigration) {
           const fresh = createFlagshipPrototypeCourse()
           migrated = true
