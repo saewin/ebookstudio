@@ -259,6 +259,56 @@ export function createSeedBrainNotes(): BrainNote[] {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: 'brain-inbox-ai-agents-guide',
+      category: 'inbox',
+      title: 'AI Agents & Multi-Agent Systems (5 แกนหลักจาก Event-Driven Design for Agents)',
+      slug: 'inbox-ai-agents-event-driven.md',
+      summary: 'สรุป 5 แกนสำคัญจากหนังสือ A Guide to Event-Driven Design for Agents and Multi-Agent Systems (Confluent 2025) สำหรับใช้สอนและออกแบบระบบ 3 สมอง',
+      tags: ['Inbox', 'AI Agents', 'Multi-Agent', 'Event-Driven'],
+      pinned: true,
+      content: `# AI Agents & Multi-Agent Systems (5 แกนหลักสำหรับคอร์สประธานบริษัท 2.0)
+> แหล่งอ้างอิง: *A Guide to Event-Driven Design for Agents and Multi-Agent Systems* (Sean Falconer, Confluent 2025)
+
+## 1. วิวัฒนาการ 3 คลื่นของ AI (The 3 Waves of AI & Agentic Shift)
+- **Wave 1 — Predictive AI:** โมเดล Machine Learning แบบดั้งเดิม ทำนาย/วิเคราะห์เฉพาะจุด ปรับใช้ข้ามงานยาก
+- **Wave 2 — Generative AI:** โมเดล LLM สร้างข้อความ/ภาพ/โค้ดเก่ง แต่ "หยุดนิ่งในเวลา" (Fixed in time) ไม่มีข้อมูลเฉพาะธุรกิจ จึงตอบกลางๆ
+- **ตัวเชื่อม (Bridge) — Compound AI / RAG:** เอา LLM มาต่อกับฐานข้อมูลและกฎตรวจสอบ แต่ยังติด **Fixed Workflow** ที่ต้องเขียนเส้นทางล่วงหน้าทุกกรณี
+- **Wave 3 — Agentic AI:** *"Agents are the new apps"* (Dharmesh Shah, HubSpot CTO) — พลิก Control Logic จากโค้ดบังคับตายตัว (Programmatic) เป็น **Agentic Logic** ที่ AI คิด วางแผน เรียกใช้ Tools และ Memory ได้เองตามสถานการณ์
+
+## 2. กายวิภาคของ AI Agent ที่สมบูรณ์ 9 องค์ประกอบ (Anatomy of an Agent)
+1. **Persona (บทบาทหน้าที่):** System Prompt ที่กำหนดตำแหน่ง ความเชี่ยวชาญ และมาตรฐานการตอบ
+2. **Perception (การรับรู้):** รับสัญญาณจากโลกภายนอก (ไฟล์, API, ข้อความลูกค้า, อีเวนต์)
+3. **Reasoning & Decision-Making:** สมอง LLM ที่วิเคราะห์ข้อมูลและตัดสินใจว่าจะทำอะไรต่อ
+4. **Memory (ความจำ 2 ชั้น):** Short-term Memory (จำบทสนทนาปัจจุบัน) + Long-term Memory (BrainStudio / Vector DB)
+5. **Planning (การวางแผน):** แตกเป้าหมายใหญ่เป็นขั้นตอนย่อยและจัดลำดับความสำคัญ
+6. **Action (การลงมือทำ):** สั่งงานจริง เช่น แก้ไฟล์, ส่งข้อความ, อัปเดตฐานข้อมูล
+7. **Learning (การเรียนรู้):** ปรับปรุงผลลัพธ์จาก Feedback ผ่าน Context โดยไม่ต้องเทรนโมเดลใหม่
+8. **Coordination & Collaboration:** ประสานงานและส่งต่อข้อมูลกับ Agent ตัวอื่น
+9. **Tool Interface:** ปลั๊กเชื่อมเครื่องมือเฉพาะทาง (MCP, Google Drive, Script วิเคราะห์ยอดขาย)
+
+## 3. จาก Request-Response สู่ Event-Driven Multi-Agent Systems (MAS)
+- **ทำไม Agent ตัวเดียวไม่พอ:** ไม่มีคนเดียวเก่งทุกแผนก จึงต้องมี **Multi-Agent System (MAS)** เพื่อแบ่งงาน (Task Delegation), ทำพร้อมกัน (Parallel Processing) และสลับบทบาทตามโจทย์
+- **กับดักแบบเดิม (Request-Response):** ผูกติดกันแน่น (Tightly Coupled) ตัวหนึ่งช้าทุกตัวหยุดรอ และเจ้าของต้องคอยกดสั่งทีละขั้น
+- **แนวคิด Event-Driven (ขับเคลื่อนด้วยเหตุการณ์):** ทำงานแบบ Asynchronous & Loose Coupling — เมื่อเกิดเหตุการณ์จริง (Event) เช่น ลูกค้าทัก / มียอดขายใหม่ / ถึงรอบวันจันทร์ ระบบจะกระตุ้น Agent ที่เกี่ยวข้องให้ทำงานต่อเป็นทอดๆ ทันทีโดยไม่เป็นคอขวด
+
+## 4. 4 สถาปัตยกรรมทีม AI Agents (Multi-Agent Design Patterns)
+1. **Orchestrator-Worker Pattern:** มีหัวหน้าใหญ่ตรงกลาง (AI CEO) คอยรับโจทย์เดียวแล้วจ่ายงานให้ Worker Agents (Research, Content, Ads, eRFM) — *โครงหลักของสมองที่ 3*
+2. **Hierarchical Agent Pattern:** แบ่งชั้นบังคับบัญชา (AI CEO → หัวหน้าฝ่าย → ลูกน้องเฉพาะทาง) เหมาะกับโปรเจกต์ใหญ่ที่ซับซ้อน
+3. **Blackboard Pattern (กระดานดำกลาง):** ทุก Agent อ่านและเขียนอัปเดตลง "คลังความจำกลาง" เดียวกัน (เช่น BrainStudio) ลดการวิ่งคุยกันเองและความซ้ำซ้อน
+4. **Market-Based Pattern (ประมูลไอเดีย):** ให้หลาย Agent แข่งกันเสนอทางเลือก (เช่น คิด Hook 3 สไตล์) แล้วให้ AI CEO ประเมินคัดผู้ชนะที่ดีที่สุด
+
+## 5. เคสจริงระดับโลก: ทีม Multi-Agent ปิดการขาย (AI SDR Workflow)
+ระบบ 5 Agents ที่รับช่วงต่อกันอัตโนมัติตั้งแต่วินาทีที่ลูกค้ากรอกฟอร์ม:
+1. **Lead Ingestion Agent:** ดักจับ Lead ใหม่ + ดึงข้อมูลบริษัท/เว็บมาเติมให้ครบ
+2. **Lead Scoring Agent:** ให้คะแนนความพร้อมซื้อ + สรุปจุดเข้าหาที่เหมาะกับรายนั้น
+3. **Active Outreach Agent:** ร่างอีเมล/ข้อความทักทายเฉพาะบุคคลเพื่อนัดคุยทันที
+4. **Nurture Campaign Agent:** วางชุดข้อความติดตามต่อเนื่อง (กรณีลูกค้ายังไม่พร้อมซื้อ)
+5. **Action / Send Agent:** ส่งข้อความออกจริง (หรือส่งสรุปให้เจ้าของกดอนุมัติก่อนส่ง)
+`,
+      createdAt: now,
+      updatedAt: now,
+    },
   ]
 }
 
@@ -346,6 +396,25 @@ export async function getBrainStudioState(): Promise<BrainStudioState> {
               }))
             )
           : createSeedBrainNotes()
+
+      // One-time seed injection for AI Agents Inbox guide if not yet present
+      if (!notes.some((n) => n.id === 'brain-inbox-ai-agents-guide')) {
+        const aiAgentsNote = createSeedBrainNotes().find(
+          (n) => n.id === 'brain-inbox-ai-agents-guide'
+        )
+        if (aiAgentsNote) {
+          const updatedNotes = sortNotes([aiAgentsNote, ...notes])
+          const nextState: BrainStudioState = {
+            notes: updatedNotes,
+            focusTasks: Array.isArray(parsed.focusTasks) ? parsed.focusTasks : createSeedState(updatedNotes).focusTasks,
+            pulseHistory: Array.isArray(parsed.pulseHistory) && parsed.pulseHistory.length > 0 ? parsed.pulseHistory : createSeedState(updatedNotes).pulseHistory,
+            decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+          }
+          await writeState(nextState)
+          return nextState
+        }
+      }
+
       return {
         notes,
         focusTasks: Array.isArray(parsed.focusTasks) ? parsed.focusTasks : [],
