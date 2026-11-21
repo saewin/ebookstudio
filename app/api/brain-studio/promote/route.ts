@@ -6,7 +6,20 @@ import { createBlankCourse, saveCourse } from '@/lib/courseStudioDb'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { target, noteId, title, summary, content, productCode, targetRole } = body
+    const {
+      target,
+      noteId,
+      title,
+      summary,
+      content,
+      productCode,
+      targetRole,
+      company,
+      action,
+      assetType,
+      price,
+      deliveryUrl,
+    } = body
 
     const state = await getBrainStudioState()
     const note = noteId ? state.notes.find((n) => n.id === noteId) : undefined
@@ -101,6 +114,11 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      const resolvedCompany =
+        (typeof company === 'string' && company.trim()) ||
+        process.env.HEALTHSCALE_DEFAULT_COMPANY ||
+        'DgtProduct'
+
       const bridgeRes = await fetch(`${baseUrl}/api/bridge/brain-idea`, {
         method: 'POST',
         headers: {
@@ -108,6 +126,11 @@ export async function POST(request: NextRequest) {
           'x-secret-key': secret,
         },
         body: JSON.stringify({
+          company: resolvedCompany,
+          action: action === 'publish-digital-asset' ? 'publish-digital-asset' : 'dispatch',
+          assetType: typeof assetType === 'string' ? assetType : undefined,
+          price: typeof price === 'number' ? price : undefined,
+          deliveryUrl: typeof deliveryUrl === 'string' ? deliveryUrl : '',
           title: finalTitle,
           summary: finalSummary,
           content: finalContent,
@@ -129,13 +152,20 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      const targetPath =
+        bridgeData.action === 'publish-digital-asset'
+          ? bridgeData.dafUrl || '/dashboard/daf'
+          : bridgeData.dashboardUrl || '/dashboard/master'
+
       return NextResponse.json({
         success: true,
         target: 'healthscale',
+        action: bridgeData.action || action || 'dispatch',
+        companyName: bridgeData.company?.companyName || resolvedCompany,
         title: finalTitle,
         tasksCreated: bridgeData.tasksCreated || 1,
         productName: bridgeData.product?.name || '',
-        healthScaleUrl: `${baseUrl}${bridgeData.dashboardUrl || '/dashboard/master'}`,
+        healthScaleUrl: `${baseUrl}${targetPath}`,
       })
     }
 

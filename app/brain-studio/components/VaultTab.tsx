@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Target,
   Zap,
+  ShoppingBag,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
 import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
@@ -48,6 +49,11 @@ interface VaultTabProps {
       content: string
       productCode?: string
       targetRole?: string
+      company?: string
+      action?: 'dispatch' | 'publish-digital-asset'
+      assetType?: string
+      price?: number
+      deliveryUrl?: string
     }
   ) => Promise<PromoteResult | null>
   onAddFocusTask?: (taskText: string, delegateTo?: 'self' | 'ai-agent') => Promise<void>
@@ -90,12 +96,15 @@ export default function VaultTab({
 
   // Brain-to-Action feedback
   const [promoting, setPromoting] = useState<
-    'ebook' | 'course' | 'focus' | 'healthscale' | null
+    'ebook' | 'course' | 'focus' | 'healthscale' | 'healthscale-publish' | null
   >(null)
   const [inlinePromo, setInlinePromo] = useState<PromoteResult | null>(null)
   const [focusAddedNotice, setFocusAddedNotice] = useState(false)
   const [hsTargetRole, setHsTargetRole] = useState('auto')
-  const [hsProductCode, setHsProductCode] = useState('')
+  const [hsTargetCompanyProduct, setHsTargetCompanyProduct] = useState('DgtProduct|DGT-01')
+  const [hsAssetType, setHsAssetType] = useState<
+    'ebook' | 'course' | 'prompts' | 'templates' | 'audiobook' | 'drip'
+  >('ebook')
 
   useEffect(() => {
     setCategoryFilter(initialCategory)
@@ -865,60 +874,129 @@ export default function VaultTab({
                   </button>
                 </div>
 
-                {/* HealthScale Bridge Controls */}
-                <div className="pt-3 border-t border-blue-100 flex flex-wrap items-center gap-2">
-                  <select
-                    value={hsTargetRole}
-                    onChange={(e) => setHsTargetRole(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
-                    title="เลือกทีม AI ใน HealthScale"
-                  >
-                    <option value="auto">🧠 CEO Brain แตกงานอัตโนมัติ</option>
-                    <option value="brand_builder">🏗️ Brand Builder</option>
-                    <option value="content_writer">🎨 Content Studio</option>
-                    <option value="webmaster">🌐 Webmaster &amp; SEO Agent</option>
-                    <option value="ads_manager">📢 Ads Manager</option>
-                    <option value="facebook_poster">📘 Facebook Poster</option>
-                    <option value="ai_influencer">🎬 AI Influencer Studio</option>
-                    <option value="crm_agent">📊 Intelligence CRM &amp; RFM</option>
-                    <option value="lead_hunter">📍 Lead Hunter</option>
-                  </select>
+                {/* HealthScale Bridge Controls (Default: DgtProduct DGT-01) */}
+                <div className="pt-3 border-t border-blue-100 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={hsTargetCompanyProduct}
+                      onChange={(e) => setHsTargetCompanyProduct(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-semibold text-purple-950 focus:outline-none focus:border-purple-500"
+                      title="เลือกบริษัทและสินค้าปลายทางบน HealthScale"
+                    >
+                      <option value="DgtProduct|DGT-01">
+                        💎 DgtProduct — AI Digital Empire Suite (DGT-01)
+                      </option>
+                      <option value="saewin|NL">
+                        💊 HealthScale HQ — ผักเม็ดนิวไลฟ์ (NL)
+                      </option>
+                      <option value="saewin|WG">
+                        💊 HealthScale HQ — ผักเม็ดจีบีโอ (WG)
+                      </option>
+                      <option value="saewin|ACR">
+                        💊 HealthScale HQ — Alpha Chlorella (ACR)
+                      </option>
+                      <option value="Ccan|">🌿 Ccan (บริษัทพันธมิตร)</option>
+                    </select>
 
-                  <select
-                    value={hsProductCode}
-                    onChange={(e) => setHsProductCode(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
-                    title="เลือกสินค้าปลายทางใน HealthScale"
-                  >
-                    <option value="">สินค้าหลัก (Default)</option>
-                    <option value="NL">ผักเม็ดนิวไลฟ์ (NL)</option>
-                    <option value="WG">ผักเม็ดจีบีโอ (WG)</option>
-                    <option value="ACR">Alpha Chlorella (ACR)</option>
-                  </select>
+                    <select
+                      value={hsTargetRole}
+                      onChange={(e) => setHsTargetRole(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-500"
+                      title="เลือกทีม AI ใน HealthScale"
+                    >
+                      <option value="auto">🧠 CEO Brain แตกงานอัตโนมัติ</option>
+                      <option value="brand_builder">🏗️ Brand Builder</option>
+                      <option value="content_writer">🎨 Content Studio</option>
+                      <option value="webmaster">🌐 Webmaster &amp; SEO Agent</option>
+                      <option value="ads_manager">📢 Ads Manager</option>
+                      <option value="facebook_poster">📘 Facebook Poster</option>
+                      <option value="ai_influencer">🎬 AI Influencer Studio</option>
+                      <option value="crm_agent">📊 Intelligence CRM &amp; RFM</option>
+                      <option value="lead_hunter">📍 Lead Hunter</option>
+                    </select>
 
-                  <button
-                    type="button"
-                    disabled={promoting !== null}
-                    onClick={async () => {
-                      setPromoting('healthscale')
-                      const res = await onPromoteNote('healthscale', {
-                        noteId: activeNote.id,
-                        title: activeNote.title,
-                        summary: activeNote.summary,
-                        content: activeNote.content,
-                        targetRole: hsTargetRole,
-                        productCode: hsProductCode,
-                      })
-                      if (res) setInlinePromo(res)
-                      setPromoting(null)
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
-                  >
-                    <Zap size={14} />
-                    {promoting === 'healthscale'
-                      ? 'กำลังส่งเข้า HealthScale...'
-                      : 'ส่งให้ทีม AI HealthScale ทำจริง'}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={promoting !== null}
+                      onClick={async () => {
+                        const [targetCompany, targetProduct] = hsTargetCompanyProduct.split('|')
+                        setPromoting('healthscale')
+                        const res = await onPromoteNote('healthscale', {
+                          noteId: activeNote.id,
+                          title: activeNote.title,
+                          summary: activeNote.summary,
+                          content: activeNote.content,
+                          company: targetCompany || 'DgtProduct',
+                          productCode: targetProduct || '',
+                          targetRole: hsTargetRole,
+                          action: 'dispatch',
+                        })
+                        if (res) setInlinePromo(res)
+                        setPromoting(null)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      <Zap size={14} />
+                      {promoting === 'healthscale'
+                        ? 'กำลังส่งภารกิจ...'
+                        : '⚡ ส่งให้ทีม AI ทำการตลาด'}
+                    </button>
+                  </div>
+
+                  {/* Direct 1-click publish straight into DgtProduct fulfillment_vault */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={hsAssetType}
+                      onChange={(e) =>
+                        setHsAssetType(
+                          e.target.value as
+                            | 'ebook'
+                            | 'course'
+                            | 'prompts'
+                            | 'templates'
+                            | 'audiobook'
+                            | 'drip'
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg border border-teal-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-teal-500"
+                      title="เลือกสายการผลิตสินค้าดิจิทัลบน DgtProduct"
+                    >
+                      <option value="ebook">📘 Ebook &amp; Playbook (฿490)</option>
+                      <option value="course">🎓 Micro-Course &amp; Slide Deck (฿2,990)</option>
+                      <option value="prompts">🤖 Mega Prompt Pack (฿1,290)</option>
+                      <option value="templates">🗂️ Notion / Sheets Templates (฿990)</option>
+                      <option value="audiobook">🎧 AI Audiobook &amp; Podcast (฿290)</option>
+                      <option value="drip">📬 30-Day Drip Challenge (฿390)</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={promoting !== null}
+                      onClick={async () => {
+                        const [targetCompany, targetProduct] = hsTargetCompanyProduct.split('|')
+                        setPromoting('healthscale-publish')
+                        const res = await onPromoteNote('healthscale', {
+                          noteId: activeNote.id,
+                          title: activeNote.title,
+                          summary: activeNote.summary,
+                          content: activeNote.content,
+                          company: targetCompany === 'saewin' ? 'DgtProduct' : targetCompany || 'DgtProduct',
+                          productCode:
+                            targetCompany === 'saewin' ? 'DGT-01' : targetProduct || 'DGT-01',
+                          action: 'publish-digital-asset',
+                          assetType: hsAssetType,
+                        })
+                        if (res) setInlinePromo(res)
+                        setPromoting(null)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      <ShoppingBag size={14} />
+                      {promoting === 'healthscale-publish'
+                        ? 'กำลังขึ้นขายใน DgtProduct...'
+                        : '🛒 ขึ้นขายใน DgtProduct ทันที'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Inline Feedback right next to the buttons so user never misses it! */}

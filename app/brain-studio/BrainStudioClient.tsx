@@ -25,6 +25,8 @@ type BrainTab = 'cockpit' | 'interviewer' | 'decision' | 'vault' | 'ask-export'
 
 interface PromotionBanner {
   target: 'ebook' | 'course' | 'healthscale'
+  action?: 'dispatch' | 'publish-digital-asset'
+  companyName?: string
   title: string
   primaryUrl: string
   primaryLabel: string
@@ -52,6 +54,11 @@ export default function BrainStudioClient({
       content: string
       productCode?: string
       targetRole?: string
+      company?: string
+      action?: 'dispatch' | 'publish-digital-asset'
+      assetType?: string
+      price?: number
+      deliveryUrl?: string
     }
   ): Promise<PromotionBanner | null> {
     try {
@@ -83,12 +90,23 @@ export default function BrainStudioClient({
                 primaryUrl: json.courseUrl,
                 primaryLabel: 'เปิดแก้ไขใน Course Studio ทันที',
               }
-            : {
-                target: 'healthscale',
-                title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน HealthScale${json.productName ? ` · ${json.productName}` : ''})`,
-                primaryUrl: json.healthScaleUrl,
-                primaryLabel: 'เปิดดูภารกิจใน HealthScale Command Center',
-              }
+            : json.action === 'publish-digital-asset'
+              ? {
+                  target: 'healthscale',
+                  action: 'publish-digital-asset',
+                  companyName: json.companyName,
+                  title: `${json.title} (ขึ้นขายในคลังสินค้าดิจิทัล ${json.companyName || 'DgtProduct'} แล้ว)`,
+                  primaryUrl: json.healthScaleUrl,
+                  primaryLabel: 'เปิดคลังสินค้าดิจิทัลใน DgtProduct',
+                }
+              : {
+                  target: 'healthscale',
+                  action: 'dispatch',
+                  companyName: json.companyName,
+                  title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน ${json.companyName || 'DgtProduct'}${json.productName ? ` · ${json.productName}` : ''})`,
+                  primaryUrl: json.healthScaleUrl,
+                  primaryLabel: `เปิดดูภารกิจใน ${json.companyName || 'DgtProduct'}`,
+                }
 
       setPromoBanner(banner)
       return banner
@@ -154,7 +172,9 @@ export default function BrainStudioClient({
             <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             <span>
               {promoBanner.target === 'healthscale'
-                ? 'ส่งต่อทีม AI HealthScale สำเร็จ:'
+                ? promoBanner.action === 'publish-digital-asset'
+                  ? `ขึ้นขายใน ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
+                  : `ส่งภารกิจเข้าทีม AI ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
                 : `สร้าง${promoBanner.target === 'ebook' ? 'โปรเจกต์ Ebook ใหม่' : 'ไอเดียคอร์สใหม่'}สำเร็จ:`}{' '}
               <strong>&ldquo;{promoBanner.title}&rdquo;</strong>
             </span>

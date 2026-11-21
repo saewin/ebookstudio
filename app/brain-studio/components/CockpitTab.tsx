@@ -63,6 +63,11 @@ interface CockpitTabProps {
       content: string
       productCode?: string
       targetRole?: string
+      company?: string
+      action?: 'dispatch' | 'publish-digital-asset'
+      assetType?: string
+      price?: number
+      deliveryUrl?: string
     }
   ) => Promise<unknown>
   onOpenVaultCategory: (cat: BrainCategory) => void
@@ -873,12 +878,15 @@ export default function CockpitTab({
                   title: aiDeliverable.title,
                   summary: aiDeliverable.summary,
                   content: aiDeliverable.content,
+                  company: 'DgtProduct',
+                  productCode: 'DGT-01',
                   targetRole: 'auto',
+                  action: 'dispatch',
                 })
               }
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold cursor-pointer"
             >
-              <Zap size={14} /> ส่งให้ AI HealthScale
+              <Zap size={14} /> ส่งให้ AI DgtProduct
             </button>
           </div>
         </div>
@@ -974,13 +982,16 @@ export default function CockpitTab({
                         title: sp.title,
                         summary: sp.whyItWorks,
                         content: `# ${sp.title}\n\n${sp.whyItWorks}\n\n${sp.actionIdea}`,
+                        company: 'DgtProduct',
+                        productCode: 'DGT-01',
                         targetRole: 'auto',
+                        action: 'dispatch',
                       })
                       setPromotingKey(null)
                     }}
                     className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold cursor-pointer"
                   >
-                    <Zap size={12} /> ส่ง HealthScale
+                    <Zap size={12} /> ส่ง DgtProduct
                   </button>
                 </div>
               </div>
