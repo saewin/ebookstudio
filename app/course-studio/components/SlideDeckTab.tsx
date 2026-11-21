@@ -12,6 +12,8 @@ import {
   X,
   MessageSquareText,
   Layers,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import type {
   CourseProject,
@@ -127,22 +129,48 @@ export default function SlideDeckTab({
     })
   }
 
-  function addSlide() {
-    const newNo = course.slides.length + 1
-    const newSlide: CourseSlide = {
-      id: `sl-${Date.now()}`,
-      slideNo: newNo,
+  function createBlankSlide(slideNo: number): CourseSlide {
+    return {
+      id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      slideNo,
       sessionId: activeSlide?.sessionId || course.sessions[0]?.id || 'sec-1',
       layout: 'concept',
       theme: activeSlide?.theme || course.slideTheme || 'executive-blue',
       kicker: 'NEW SLIDE',
-      title: `หัวข้อสไลด์ที่ ${newNo}`,
+      title: `หัวข้อสไลด์ที่ ${slideNo}`,
       subtitle: 'คำอธิบายสั้นๆ',
       bullets: ['ประเด็นสำคัญข้อที่ 1', 'ประเด็นสำคัญข้อที่ 2'],
       speakerNotes: 'สคริปต์พูดสำหรับผู้สอน...',
     }
+  }
+
+  function insertSlideAfter(afterIdx: number = selectedIndex) {
+    const insertIdx = afterIdx >= 0 && afterIdx < course.slides.length ? afterIdx + 1 : course.slides.length
+    const newSlide = createBlankSlide(insertIdx + 1)
+    const nextSlides = [
+      ...course.slides.slice(0, insertIdx),
+      newSlide,
+      ...course.slides.slice(insertIdx),
+    ].map((s, i) => ({ ...s, slideNo: i + 1 }))
+    onChange({ ...course, slides: nextSlides })
+    setSelectedId(newSlide.id)
+  }
+
+  function addSlide() {
+    const newNo = course.slides.length + 1
+    const newSlide = createBlankSlide(newNo)
     onChange({ ...course, slides: [...course.slides, newSlide] })
     setSelectedId(newSlide.id)
+  }
+
+  function moveSlide(index: number, direction: -1 | 1) {
+    const targetIdx = index + direction
+    if (targetIdx < 0 || targetIdx >= course.slides.length) return
+    const copy = [...course.slides]
+    const [moved] = copy.splice(index, 1)
+    copy.splice(targetIdx, 0, moved)
+    const renumbered = copy.map((s, i) => ({ ...s, slideNo: i + 1 }))
+    onChange({ ...course, slides: renumbered })
   }
 
   function deleteSlide(id: string) {
@@ -339,10 +367,19 @@ export default function SlideDeckTab({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            onClick={() => insertSlideAfter(selectedIndex)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-xs font-semibold text-blue-700 cursor-pointer"
+            title="แทรกสไลด์ใหม่ถัดจากสไลด์ที่กำลังเปิดอยู่"
+          >
+            <Plus size={14} /> แทรกถัดจากหน้านี้
+          </button>
+          <button
+            type="button"
             onClick={addSlide}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer"
+            title="เพิ่มสไลด์ใหม่ต่อท้ายสุด"
           >
-            <Plus size={14} /> เพิ่มสไลด์
+            <Plus size={14} /> ต่อท้ายสุด
           </button>
           <button
             type="button"
@@ -371,32 +408,57 @@ export default function SlideDeckTab({
             ลำดับสไลด์ทั้งหมด
           </div>
           <div className="overflow-y-auto p-2 space-y-1.5 flex-1">
-            {course.slides.map((s) => {
+            {course.slides.map((s, idx) => {
               const active = s.id === activeSlide?.id
               const session = course.sessions.find((sec) => sec.id === s.sessionId)
               return (
-                <button
+                <div
                   key={s.id}
-                  type="button"
                   onClick={() => setSelectedId(s.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all cursor-pointer ${
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all cursor-pointer group ${
                     active
                       ? 'bg-blue-50 border-blue-300 shadow-xs'
                       : 'bg-white border-transparent hover:bg-slate-50'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold text-blue-600">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[10px] font-bold text-blue-600 truncate">
                       #{s.slideNo} · {session?.brainTag || s.layout}
                     </span>
-                    <span className="text-[10px] text-slate-400">
-                      {LAYOUT_LABELS[s.layout]?.split(' ')[0]}
-                    </span>
+                    <div className="flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          moveSlide(idx, -1)
+                        }}
+                        disabled={idx === 0}
+                        className="p-0.5 rounded hover:bg-slate-200/70 disabled:opacity-25 text-slate-500 cursor-pointer"
+                        title="เลื่อนขึ้น"
+                      >
+                        <ArrowUp size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          moveSlide(idx, 1)
+                        }}
+                        disabled={idx === course.slides.length - 1}
+                        className="p-0.5 rounded hover:bg-slate-200/70 disabled:opacity-25 text-slate-500 cursor-pointer"
+                        title="เลื่อนลง"
+                      >
+                        <ArrowDown size={11} />
+                      </button>
+                      <span className="text-[10px] text-slate-400 ml-1">
+                        {LAYOUT_LABELS[s.layout]?.split(' ')[0]}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-xs font-semibold text-slate-800 line-clamp-2 mt-0.5">
                     {s.title}
                   </p>
-                </button>
+                </div>
               )
             })}
           </div>

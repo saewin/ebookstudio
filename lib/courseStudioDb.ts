@@ -34,27 +34,29 @@ export async function getCourses(): Promise<CourseProject[]> {
       return seed
     }
 
-    // One-time migration for the flagship prototype course when upgrading from the old title
+    // One-time migration for the flagship prototype course when upgrading from older seed versions
     let migrated = false
     const nextCourses = parsed.map((c) => {
-      if (
-        c.id === FLAGSHIP_PROTOTYPE_ID &&
-        (c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle)
-      ) {
-        const fresh = createFlagshipPrototypeCourse()
-        migrated = true
-        return {
-          ...c,
-          seriesTitle: fresh.seriesTitle,
-          title: fresh.title,
-          slides: c.slides?.map((s) =>
-            s.slideNo === 1 && s.subtitle === 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1'
-              ? fresh.slides[0]
-              : s
-          ),
-          salesPage: c.salesPage
-            ? { ...c.salesPage, threeBrains: fresh.salesPage.threeBrains }
-            : fresh.salesPage,
+      if (c.id === FLAGSHIP_PROTOTYPE_ID) {
+        const needsTitleMigration =
+          c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle
+        const needsSlidesMigration = !c.slides || c.slides.length <= 25
+        if (needsTitleMigration || needsSlidesMigration) {
+          const fresh = createFlagshipPrototypeCourse()
+          migrated = true
+          return {
+            ...c,
+            ...(needsTitleMigration
+              ? {
+                  seriesTitle: fresh.seriesTitle,
+                  title: fresh.title,
+                  salesPage: c.salesPage
+                    ? { ...c.salesPage, threeBrains: fresh.salesPage.threeBrains }
+                    : fresh.salesPage,
+                }
+              : {}),
+            ...(needsSlidesMigration ? { slides: fresh.slides } : {}),
+          }
         }
       }
       return c
