@@ -139,19 +139,19 @@ export default function CourseStudioClient({
   const tabs: { id: StudioTab; label: string; icon: any; count?: number }[] = [
     {
       id: 'outline',
-      label: 'Course Outline & ตารางสอน',
+      label: 'Course Outline',
       icon: Clock,
       count: activeCourse.sessions.length,
     },
     {
       id: 'slides',
-      label: 'สร้างสไลด์ & Export .PPTX',
+      label: 'Slides & .PPTX',
       icon: Layers,
       count: activeCourse.slides.length,
     },
     {
       id: 'sales',
-      label: 'Sales Page & โพสต์เปิดตัว',
+      label: 'Sales Page',
       icon: Megaphone,
       count: activeCourse.launchPosts.length,
     },
@@ -253,7 +253,7 @@ export default function CourseStudioClient({
       </div>
 
       {/* Studio 5-Tab Bar */}
-      <div className="flex flex-wrap gap-1.5 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 no-print">
+      <div className="flex items-center gap-1.5 overflow-x-auto bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 no-print">
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
@@ -262,7 +262,7 @@ export default function CourseStudioClient({
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                 isActive
                   ? 'bg-white text-blue-700 shadow-xs border border-blue-100'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
