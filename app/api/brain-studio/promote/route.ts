@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       publish,
       category,
       keyword,
+      imageUrl,
     } = body
 
     const state = await getBrainStudioState()
@@ -127,7 +128,9 @@ export async function POST(request: NextRequest) {
           ? 'publish-digital-asset'
           : action === 'publish-seo-article'
             ? 'publish-seo-article'
-            : 'dispatch'
+            : action === 'publish-facebook-post'
+              ? 'publish-facebook-post'
+              : 'dispatch'
 
       const bridgeRes = await fetch(`${baseUrl}/api/bridge/brain-idea`, {
         method: 'POST',
@@ -144,6 +147,7 @@ export async function POST(request: NextRequest) {
           publish: typeof publish === 'boolean' ? publish : undefined,
           category: typeof category === 'string' ? category : undefined,
           keyword: typeof keyword === 'string' ? keyword : undefined,
+          imageUrl: typeof imageUrl === 'string' ? imageUrl : undefined,
           title: finalTitle,
           summary: finalSummary,
           content: finalContent,
@@ -170,7 +174,11 @@ export async function POST(request: NextRequest) {
           ? bridgeData.dafUrl || '/dashboard/daf'
           : bridgeData.action === 'publish-seo-article'
             ? bridgeData.webmasterUrl || '/dashboard/webmaster'
-            : bridgeData.dashboardUrl || '/dashboard/master'
+            : bridgeData.action === 'publish-facebook-post'
+              ? bridgeData.facebookPosterUrl || '/dashboard/facebook-poster'
+              : bridgeData.action === 'save-content-studio'
+                ? bridgeData.contentStudioUrl || '/dashboard/content-studio'
+                : bridgeData.dashboardUrl || '/dashboard/master'
 
       return NextResponse.json({
         success: true,
@@ -182,6 +190,11 @@ export async function POST(request: NextRequest) {
         productName: bridgeData.product?.name || '',
         articleUrl: bridgeData.articleUrl || bridgeData.article?.link || '',
         articleStatus: bridgeData.articleStatus || bridgeData.article?.status || '',
+        postUrl: bridgeData.postUrl || '',
+        postStatus: bridgeData.postStatus || '',
+        pageName: bridgeData.pageName || '',
+        facebookPosterUrl: `${baseUrl}${bridgeData.facebookPosterUrl || '/dashboard/facebook-poster'}`,
+        contentStudioUrl: `${baseUrl}${bridgeData.contentStudioUrl || '/dashboard/content-studio'}`,
         webmasterUrl: `${baseUrl}${bridgeData.webmasterUrl || '/dashboard/webmaster'}`,
         healthScaleUrl: `${baseUrl}${targetPath}`,
       })

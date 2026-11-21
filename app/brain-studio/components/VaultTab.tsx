@@ -51,12 +51,18 @@ interface VaultTabProps {
       productCode?: string
       targetRole?: string
       company?: string
-      action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
+      action?:
+        | 'dispatch'
+        | 'publish-digital-asset'
+        | 'publish-seo-article'
+        | 'publish-facebook-post'
+        | 'save-content-studio'
       assetType?: string
       price?: number
       deliveryUrl?: string
       publish?: boolean
       category?: string
+      imageUrl?: string
     }
   ) => Promise<PromoteResult | null>
   onAddFocusTask?: (taskText: string, delegateTo?: 'self' | 'ai-agent') => Promise<void>
@@ -99,7 +105,7 @@ export default function VaultTab({
 
   // Brain-to-Action feedback
   const [promoting, setPromoting] = useState<
-    'ebook' | 'course' | 'focus' | 'healthscale' | 'healthscale-publish' | 'healthscale-seo' | null
+    'ebook' | 'course' | 'focus' | 'healthscale' | 'healthscale-publish' | 'healthscale-seo' | 'healthscale-fb' | null
   >(null)
   const [inlinePromo, setInlinePromo] = useState<PromoteResult | null>(null)
   const [focusAddedNotice, setFocusAddedNotice] = useState(false)
@@ -109,6 +115,7 @@ export default function VaultTab({
     'ebook' | 'course' | 'prompts' | 'templates' | 'audiobook' | 'drip'
   >('ebook')
   const [hsSeoPublishMode, setHsSeoPublishMode] = useState<'draft' | 'published'>('draft')
+  const [hsFbPublishMode, setHsFbPublishMode] = useState<'scheduled' | 'published'>('scheduled')
 
   useEffect(() => {
     setCategoryFilter(initialCategory)
@@ -924,6 +931,7 @@ export default function VaultTab({
                       disabled={promoting !== null}
                       onClick={async () => {
                         const [targetCompany, targetProduct] = hsTargetCompanyProduct.split('|')
+                        const imgMatch = activeNote.content.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/)
                         setPromoting('healthscale')
                         const res = await onPromoteNote('healthscale', {
                           noteId: activeNote.id,
@@ -934,6 +942,7 @@ export default function VaultTab({
                           productCode: targetProduct || '',
                           targetRole: hsTargetRole,
                           action: 'dispatch',
+                          imageUrl: imgMatch ? imgMatch[1] : undefined,
                         })
                         if (res) setInlinePromo(res)
                         setPromoting(null)
@@ -1040,6 +1049,50 @@ export default function VaultTab({
                       {promoting === 'healthscale-seo'
                         ? 'กำลังเขียนบทความ SEO/AEO...'
                         : '🌐 ส่งเขียนบทความลง onepersonceo.com'}
+                    </button>
+                  </div>
+
+                  {/* Direct 1-click Facebook Post (Gen Caption + Image -> Queue or Publish Now) */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={hsFbPublishMode}
+                      onChange={(e) => setHsFbPublishMode(e.target.value as 'scheduled' | 'published')}
+                      className="px-2.5 py-1.5 rounded-lg border border-blue-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+                      title="เลือกโหมดส่งโพสต์ Facebook"
+                    >
+                      <option value="scheduled">📝 Gen ข้อความ+รูป ส่งเข้าคิว Facebook Poster (แนะนำ)</option>
+                      <option value="published">🚀 Gen ข้อความ+รูป และโพสต์ขึ้นเพจ Facebook ทันที</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={promoting !== null}
+                      onClick={async () => {
+                        const [targetCompany, targetProduct] = hsTargetCompanyProduct.split('|')
+                        const imgMatch = activeNote.content.match(/!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/i)
+                        setPromoting('healthscale-fb')
+                        const res = await onPromoteNote('healthscale', {
+                          noteId: activeNote.id,
+                          title: activeNote.title,
+                          summary: activeNote.summary,
+                          content: activeNote.content,
+                          company: targetCompany || 'DgtProduct',
+                          productCode: targetProduct || 'DGT-01',
+                          action: 'publish-facebook-post',
+                          publish: hsFbPublishMode === 'published',
+                          imageUrl: imgMatch?.[1],
+                        })
+                        if (res) setInlinePromo(res)
+                        setPromoting(null)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      <Zap size={14} />
+                      {promoting === 'healthscale-fb'
+                        ? hsFbPublishMode === 'published'
+                          ? 'กำลัง Gen และโพสต์ขึ้น Facebook...'
+                          : 'กำลัง Gen ข้อความ + รูปเข้าคิว...'
+                        : '📘 ส่งโพสต์ลงเพจ Facebook'}
                     </button>
                   </div>
                 </div>

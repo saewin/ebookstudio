@@ -25,7 +25,12 @@ type BrainTab = 'cockpit' | 'interviewer' | 'decision' | 'vault' | 'ask-export'
 
 interface PromotionBanner {
   target: 'ebook' | 'course' | 'healthscale'
-  action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
+  action?:
+    | 'dispatch'
+    | 'publish-digital-asset'
+    | 'publish-seo-article'
+    | 'publish-facebook-post'
+    | 'save-content-studio'
   companyName?: string
   title: string
   primaryUrl: string
@@ -55,13 +60,19 @@ export default function BrainStudioClient({
       productCode?: string
       targetRole?: string
       company?: string
-      action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
+      action?:
+        | 'dispatch'
+        | 'publish-digital-asset'
+        | 'publish-seo-article'
+        | 'publish-facebook-post'
+        | 'save-content-studio'
       assetType?: string
       price?: number
       deliveryUrl?: string
       publish?: boolean
       category?: string
       keyword?: string
+      imageUrl?: string
     }
   ): Promise<PromotionBanner | null> {
     try {
@@ -123,14 +134,48 @@ export default function BrainStudioClient({
                     secondaryLabel:
                       json.articleStatus === 'published' ? 'เปิดจัดการใน Webmaster' : undefined,
                   }
-                : {
-                    target: 'healthscale',
-                    action: 'dispatch',
-                    companyName: json.companyName,
-                    title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน ${json.companyName || 'DgtProduct'}${json.productName ? ` · ${json.productName}` : ''})`,
-                    primaryUrl: json.healthScaleUrl,
-                    primaryLabel: `เปิดดูภารกิจใน ${json.companyName || 'DgtProduct'}`,
-                  }
+                : json.action === 'publish-facebook-post'
+                  ? {
+                      target: 'healthscale',
+                      action: 'publish-facebook-post',
+                      companyName: json.companyName,
+                      title: `${json.title} (${
+                        json.postStatus === 'published'
+                          ? `โพสต์ขึ้นเพจ ${json.pageName || 'Facebook'} สำเร็จแล้ว`
+                          : 'สร้างแคปชั่น+รูปและส่งเข้าคิว Facebook Poster แล้ว'
+                      })`,
+                      primaryUrl:
+                        json.postStatus === 'published' && json.postUrl
+                          ? json.postUrl
+                          : json.facebookPosterUrl || json.healthScaleUrl,
+                      primaryLabel:
+                        json.postStatus === 'published' && json.postUrl
+                          ? 'เปิดดูโพสต์บน Facebook ทันที'
+                          : 'เปิดตรวจและกดโพสต์ใน Facebook Poster',
+                      secondaryUrl:
+                        json.postStatus === 'published'
+                          ? json.facebookPosterUrl || json.healthScaleUrl
+                          : undefined,
+                      secondaryLabel:
+                        json.postStatus === 'published' ? 'เปิดจัดการใน Facebook Poster' : undefined,
+                    }
+                  : json.action === 'save-content-studio'
+                    ? {
+                        target: 'healthscale',
+                        action: 'save-content-studio',
+                        companyName: json.companyName,
+                        title: `${json.title} (สร้างโพสต์ข้อความ + รูปเก็บไว้เตรียมโพสต์ใน Content Studio แล้ว)`,
+                        primaryUrl: json.contentStudioUrl || json.healthScaleUrl,
+                        primaryLabel: 'เปิดดูใน Content Studio ทันที',
+                      }
+                    : {
+                        target: 'healthscale',
+                        action: 'dispatch',
+                        companyName: json.companyName,
+                        title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน ${json.companyName || 'DgtProduct'}${json.productName ? ` · ${json.productName}` : ''})`,
+                        primaryUrl: json.healthScaleUrl,
+                        primaryLabel: `เปิดดูภารกิจใน ${json.companyName || 'DgtProduct'}`,
+                      }
 
       setPromoBanner(banner)
       return banner
@@ -200,7 +245,11 @@ export default function BrainStudioClient({
                   ? `ขึ้นขายใน ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
                   : promoBanner.action === 'publish-seo-article'
                     ? `ส่งเขียนบทความ SEO/AEO เข้า ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
-                    : `ส่งภารกิจเข้าทีม AI ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
+                    : promoBanner.action === 'publish-facebook-post'
+                      ? `ส่งโพสต์ Facebook เข้า ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
+                      : promoBanner.action === 'save-content-studio'
+                        ? `บันทึกคอนเทนต์ (ข้อความ + รูป) เข้า Content Studio สำเร็จ:`
+                        : `ส่งภารกิจเข้าทีม AI ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
                 : `สร้าง${promoBanner.target === 'ebook' ? 'โปรเจกต์ Ebook ใหม่' : 'ไอเดียคอร์สใหม่'}สำเร็จ:`}{' '}
               <strong>&ldquo;{promoBanner.title}&rdquo;</strong>
             </span>
