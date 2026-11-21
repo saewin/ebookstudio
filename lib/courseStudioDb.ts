@@ -2,7 +2,7 @@ import path from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import type { CourseProject } from './courseStudioTypes'
-import { createFlagshipPrototypeCourse } from './courseStudioSeed'
+import { createFlagshipPrototypeCourse, FLAGSHIP_PROTOTYPE_ID } from './courseStudioSeed'
 
 const DB_DIR = path.join(process.cwd(), 'public', 'uploads', 'db')
 const COURSES_FILE = path.join(DB_DIR, 'courses.json')
@@ -33,7 +33,37 @@ export async function getCourses(): Promise<CourseProject[]> {
       await writeCourses(seed)
       return seed
     }
-    return parsed.sort(
+
+    // One-time migration for the flagship prototype course when upgrading from the old title
+    let migrated = false
+    const nextCourses = parsed.map((c) => {
+      if (
+        c.id === FLAGSHIP_PROTOTYPE_ID &&
+        (c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle)
+      ) {
+        const fresh = createFlagshipPrototypeCourse()
+        migrated = true
+        return {
+          ...c,
+          seriesTitle: fresh.seriesTitle,
+          title: fresh.title,
+          slides: c.slides?.map((s) =>
+            s.slideNo === 1 && s.subtitle === 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1'
+              ? fresh.slides[0]
+              : s
+          ),
+          salesPage: c.salesPage
+            ? { ...c.salesPage, threeBrains: fresh.salesPage.threeBrains }
+            : fresh.salesPage,
+        }
+      }
+      return c
+    })
+    if (migrated) {
+      await writeCourses(nextCourses)
+    }
+
+    return nextCourses.sort(
       (a, b) =>
         new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
     )
