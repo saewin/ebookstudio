@@ -622,6 +622,8 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
 
     spreadsXmlList.push({ spreadId: 'us2', xml: makeSpreadWrapper('us2', 2, cipPageItems) });
 
+    const validIsbn = book.isbn && !/x{2,}/i.test(book.isbn.trim()) ? book.isbn.trim() : '';
+
     const cipStoryXml =
         buildParaXml('CIPHeader', cleanTitle) +
         buildParaXml('ImageCaption', 'Cataloging-in-Publication (CIP) & Copyright Information') +
@@ -630,7 +632,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
         buildParaXml('CIPText', `${cleanTitle}. -- พิมพ์ครั้งที่ 1. -- กรุงเทพฯ : ${publisherName}, 2569 (2026).`) +
         buildParaXml('CIPText', `จำนวนหน้า: ${totalPages} หน้า.`) +
         buildParaXml('CIPText', '1. การบริหารธุรกิจ -- นวัตกรรมและปัญญาประดิษฐ์ (AI). I. ชื่อเรื่อง.') +
-        buildParaXml('CIPText', `ISBN: ${book.isbn || '978-616-XXXX-XX-X (e-Book)'}`) +
+        (validIsbn ? buildParaXml('CIPText', `ISBN: ${validIsbn}`) : '') +
         buildParaXml('Heading2', 'ข้อมูลการจัดพิมพ์ (Editorial Colophon)') +
         buildParaXml('BodyText', `ผู้เขียนและเรียบเรียง: ${authorName} | สำนักพิมพ์: ${publisherName} | จัดรูปเล่มดิจิทัล: Saewin Publishing Engine (Adobe InDesign 2026 Native Edition)`) +
         buildParaXml('Heading2', 'สงวนลิขสิทธิ์ตามพระราชบัญญัติลิขสิทธิ์ พ.ศ. 2537') +
@@ -822,7 +824,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
             'คู่มือเล่มนี้จะช่วยเปิดมุมมองใหม่ในการบริหารจัดการและขยายผลลัพธ์ผ่านเทคโนโลยี AI และระบบอัตโนมัติที่จับต้องได้จริง ออกแบบมาสำหรับเจ้าของธุรกิจที่ต้องการคืนเวลา คืนชีวิต และคืนกำไรอย่างยั่งยืน ถ่ายทอดจากประสบการณ์จริง 20+ ปีในสายงาน'
         ) +
         buildParaXml('CoverAuthor', `Published by ${authorName} • ${publisherName}`) +
-        buildParaXml('CoverSubtitle', `STANDARD EDITION • ISBN ${book.isbn || '978-616-XXXX-XX-X'}`);
+        buildParaXml('CoverSubtitle', validIsbn ? `STANDARD EDITION • ISBN ${validIsbn}` : 'STANDARD EDITION');
     zip.file('Stories/Story_uBack.xml', buildStoryFileXml('uBack', 'Back Cover', backStoryXml));
 
     // Write all Spread files

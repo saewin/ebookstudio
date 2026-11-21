@@ -49,7 +49,8 @@ export async function generateEpubBuffer(options: GenerateEpubOptions): Promise<
     const bookTitle = copyrightSettings?.bookTitle || project.title || 'Untitled Book'
     const author = copyrightSettings?.author || 'Saewin'
     const publisher = copyrightSettings?.publisher || 'Ebook Creator Studio'
-    const isbn = copyrightSettings?.isbn || '978-616-XXXX-XX-X'
+    const rawIsbn = (copyrightSettings?.isbn || '').trim()
+    const isbn = rawIsbn && !/x{2,}/i.test(rawIsbn) ? rawIsbn : ''
     const pubYear = copyrightSettings?.pubYear || '2026'
     const bookId = `urn:uuid:${project.id || 'ebook-' + Date.now()}`
     const modifiedDate = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
@@ -262,7 +263,7 @@ img {
         <p class="no-indent">${escapeXml(author)}.</p>
         <p class="no-indent" style="padding-left: 1.5em;">${escapeXml(bookTitle)}. -- ${escapeXml(copyrightSettings?.edition || 'พิมพ์ครั้งที่ 1')}. -- กรุงเทพฯ : ${escapeXml(publisher)}, ${escapeXml(pubYear)}.</p>
         <p class="no-indent" style="padding-left: 1.5em;">1. ${escapeXml(copyrightSettings?.category || 'ธุรกิจ / เทคโนโลยี')}. I. ชื่อเรื่อง.</p>
-        <p class="no-indent" style="margin-top: 0.8em; font-weight: bold;">ISBN ${escapeXml(isbn)}</p>
+        ${isbn ? `<p class="no-indent" style="margin-top: 0.8em; font-weight: bold;">ISBN ${escapeXml(isbn)}</p>` : ''}
     </div>
 
     <div class="colophon-meta">

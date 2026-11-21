@@ -48,6 +48,12 @@ export interface CopyrightSettings {
     legalNotice: string;
 }
 
+export function cleanValidIsbn(isbn?: string | null): string {
+    const trimmed = (isbn || '').trim();
+    if (!trimmed || /x{2,}/i.test(trimmed)) return '';
+    return trimmed;
+}
+
 export const DEFAULT_COPYRIGHT_SETTINGS: CopyrightSettings = {
     showCopyrightPage: true,
     bookTitle: '',
@@ -56,7 +62,7 @@ export const DEFAULT_COPYRIGHT_SETTINGS: CopyrightSettings = {
     typesetter: 'Saewin Publishing Engine (Standalone v2.0)',
     edition: 'พิมพ์ครั้งที่ 1 (First Edition)',
     pubYear: '2569 / 2026',
-    isbn: '978-616-XXXX-XX-X (e-Book)',
+    isbn: '',
     category: 'ธุรกิจและการบริหารจัดการ / นวัตกรรมและปัญญาประดิษฐ์',
     legalNotice: 'สงวนลิขสิทธิ์ตามพระราชบัญญัติลิขสิทธิ์ พ.ศ. 2537 และฉบับแก้ไขเพิ่มเติม ห้ามนำส่วนหนึ่งส่วนใดของหนังสือเล่มนี้ไปลอกเลียนแบบ ทำซ้ำ ดัดแปลง ถ่ายเอกสาร เผยแพร่ หรือจัดเก็บในระบบการเรียกค้นข้อมูลใดๆ ก่อนได้รับอนุญาตเป็นลายลักษณ์อักษรจากผู้ถือลิขสิทธิ์ ยกเว้นเพื่อการศึกษาและการอ้างอิงเชิงวิชาการพร้อมระบุที่มาอย่างถูกต้อง',
 };
@@ -801,9 +807,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
     const [themePreset, setThemePreset] = useState<'executive' | 'classic' | 'tech' | 'minimal'>(initialTheme);
 
     // Copyright & CIP Page Customization
+    const rawSavedCopyright = project?.extraInfo?.copyright || {};
     const initialCopyright: CopyrightSettings = {
         ...DEFAULT_COPYRIGHT_SETTINGS,
-        ...(project?.extraInfo?.copyright || {}),
+        ...rawSavedCopyright,
+        isbn: cleanValidIsbn(rawSavedCopyright.isbn),
     };
     const [copyrightSettings, setCopyrightSettings] = useState<CopyrightSettings>(initialCopyright);
     const [draftCopyright, setDraftCopyright] = useState<CopyrightSettings>(initialCopyright);
@@ -876,7 +884,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         if (localCopyright) {
             try {
                 const parsed = JSON.parse(localCopyright);
-                setCopyrightSettings(prev => ({ ...prev, ...parsed }));
+                setCopyrightSettings(prev => ({
+                    ...prev,
+                    ...parsed,
+                    isbn: cleanValidIsbn(parsed?.isbn ?? prev.isbn),
+                }));
             } catch (e) {
                 console.error('Failed to parse local copyright settings:', e);
             }
@@ -910,7 +922,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     }
                     if (data.copyright) {
                         setCopyrightSettings(prev => {
-                            const updated = { ...prev, ...data.copyright };
+                            const updated = {
+                                ...prev,
+                                ...data.copyright,
+                                isbn: cleanValidIsbn(data.copyright?.isbn ?? prev.isbn),
+                            };
                             localStorage.setItem(`copyright_${projectId}`, JSON.stringify(updated));
                             return updated;
                         });
@@ -1909,9 +1925,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     <p className="pl-4 text-slate-600 pt-0.5">
                                         1. {copyrightSettings.category || 'การบริหารธุรกิจ / นวัตกรรมและเทคโนโลยี'}. I. ชื่อเรื่อง.
                                     </p>
-                                    <p className="pt-1 font-bold text-slate-900 tracking-wider">
-                                        ISBN {copyrightSettings.isbn || '978-616-XXXX-XX-X (e-Book)'}
-                                    </p>
+                                    {cleanValidIsbn(copyrightSettings.isbn) && (
+                                        <p className="pt-1 font-bold text-slate-900 tracking-wider">
+                                            ISBN {cleanValidIsbn(copyrightSettings.isbn)}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -2339,9 +2357,11 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 </div>
                                 <div className="text-right">
                                     <span className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">STANDARD EDITION</span>
-                                    <div className="font-mono text-xs text-slate-400 border border-slate-700 px-3 py-1 rounded bg-slate-900/50">
-                                        ISBN {copyrightSettings.isbn || '978-616-XXXX-XX-X (e-Book)'}
-                                    </div>
+                                    {cleanValidIsbn(copyrightSettings.isbn) && (
+                                        <div className="font-mono text-xs text-slate-400 border border-slate-700 px-3 py-1 rounded bg-slate-900/50">
+                                            ISBN {cleanValidIsbn(copyrightSettings.isbn)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -2842,7 +2862,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     <input 
                                         type="text" 
                                         value={draftCopyright.isbn} 
-                                        placeholder="978-616-XXXX-XX-X (e-Book)"
+                                        placeholder="เว้นว่างได้หากยังไม่มีเลข ISBN จริง"
                                         onChange={(e) => setDraftCopyright(prev => ({ ...prev, isbn: e.target.value }))}
                                         className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-xs font-mono"
                                     />
