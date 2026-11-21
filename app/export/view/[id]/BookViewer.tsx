@@ -2114,7 +2114,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                                 {/* Section Markdown Content */}
                                 {page.content.trim() && (
-                                    <div className={`prose ${sizeClass} max-w-none text-left break-words prose-code:before:content-none prose-code:after:content-none book-body-content flex-1`}>
+                                    <div lang="th" className={`prose ${sizeClass} max-w-none break-words prose-code:before:content-none prose-code:after:content-none book-body-content flex-1`}>
                                         <ReactMarkdown 
                                             rehypePlugins={[rehypeRaw]}
                                             components={{
@@ -2124,8 +2124,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                                 p: ({node, className, ...props}) => {
                                                     const isCont = Boolean(className && /(?:continued-paragraph|continued-list-item)/.test(className));
                                                     const isSplitFirst = Boolean(className && /split-paragraph-first/.test(className));
-                                                    const mbCls = isSplitFirst ? 'mb-0' : (pageSize === 'a5' ? 'mb-2.5' : 'mb-3.5');
-                                                    return <p className={`${mbCls} leading-relaxed text-slate-800 ${isCont ? '' : 'text-indent-book'} ${className || ''}`} {...props} />;
+                                                    const mbCls = isSplitFirst ? 'mb-0' : '';
+                                                    return <p className={`${mbCls} text-slate-800 ${isCont ? '' : 'text-indent-book'} ${className || ''}`} {...props} />;
                                                 },
                                                 hr: () => (
                                                     <div className={`${pageSize === 'a5' ? 'my-4' : 'my-6'} flex items-center justify-center gap-3 text-slate-300 select-none`}>
@@ -2223,7 +2223,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                             <div className="w-12 h-0.5 bg-blue-600 mx-auto mt-2.5 theme-accent-rule" />
                         </div>
 
-                        <div className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'space-y-3 text-[13.5px]' : 'space-y-4'} text-slate-700 leading-relaxed text-left break-words`}>
+                        <div lang="th" className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'text-[13.5px]' : ''} text-slate-700 break-words book-body-content`}>
                             <p className="text-indent-book">
                                 หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
                                 และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
@@ -2980,7 +2980,8 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 </div>
                 <div
                     ref={measureBodyRef}
-                    className={`prose ${sizeClass} max-w-none text-left break-words prose-code:before:content-none prose-code:after:content-none book-body-content`}
+                    lang="th"
+                    className={`prose ${sizeClass} max-w-none break-words prose-code:before:content-none prose-code:after:content-none book-body-content`}
                     style={{ width: '100%', display: 'flow-root' }}
                 />
                 <div
@@ -3026,7 +3027,29 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
                 }
                 
-                /* Typography styling for book paragraphs & seamless cross-page splits */
+                /* Typography styling for book paragraphs & seamless cross-page splits (Thai Pocketbook Print Standard) */
+                .book-body-content {
+                    word-break: normal;
+                    overflow-wrap: break-word;
+                    -webkit-hyphens: auto;
+                    hyphens: auto;
+                    letter-spacing: 0;
+                }
+                .book-body-content p,
+                .book-body-content li {
+                    text-align: justify;
+                    text-justify: inter-cluster;
+                    text-align-last: left;
+                    line-height: ${pageSize === 'a5' ? '1.75' : '1.8'};
+                    word-break: normal;
+                    overflow-wrap: break-word;
+                    -webkit-hyphens: auto;
+                    hyphens: auto;
+                }
+                .book-body-content p {
+                    margin-top: 0;
+                    margin-bottom: ${pageSize === 'a5' ? '0.42em' : '0.55em'};
+                }
                 .book-body-content p.text-indent-book {
                     text-indent: ${pageSize === 'a5' ? '1.5rem' : '2rem'};
                 }
@@ -3038,11 +3061,26 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p.split-paragraph-first {
                     margin-bottom: 0 !important;
+                    text-align-last: justify;
                 }
                 .book-body-content p.continued-list-item {
                     text-indent: 0 !important;
                     padding-left: ${pageSize === 'a5' ? '1.25rem' : '1.5rem'};
                     margin-top: 0 !important;
+                }
+                .book-body-content h1,
+                .book-body-content h2,
+                .book-body-content h3,
+                .book-body-content h4,
+                .book-body-content h5,
+                .book-body-content th,
+                .book-body-content td,
+                .book-body-content figcaption,
+                .book-body-content .diagram-step {
+                    text-align: left;
+                    text-align-last: left;
+                    -webkit-hyphens: none;
+                    hyphens: none;
                 }
 
                 /* ==================== THEME PRESETS ==================== */
