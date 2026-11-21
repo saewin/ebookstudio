@@ -526,7 +526,15 @@ export async function executeLLMCompletion({
             }
 
             const data = await res.json();
-            const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const candidate = data.candidates?.[0];
+            const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+            const content = parts
+                .filter((p: any) => !p?.thought && typeof p?.text === 'string')
+                .map((p: any) => p.text)
+                .join('');
+            if (candidate?.finishReason === 'MAX_TOKENS') {
+                console.warn(`[Gemini Native] Model ${model} hit MAX_TOKENS (maxOutputTokens=${maxTokens}).`);
+            }
             if (content) {
                 return content;
             }
@@ -551,7 +559,7 @@ export async function callGeminiNative(
     return executeLLMCompletion({
         messages,
         provider,
-        maxTokens: 8192,
+        maxTokens: 16384,
         temperature: 0.7,
         jsonMode,
         model: modelName
