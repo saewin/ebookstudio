@@ -40,10 +40,46 @@ export async function getCourses(): Promise<CourseProject[]> {
       if (c.id === FLAGSHIP_PROTOTYPE_ID) {
         const needsTitleMigration =
           c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle
-        const needsSlidesMigration = !c.slides || c.slides.length <= 54
-        if (needsTitleMigration || needsSlidesMigration) {
+        const needsSlidesMigration = !c.slides || c.slides.length <= 60
+        const needsStarterKitMigration = !c.starterKitFiles?.some(
+          (f) => f.id === 'kit-agents-md'
+        )
+        if (needsTitleMigration || needsSlidesMigration || needsStarterKitMigration) {
           const fresh = createFlagshipPrototypeCourse()
           migrated = true
+
+          let nextStarterKit = c.starterKitFiles
+          if (needsStarterKitMigration) {
+            const existingFiles = c.starterKitFiles || []
+            const freshReadme = fresh.starterKitFiles.find((f) => f.id === 'kit-readme')
+            const freshAgentsMd = fresh.starterKitFiles.find((f) => f.id === 'kit-agents-md')
+            if (existingFiles.length === 0) {
+              nextStarterKit = fresh.starterKitFiles
+            } else {
+              const updatedExisting = existingFiles.map((f) =>
+                f.id === 'kit-readme' &&
+                f.content.includes('The AI-Native Solopreneur') &&
+                freshReadme
+                  ? freshReadme
+                  : f
+              )
+              if (freshAgentsMd) {
+                const readmeIdx = updatedExisting.findIndex((f) => f.id === 'kit-readme')
+                if (readmeIdx >= 0) {
+                  nextStarterKit = [
+                    ...updatedExisting.slice(0, readmeIdx + 1),
+                    freshAgentsMd,
+                    ...updatedExisting.slice(readmeIdx + 1),
+                  ]
+                } else {
+                  nextStarterKit = [freshAgentsMd, ...updatedExisting]
+                }
+              } else {
+                nextStarterKit = updatedExisting
+              }
+            }
+          }
+
           return {
             ...c,
             ...(needsTitleMigration
@@ -56,6 +92,7 @@ export async function getCourses(): Promise<CourseProject[]> {
                 }
               : {}),
             ...(needsSlidesMigration ? { slides: fresh.slides } : {}),
+            ...(needsStarterKitMigration ? { starterKitFiles: nextStarterKit } : {}),
           }
         }
       }

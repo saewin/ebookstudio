@@ -262,49 +262,74 @@ export function createSeedBrainNotes(): BrainNote[] {
     {
       id: 'brain-inbox-ai-agents-guide',
       category: 'inbox',
-      title: 'AI Agents & Multi-Agent Systems (5 แกนหลักจาก Event-Driven Design for Agents)',
+      title: 'AI Agents & AGENTS.md ฉบับสมบูรณ์ (สูตรสากล 4+1 · 4 ค่ายโลก · Event-Driven · คู่มือ AGENTS.md)',
       slug: 'inbox-ai-agents-event-driven.md',
-      summary: 'สรุป 5 แกนสำคัญจากหนังสือ A Guide to Event-Driven Design for Agents and Multi-Agent Systems (Confluent 2025) สำหรับใช้สอนและออกแบบระบบ 3 สมอง',
-      tags: ['Inbox', 'AI Agents', 'Multi-Agent', 'Event-Driven'],
+      summary: 'คู่มือกลางสำหรับพัฒนา App, เขียน E-book, สอนคอร์ส และเขียน AGENTS.md — รวมสูตรสากล 4+1 (Google/OpenAI/Anthropic/Lilian Weng), 9 องค์ประกอบ (Confluent), 5 Workflow + 4 Multi-Agent Patterns และมาตรฐาน AGENTS.md',
+      tags: ['Inbox', 'AI Agents', '4+1 Blueprint', 'AGENTS.md', 'Multi-Agent'],
       pinned: true,
-      content: `# AI Agents & Multi-Agent Systems (5 แกนหลักสำหรับคอร์สประธานบริษัท 2.0)
-> แหล่งอ้างอิง: *A Guide to Event-Driven Design for Agents and Multi-Agent Systems* (Sean Falconer, Confluent 2025)
+      content: `# AI Agents & AGENTS.md ฉบับสมบูรณ์
+> คู่มือกลางสำหรับพัฒนา App · เขียน E-book · สอนคอร์ส · เขียน \`AGENTS.md\`
+> สังเคราะห์จาก 4 มาตรฐานสากล (Lilian Weng/OpenAI · Google Whitepaper · Anthropic · OpenAI Practical Guide), Confluent (2025) และมาตรฐานเปิด AGENTS.md (Linux Foundation / AAIF)
 
-## 1. วิวัฒนาการ 3 คลื่นของ AI (The 3 Waves of AI & Agentic Shift)
-- **Wave 1 — Predictive AI:** โมเดล Machine Learning แบบดั้งเดิม ทำนาย/วิเคราะห์เฉพาะจุด ปรับใช้ข้ามงานยาก
-- **Wave 2 — Generative AI:** โมเดล LLM สร้างข้อความ/ภาพ/โค้ดเก่ง แต่ "หยุดนิ่งในเวลา" (Fixed in time) ไม่มีข้อมูลเฉพาะธุรกิจ จึงตอบกลางๆ
-- **ตัวเชื่อม (Bridge) — Compound AI / RAG:** เอา LLM มาต่อกับฐานข้อมูลและกฎตรวจสอบ แต่ยังติด **Fixed Workflow** ที่ต้องเขียนเส้นทางล่วงหน้าทุกกรณี
-- **Wave 3 — Agentic AI:** *"Agents are the new apps"* (Dharmesh Shah, HubSpot CTO) — พลิก Control Logic จากโค้ดบังคับตายตัว (Programmatic) เป็น **Agentic Logic** ที่ AI คิด วางแผน เรียกใช้ Tools และ Memory ได้เองตามสถานการณ์
+---
 
-## 2. กายวิภาคของ AI Agent ที่สมบูรณ์ 9 องค์ประกอบ (Anatomy of an Agent)
-1. **Persona (บทบาทหน้าที่):** System Prompt ที่กำหนดตำแหน่ง ความเชี่ยวชาญ และมาตรฐานการตอบ
-2. **Perception (การรับรู้):** รับสัญญาณจากโลกภายนอก (ไฟล์, API, ข้อความลูกค้า, อีเวนต์)
-3. **Reasoning & Decision-Making:** สมอง LLM ที่วิเคราะห์ข้อมูลและตัดสินใจว่าจะทำอะไรต่อ
-4. **Memory (ความจำ 2 ชั้น):** Short-term Memory (จำบทสนทนาปัจจุบัน) + Long-term Memory (BrainStudio / Vector DB)
-5. **Planning (การวางแผน):** แตกเป้าหมายใหญ่เป็นขั้นตอนย่อยและจัดลำดับความสำคัญ
-6. **Action (การลงมือทำ):** สั่งงานจริง เช่น แก้ไฟล์, ส่งข้อความ, อัปเดตฐานข้อมูล
-7. **Learning (การเรียนรู้):** ปรับปรุงผลลัพธ์จาก Feedback ผ่าน Context โดยไม่ต้องเทรนโมเดลใหม่
-8. **Coordination & Collaboration:** ประสานงานและส่งต่อข้อมูลกับ Agent ตัวอื่น
-9. **Tool Interface:** ปลั๊กเชื่อมเครื่องมือเฉพาะทาง (MCP, Google Drive, Script วิเคราะห์ยอดขาย)
+## 1. เปรียบเทียบ 4 มาตรฐาน AI Agent ระดับโลก
+1. **Lilian Weng (OpenAI):** \`LLM (สมอง) + 3 เสาหลัก: Planning · Memory · Tool Use\` — แผนที่ต้นฉบับที่ถูกอ้างอิงมากที่สุดในโลก จำง่าย เหมาะใช้ปูพื้นใน E-book และคอร์สสอน
+2. **Google Whitepaper ("Agents" — Wiesinger et al.):** \`Model (สมอง) + Tools (มือ) + Orchestration Layer (วงจรคิด-ทำ-ตรวจ)\` — อธิบายภาพรวม "สมอง + มือ + วงจรสั่งการ" ชัดเจนที่สุดและเข้ากับ Google Antigravity โดยตรง
+3. **Anthropic ("Building Effective Agents"):** \`Augmented LLM (LLM + Retrieval + Tools + Memory)\` พร้อมแยก **Workflows** (เส้นทางชัดเจน) vs **Agents** (คิดทางเอง) และชูหลัก **"Simplicity First"**
+4. **OpenAI ("A Practical Guide to Building Agents"):** \`Model + Tools + Instructions + Guardrails\` — ยก **Instructions** และ **Guardrails / Human-in-the-Loop** ขึ้นเป็นหัวใจสำคัญ
 
-## 3. จาก Request-Response สู่ Event-Driven Multi-Agent Systems (MAS)
-- **ทำไม Agent ตัวเดียวไม่พอ:** ไม่มีคนเดียวเก่งทุกแผนก จึงต้องมี **Multi-Agent System (MAS)** เพื่อแบ่งงาน (Task Delegation), ทำพร้อมกัน (Parallel Processing) และสลับบทบาทตามโจทย์
-- **กับดักแบบเดิม (Request-Response):** ผูกติดกันแน่น (Tightly Coupled) ตัวหนึ่งช้าทุกตัวหยุดรอ และเจ้าของต้องคอยกดสั่งทีละขั้น
-- **แนวคิด Event-Driven (ขับเคลื่อนด้วยเหตุการณ์):** ทำงานแบบ Asynchronous & Loose Coupling — เมื่อเกิดเหตุการณ์จริง (Event) เช่น ลูกค้าทัก / มียอดขายใหม่ / ถึงรอบวันจันทร์ ระบบจะกระตุ้น Agent ที่เกี่ยวข้องให้ทำงานต่อเป็นทอดๆ ทันทีโดยไม่เป็นคอขวด
+---
 
-## 4. 4 สถาปัตยกรรมทีม AI Agents (Multi-Agent Design Patterns)
-1. **Orchestrator-Worker Pattern:** มีหัวหน้าใหญ่ตรงกลาง (AI CEO) คอยรับโจทย์เดียวแล้วจ่ายงานให้ Worker Agents (Research, Content, Ads, eRFM) — *โครงหลักของสมองที่ 3*
-2. **Hierarchical Agent Pattern:** แบ่งชั้นบังคับบัญชา (AI CEO → หัวหน้าฝ่าย → ลูกน้องเฉพาะทาง) เหมาะกับโปรเจกต์ใหญ่ที่ซับซ้อน
-3. **Blackboard Pattern (กระดานดำกลาง):** ทุก Agent อ่านและเขียนอัปเดตลง "คลังความจำกลาง" เดียวกัน (เช่น BrainStudio) ลดการวิ่งคุยกันเองและความซ้ำซ้อน
-4. **Market-Based Pattern (ประมูลไอเดีย):** ให้หลาย Agent แข่งกันเสนอทางเลือก (เช่น คิด Hook 3 สไตล์) แล้วให้ AI CEO ประเมินคัดผู้ชนะที่ดีที่สุด
+## 2. สูตรสากล 4+1 (The Universal Agent Blueprint)
+แกนกลางเดียวที่จำง่าย สากล และใช้ได้ทั้งออกแบบธุรกิจ สอนคน และเขียนโค้ดพัฒนา App:
+1. **Brain (Model & Planning):** สมองหลัก (LLM) ที่วิเคราะห์ แตกงานเป็นขั้น (Planning) และวนลูปปรับแก้เองแบบ **ReAct** (\`คิด → ลงมือทำ → สังเกตผล → ปรับแก้\`)
+2. **Memory & Context (Retrieval):** ความจำ 2 ชั้น — *Short-term* (ในบทสนทนา) + *Long-term* (BrainStudio: Brand Bible, Customer Persona, Knowledge Vault / Vector DB)
+3. **Tools (Hands & Connectors):** มือที่ลงมือทำจริงและเชื่อมโลกภายนอก (อ่าน/เขียนไฟล์, รันสคริปต์วิเคราะห์ข้อมูล, เชื่อม Google Drive / CRM ผ่าน **MCP**)
+4. **Instructions & Orchestration (Playbook):** คู่มือบทบาทหน้าที่ ลำดับการทำงาน และการประสานข้าม Agent (อยู่ใน \`AGENTS.md\` และไฟล์แผนก)
+5. **+1 Guardrails & Human-in-the-Loop:** เกราะป้องกัน ข้อห้ามเด็ดขาด (คำต้องห้าม, ข้อมูลส่วนตัวลูกค้า, งบประมาณ) และจุดหยุดให้เจ้าของกดอนุมัติ (Quality Gate / กฎ 80-20)
 
-## 5. เคสจริงระดับโลก: ทีม Multi-Agent ปิดการขาย (AI SDR Workflow)
-ระบบ 5 Agents ที่รับช่วงต่อกันอัตโนมัติตั้งแต่วินาทีที่ลูกค้ากรอกฟอร์ม:
-1. **Lead Ingestion Agent:** ดักจับ Lead ใหม่ + ดึงข้อมูลบริษัท/เว็บมาเติมให้ครบ
-2. **Lead Scoring Agent:** ให้คะแนนความพร้อมซื้อ + สรุปจุดเข้าหาที่เหมาะกับรายนั้น
-3. **Active Outreach Agent:** ร่างอีเมล/ข้อความทักทายเฉพาะบุคคลเพื่อนัดคุยทันที
-4. **Nurture Campaign Agent:** วางชุดข้อความติดตามต่อเนื่อง (กรณีลูกค้ายังไม่พร้อมซื้อ)
-5. **Action / Send Agent:** ส่งข้อความออกจริง (หรือส่งสรุปให้เจ้าของกดอนุมัติก่อนส่ง)
+---
+
+## 3. วิวัฒนาการ 3 คลื่น AI & กายวิภาคเชิงลึก 9 องค์ประกอบ (Confluent 2025)
+### 3 คลื่น AI + Compound AI
+- **Wave 1 — Predictive AI:** โมเดล ML ทำนายเฉพาะจุด ปรับใช้ข้ามงานยาก
+- **Wave 2 — Generative AI:** LLM เขียนเก่งแต่ "หยุดนิ่งในเวลา" ไม่มีข้อมูลเฉพาะธุรกิจ จึงตอบกลางๆ
+- **Bridge — Compound AI / RAG:** ต่อ LLM เข้ากับระบบค้นข้อมูลและตัวตรวจเช็ก แต่ยังติด **Fixed Workflow** ที่ตายตัว
+- **Wave 3 — Agentic AI:** *"Agents are the new apps"* (Dharmesh Shah, HubSpot CTO) — พลิก Control Logic จากโค้ดบังคับตายตัว (Programmatic) เป็น **Agentic Logic** ที่วางแผนและใช้ Tools เองได้
+
+### กายวิภาค 9 องค์ประกอบ (ภาคเจาะลึกเมื่อต้องขยายระบบ)
+1. **Persona** (System Prompt / ตำแหน่ง) · 2. **Perception** (รับสัญญาณ: ไฟล์, API, อีเวนต์) · 3. **Reasoning & Decision-Making** (สมอง LLM) · 4. **Memory** (Short-term + Long-term) · 5. **Planning** (แตกขั้นตอน) · 6. **Action** (ลงมือทำจริง) · 7. **Learning** (ปรับปรุงจาก Feedback ผ่าน Context) · 8. **Coordination & Collaboration** (ประสานข้ามทีม) · 9. **Tool Interface** (MCP, API, Scripts)
+
+---
+
+## 4. 5 Workflow Patterns (Anthropic) + Event-Driven Multi-Agent Patterns (Confluent)
+### 5 ลาย Workflow พื้นฐาน (Anthropic — เริ่มจากง่ายที่สุดก่อน)
+1. **Prompt Chaining:** ต่อขั้นตอนเป็นลูกโซ่ พร้อมด่านตรวจเช็กทีละขั้น
+2. **Routing:** คัดแยกประเภทโจทย์แล้วส่งต่อให้ Agent แผนกที่เชี่ยวชาญที่สุด
+3. **Parallelization:** แตกงานรันพร้อมกันหลายตัว (Sectioning) หรือโหวตคัดคำตอบที่ดีที่สุด (Voting)
+4. **Orchestrator-Workers:** หัวหน้าใหญ่ตรงกลาง (AI CEO) แตกงานจ่ายให้ทีม Agents แล้วรวมผล
+5. **Evaluator-Optimizer:** ให้ Agent ตัวหนึ่งทำ และอีกตัวตรวจแก้ตาม Brand Bible จนผ่านเกณฑ์ (Quality Gate)
+
+### Event-Driven Multi-Agent Systems & 4 Patterns (Confluent)
+- **Event-Driven Mindset:** เปลี่ยนจาก Request-Response (คอขวด ผูกติดแน่น) เป็น **Asynchronous & Loose Coupling** — เมื่อเกิดเหตุการณ์จริง (Event) ระบบกระตุ้น Agents ทำงานต่อทันทีและเพิ่ม/ถอดแผนกได้โดยไม่พัง
+- **4 สถาปัตยกรรมทีม Agents:**
+  1. **Orchestrator-Worker:** AI CEO ตรงกลางจ่ายงานให้ Worker Agents
+  2. **Hierarchical Agent:** แบ่งชั้นบังคับบัญชา (AI CEO → หัวหน้าฝ่าย → ลูกน้อง)
+  3. **Blackboard Pattern:** ทุก Agent อ่าน/เขียนลง **"คลังความจำกลาง"** เดียวกัน (เช่น BrainStudio)
+  4. **Market-Based Pattern:** ให้หลาย Agent แข่งกันเสนอไอเดีย/Hook แล้วคัดผู้ชนะที่ดีที่สุด
+- **เคสจริง AI SDR (5 Agents):** *Lead Ingestion → Lead Scoring → Active Outreach → Nurture Campaign → Action / Send Agent*
+
+---
+
+## 5. มาตรฐานสากลการเขียน AGENTS.md (Linux Foundation / AAIF)
+- **หลักการ:** ใช้ Plain Markdown, **Less Is More** (ห้ามเขียนเยิ่นเย้อหรือซ้ำกับสิ่งที่ Agent อ่านเองได้จากโค้ด/ไฟล์ เพราะทำให้เปลือง Token และความแม่นยำลดลง), เขียนเฉพาะกฎที่ AI เดาเองไม่ได้, รองรับการโหลดแบบ 3 ลำดับชั้น (*Global → Project Root → Sub-folder*)
+- **โครงสร้าง 5 หัวข้อมาตรฐาน:**
+  1. \`## Identity & Context\` — ตัวตน จุดมุ่งหมาย และจุดอ้างอิงความจำหลัก
+  2. \`## Workspace Map & Boundaries\` — แผนที่โฟลเดอร์และเขตห้ามแก้ไข/ห้าม Commit
+  3. \`## Workflows & Tools\` — คำสั่งจริงที่ใช้รันงาน/ทดสอบ และขั้นตอนเชื่อมเครื่องมือ
+  4. \`## Quality Gates\` — เกณฑ์ตรวจเช็กตัวเองก่อนรายงานผล
+  5. \`## Guardrails (Do's & Don'ts)\` — กฎเหล็ก ข้อห้าม และจุดหยุดรอคนอนุมัติ (Human-in-the-Loop)
 `,
       createdAt: now,
       updatedAt: now,
@@ -397,13 +422,33 @@ export async function getBrainStudioState(): Promise<BrainStudioState> {
             )
           : createSeedBrainNotes()
 
-      // One-time seed injection for AI Agents Inbox guide if not yet present
-      if (!notes.some((n) => n.id === 'brain-inbox-ai-agents-guide')) {
-        const aiAgentsNote = createSeedBrainNotes().find(
-          (n) => n.id === 'brain-inbox-ai-agents-guide'
-        )
-        if (aiAgentsNote) {
-          const updatedNotes = sortNotes([aiAgentsNote, ...notes])
+      // One-time seed injection / upgrade for AI Agents Inbox guide
+      const aiAgentsNote = createSeedBrainNotes().find(
+        (n) => n.id === 'brain-inbox-ai-agents-guide'
+      )
+      if (aiAgentsNote) {
+        const existingIdx = notes.findIndex((n) => n.id === 'brain-inbox-ai-agents-guide')
+        let updatedNotes: BrainNote[] | null = null
+        if (existingIdx === -1) {
+          updatedNotes = sortNotes([aiAgentsNote, ...notes])
+        } else if (!notes[existingIdx].content.includes('สูตรสากล 4+1')) {
+          const existing = notes[existingIdx]
+          updatedNotes = sortNotes(
+            notes.map((n, idx) =>
+              idx === existingIdx
+                ? {
+                    ...existing,
+                    title: aiAgentsNote.title,
+                    summary: aiAgentsNote.summary,
+                    tags: aiAgentsNote.tags,
+                    content: aiAgentsNote.content,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : n
+            )
+          )
+        }
+        if (updatedNotes) {
           const nextState: BrainStudioState = {
             notes: updatedNotes,
             focusTasks: Array.isArray(parsed.focusTasks) ? parsed.focusTasks : createSeedState(updatedNotes).focusTasks,

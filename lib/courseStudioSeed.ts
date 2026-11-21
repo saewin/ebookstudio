@@ -429,12 +429,13 @@ export function createFlagshipPrototypeCourse(): CourseProject {
         title: 'คู่มือเริ่มใช้งาน Starter Kit (อ่านก่อนเข้าห้อง)',
         description: 'โครงสร้างโฟลเดอร์และวิธีใช้งานทั้ง 4 ช่วงในห้องเรียน Workshop สด 1 วัน',
         content: `# Google Antigravity Starter Kit
-## คอร์ส "ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur"
+## คอร์ส "ฉันนี่แหล่ะประธานบริษัท 2.0 — Unleash Your Mind, Build Your AI Workforce"
 > **"สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1"**
 
 ยินดีต้อนรับสู่ Workspace ส่วนตัวของคุณ! โฟลเดอร์นี้ถูกออกแบบมาให้เปิดใช้งานใน **Google Antigravity** ได้ทันที
 
 ## โครงสร้างโฟลเดอร์
+- \`AGENTS.md\` — คู่มือแม่มาตรฐานสากลที่ Google Antigravity อ่านอัตโนมัติก่อนเริ่มงานทุกครั้ง
 - \`01-BrainStudio/\` — คลังความรู้ธุรกิจของเจ้าของ (Brand Bible, Customer Persona, Knowledge Vault, SOP)
 - \`02-Brain2-8-Agents/\` — พนักงาน AI เฉพาะแผนกครบทั้ง 8 ตำแหน่ง (สมองที่ 2)
 - \`03-Brain3-AI-CEO/\` — ระบบ AI CEO / Orchestrator คุมทีม 8 Agents (สมองที่ 3)
@@ -446,6 +447,47 @@ export function createFlagshipPrototypeCourse(): CourseProject {
    \`"ช่วยสัมภาษณ์ฉัน 5 คำถามเกี่ยวกับธุรกิจ แล้วนำคำตอบมาเติมลงในไฟล์ 01-BrainStudio/brand-bible.md และ customer-persona.md ให้สมบูรณ์"\`
 3. เมื่อมีคลังความรู้แล้ว จึงเริ่มสั่งงานพนักงานใน \`02-Brain2-8-Agents/\`
 4. ปิดท้ายด้วยการเรียก \`03-Brain3-AI-CEO/ai-ceo-orchestrator.md\` เพื่อคุมทีมทั้งหมดทำงานแทนคุณ!
+`,
+      },
+      {
+        id: 'kit-agents-md',
+        path: 'AGENTS.md',
+        folder: 'root',
+        title: 'AGENTS.md — คู่มือแม่มาตรฐานสากลสำหรับ Google Antigravity',
+        description: 'ไฟล์มาตรฐานเปิด (Linux Foundation / AAIF) ที่กำหนด 5 หัวข้อหลักให้ AI อ่าน BrainStudio, เรียกทีม 8 Agents และตรวจ Quality Gate อัตโนมัติ',
+        content: `# AGENTS.md — คู่มือปฏิบัติการพนักงาน AI (Solopreneur 2.0 Standard)
+
+> ไฟล์มาตรฐานเปิด (Linux Foundation / AAIF) ที่ Google Antigravity และ AI Tools อื่นๆ อ่านอัตโนมัติก่อนเริ่มทำงานทุกครั้ง
+
+## 1. Identity & Context (เราคือใคร & ความจำอยู่ที่ไหน)
+- **เจ้าของบริษัท (สมองที่ 1):** [ชื่อเจ้าของ / ชื่อแบรนด์] — โฟกัสเฉพาะวิสัยทัศน์ การตัดสินใจใหญ่ และเวลาชีวิต
+- **Long-Term Memory (ต้องอ่านก่อนเริ่มงานเสมอ):**
+  - \`01-BrainStudio/brand-bible.md\` (น้ำเสียง จุดยืน คำต้องห้าม)
+  - \`01-BrainStudio/customer-persona.md\` (ปัญหาลึกๆ และเหตุผลซื้อของลูกค้า)
+  - \`01-BrainStudio/knowledge-vault.md\` (เรื่องเล่าเด่นและสูตรลับเฉพาะตัว)
+
+## 2. Workspace Map & Boundaries (แผนที่โฟลเดอร์ & เขตห้ามแก้ไข)
+- \`01-BrainStudio/\` — คลังความจำหลักของธุรกิจ (**ห้ามลบหรือแก้จุดยืนแบรนด์โดยไม่ได้รับอนุญาต**)
+- \`02-Brain2-8-Agents/\` — คู่มือพนักงาน AI เฉพาะแผนกทั้ง 8 ตำแหน่ง (สมองที่ 2)
+- \`03-Brain3-AI-CEO/\` — โปรโตคอลผู้จัดการใหญ่ AI CEO / Orchestrator (สมองที่ 3)
+- \`04-Workshops/\` — ใบงานภาคปฏิบัติ
+
+## 3. Workflows & Tools (วิธีทำงานมาตรฐาน)
+- ยึด **สูตรสากล 4+1**: *Brain (คิด) · Memory (อ่าน BrainStudio) · Tools (MCP/Drive/Scripts) · Instructions (ไฟล์แผนก) · +1 Guardrails*
+- งานเรียบง่ายให้รันแบบ Workflow ตามขั้นตอน (**Prompt Chaining / Routing / Parallelization**)
+- งานหลายแผนกให้เรียก \`03-Brain3-AI-CEO/ai-ceo-orchestrator.md\` กระจายงานให้ \`02-Brain2-8-Agents/\`
+- **ห้ามเดาข้อมูลลูกค้า:** หากมีไฟล์ข้อมูลจริงหรือ Google Drive MCP ให้ดึงข้อเท็จจริงจากแหล่งนั้นเท่านั้น
+
+## 4. Quality Gates (เกณฑ์ตรวจงานก่อนส่งมอบ)
+ก่อนส่งงานทุกชิ้น AI ต้องตรวจตัวเองตามหลัก **Evaluator-Optimizer** ครบ 3 ข้อ:
+1. น้ำเสียงตรงกับ \`brand-bible.md\` และไม่มีคำต้องห้ามหลุดออกมา
+2. ตอบโจทย์ Pain Point ใน \`customer-persona.md\` ชัดเจน ไม่เขียนน้ำท่วมทุ่ง
+3. สรุป Executive Summary 1 หน้าพร้อมไฟล์ผลลัพธ์ให้เจ้าของตัดสินใจ
+
+## 5. Guardrails (กฎเหล็ก & จุดหยุดรอคนอนุมัติ)
+- **Do:** สื่อสารภาษาไทยเป็นธรรมชาติ มีหลักฐานอ้างอิง และแยกระหว่างข้อเท็จจริงกับข้อเสนอแนะ
+- **Don't:** ห้ามเคลมผลลัพธ์เกินจริง ห้ามเปิดเผยข้อมูลส่วนบุคคลลูกค้า (PII) และห้ามส่งข้อความ/โอนเงิน/เปลี่ยนราคาจริงโดยพลการ
+- **Human-in-the-Loop (20% Human Touch):** งานที่กระทบลูกค้าจริง การใช้จ่ายงบโฆษณา หรือการส่งอีเมล/แชทจำนวนมาก ต้องหยุดรอเจ้าของกดอนุมัติ (Approve) ทุกครั้ง
 `,
       },
       {
