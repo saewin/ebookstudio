@@ -1004,6 +1004,27 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
         }
     };
 
+    const handleDownloadCover = async (url: string, type: 'front' | 'back') => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const rawExt = blob.type.split('/')[1]?.split('+')[0]?.replace('jpeg', 'jpg') || '';
+            const urlExt = url.split('?')[0].split('.').pop()?.toLowerCase() || '';
+            const ext = /^[a-z0-9]{2,5}$/.test(rawExt) ? rawExt : /^[a-z0-9]{2,5}$/.test(urlExt) ? urlExt : 'png';
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = `${type}-cover-${projectId.slice(0, 8)}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        } catch {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    };
+
     const handleRemoveCover = async (type: 'front' | 'back') => {
         if (!confirm(`ต้องการลบภาพ${type === 'front' ? 'ปกหน้า' : 'ปกหลัง'} และกลับไปใช้ดีไซน์เริ่มต้นใช่ไหม?`)) return;
 
@@ -2533,6 +2554,28 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 </div>
 
                                 <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                                    {frontCoverUrl && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <a
+                                                href={frontCoverUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                                            >
+                                                <ExternalLink size={13} />
+                                                <span>ดูภาพเต็ม</span>
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDownloadCover(frontCoverUrl, 'front')}
+                                                className="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                            >
+                                                <Download size={13} />
+                                                <span>ดาวน์โหลด</span>
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <label className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm">
                                         <Upload size={14} />
                                         <span>{isUploadingFrontCover ? 'กำลังอัปโหลด...' : (frontCoverUrl ? 'เปลี่ยนภาพปกหน้า' : 'อัปโหลดภาพปกหน้า')}</span>
@@ -2543,6 +2586,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                             disabled={isUploadingFrontCover}
                                             onChange={(e) => {
                                                 const file = e.target.files?.[0];
+                                                e.target.value = '';
                                                 if (file) handleUploadCover(file, 'front');
                                             }}
                                         />
@@ -2599,6 +2643,28 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                 </div>
 
                                 <div className="space-y-2 pt-2 border-t border-slate-200/60">
+                                    {backCoverUrl && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <a
+                                                href={backCoverUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                                            >
+                                                <ExternalLink size={13} />
+                                                <span>ดูภาพเต็ม</span>
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDownloadCover(backCoverUrl, 'back')}
+                                                className="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                            >
+                                                <Download size={13} />
+                                                <span>ดาวน์โหลด</span>
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <label className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm">
                                         <Upload size={14} />
                                         <span>{isUploadingBackCover ? 'กำลังอัปโหลด...' : (backCoverUrl ? 'เปลี่ยนภาพปกหลัง' : 'อัปโหลดภาพปกหลัง')}</span>
@@ -2609,6 +2675,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                             disabled={isUploadingBackCover}
                                             onChange={(e) => {
                                                 const file = e.target.files?.[0];
+                                                e.target.value = '';
                                                 if (file) handleUploadCover(file, 'back');
                                             }}
                                         />

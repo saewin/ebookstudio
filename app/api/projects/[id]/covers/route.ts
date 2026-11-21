@@ -41,13 +41,27 @@ export async function GET(
         }
 
         const allCovers = await loadAllCovers();
-        const covers = allCovers[projectId] || { frontCoverUrl: null, backCoverUrl: null };
+        const covers = allCovers[projectId] || {};
+        let frontCoverUrl = covers.frontCoverUrl || null;
+        let backCoverUrl = covers.backCoverUrl || null;
+
+        if (!frontCoverUrl || !backCoverUrl) {
+            try {
+                const proj = await localDb.getProject(projectId);
+                if (proj) {
+                    if (!frontCoverUrl && proj.coverImageUrl) frontCoverUrl = proj.coverImageUrl;
+                    if (!backCoverUrl && proj.backCoverUrl) backCoverUrl = proj.backCoverUrl;
+                }
+            } catch (dbErr) {
+                console.warn('Could not read fallback cover from localDb:', dbErr);
+            }
+        }
 
         return NextResponse.json({
             success: true,
             projectId,
-            frontCoverUrl: covers.frontCoverUrl || null,
-            backCoverUrl: covers.backCoverUrl || null,
+            frontCoverUrl,
+            backCoverUrl,
         });
     } catch (error: any) {
         console.error('Error fetching project covers:', error);

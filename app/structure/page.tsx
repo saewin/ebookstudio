@@ -6,6 +6,7 @@ import ProjectSelector from './ProjectSelector'
 import AddChapterButton from './AddChapterButton'
 import BulkAddChapter from './BulkAddChapter'
 import SyncNotionButton from './SyncNotionButton'
+import BookCoverManager from '@/app/components/BookCoverManager'
 import { revalidatePath } from 'next/cache'
 
 // Status Mapping Imported from constants
@@ -27,6 +28,7 @@ export default async function StructurePage(props: PageProps) {
 
         // Default to the first project (Most recently edited) if no param is provided
         const activeProjectId = projectIdParam || projects[0]?.id || ''
+        const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0] || null
 
         // 2. Fetch Chapters filtered by Active Project
         // If no projects exist, getChapters('') might return everything or nothing depending on logic.
@@ -59,6 +61,15 @@ export default async function StructurePage(props: PageProps) {
                         <BulkAddChapter projectId={activeProjectId} />
                     </div>
                 </div>
+
+                {activeProjectId && (
+                    <BookCoverManager
+                        projectId={activeProjectId}
+                        projectTitle={activeProject?.title}
+                        initialFrontCoverUrl={activeProject?.coverImageUrl || null}
+                        initialBackCoverUrl={activeProject?.backCoverUrl || null}
+                    />
+                )}
 
                 <div className="rounded-lg border border-border bg-white overflow-hidden shadow-sm shadow-slate-100">
                     <div className="p-4 bg-sky-50 border-b border-sky-100 text-sm text-sky-700 flex items-center justify-between">
