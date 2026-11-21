@@ -25,7 +25,7 @@ type BrainTab = 'cockpit' | 'interviewer' | 'decision' | 'vault' | 'ask-export'
 
 interface PromotionBanner {
   target: 'ebook' | 'course' | 'healthscale'
-  action?: 'dispatch' | 'publish-digital-asset'
+  action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
   companyName?: string
   title: string
   primaryUrl: string
@@ -55,10 +55,13 @@ export default function BrainStudioClient({
       productCode?: string
       targetRole?: string
       company?: string
-      action?: 'dispatch' | 'publish-digital-asset'
+      action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
       assetType?: string
       price?: number
       deliveryUrl?: string
+      publish?: boolean
+      category?: string
+      keyword?: string
     }
   ): Promise<PromotionBanner | null> {
     try {
@@ -99,14 +102,35 @@ export default function BrainStudioClient({
                   primaryUrl: json.healthScaleUrl,
                   primaryLabel: 'เปิดคลังสินค้าดิจิทัลใน DgtProduct',
                 }
-              : {
-                  target: 'healthscale',
-                  action: 'dispatch',
-                  companyName: json.companyName,
-                  title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน ${json.companyName || 'DgtProduct'}${json.productName ? ` · ${json.productName}` : ''})`,
-                  primaryUrl: json.healthScaleUrl,
-                  primaryLabel: `เปิดดูภารกิจใน ${json.companyName || 'DgtProduct'}`,
-                }
+              : json.action === 'publish-seo-article'
+                ? {
+                    target: 'healthscale',
+                    action: 'publish-seo-article',
+                    companyName: json.companyName,
+                    title: `${json.title} (${json.articleStatus === 'published' ? 'เผยแพร่ขึ้น onepersonceo.com แล้ว' : 'สร้างฉบับร่าง Draft ใน Webmaster แล้ว'})`,
+                    primaryUrl:
+                      json.articleStatus === 'published' && json.articleUrl
+                        ? json.articleUrl
+                        : json.webmasterUrl || json.healthScaleUrl,
+                    primaryLabel:
+                      json.articleStatus === 'published' && json.articleUrl
+                        ? 'เปิดดูบทความบน onepersonceo.com'
+                        : 'เปิดตรวจทานและ Publish ใน Webmaster',
+                    secondaryUrl:
+                      json.articleStatus === 'published'
+                        ? json.webmasterUrl || json.healthScaleUrl
+                        : undefined,
+                    secondaryLabel:
+                      json.articleStatus === 'published' ? 'เปิดจัดการใน Webmaster' : undefined,
+                  }
+                : {
+                    target: 'healthscale',
+                    action: 'dispatch',
+                    companyName: json.companyName,
+                    title: `${json.title} (สร้างแล้ว ${json.tasksCreated || 1} ภารกิจใน ${json.companyName || 'DgtProduct'}${json.productName ? ` · ${json.productName}` : ''})`,
+                    primaryUrl: json.healthScaleUrl,
+                    primaryLabel: `เปิดดูภารกิจใน ${json.companyName || 'DgtProduct'}`,
+                  }
 
       setPromoBanner(banner)
       return banner
@@ -174,7 +198,9 @@ export default function BrainStudioClient({
               {promoBanner.target === 'healthscale'
                 ? promoBanner.action === 'publish-digital-asset'
                   ? `ขึ้นขายใน ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
-                  : `ส่งภารกิจเข้าทีม AI ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
+                  : promoBanner.action === 'publish-seo-article'
+                    ? `ส่งเขียนบทความ SEO/AEO เข้า ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
+                    : `ส่งภารกิจเข้าทีม AI ${promoBanner.companyName || 'DgtProduct'} สำเร็จ:`
                 : `สร้าง${promoBanner.target === 'ebook' ? 'โปรเจกต์ Ebook ใหม่' : 'ไอเดียคอร์สใหม่'}สำเร็จ:`}{' '}
               <strong>&ldquo;{promoBanner.title}&rdquo;</strong>
             </span>
@@ -196,7 +222,13 @@ export default function BrainStudioClient({
             {promoBanner.secondaryUrl && (
               <button
                 type="button"
-                onClick={() => router.push(promoBanner.secondaryUrl!)}
+                onClick={() => {
+                  if (promoBanner.secondaryUrl!.startsWith('http')) {
+                    window.open(promoBanner.secondaryUrl!, '_blank', 'noopener,noreferrer')
+                  } else {
+                    router.push(promoBanner.secondaryUrl!)
+                  }
+                }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold cursor-pointer"
               >
                 {promoBanner.secondaryLabel}

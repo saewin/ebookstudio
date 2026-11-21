@@ -21,6 +21,7 @@ import {
   Play,
   FileText,
   X,
+  Globe,
 } from 'lucide-react'
 import type {
   BrainCategory,
@@ -64,10 +65,11 @@ interface CockpitTabProps {
       productCode?: string
       targetRole?: string
       company?: string
-      action?: 'dispatch' | 'publish-digital-asset'
+      action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
       assetType?: string
       price?: number
       deliveryUrl?: string
+      publish?: boolean
     }
   ) => Promise<unknown>
   onOpenVaultCategory: (cat: BrainCategory) => void
@@ -888,6 +890,24 @@ export default function CockpitTab({
             >
               <Zap size={14} /> ส่งให้ AI DgtProduct
             </button>
+            <button
+              type="button"
+              onClick={() =>
+                onPromoteNote('healthscale', {
+                  noteId: aiDeliverable.id,
+                  title: aiDeliverable.title,
+                  summary: aiDeliverable.summary,
+                  content: aiDeliverable.content,
+                  company: 'DgtProduct',
+                  productCode: 'DGT-01',
+                  action: 'publish-seo-article',
+                  publish: false,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+            >
+              <Globe size={14} /> ส่งเขียนบทความ onepersonceo.com
+            </button>
           </div>
         </div>
       )}
@@ -992,6 +1012,26 @@ export default function CockpitTab({
                     className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold cursor-pointer"
                   >
                     <Zap size={12} /> ส่ง DgtProduct
+                  </button>
+                  <button
+                    type="button"
+                    disabled={promotingKey === `seo-${i}`}
+                    onClick={async () => {
+                      setPromotingKey(`seo-${i}`)
+                      await onPromoteNote('healthscale', {
+                        title: sp.title,
+                        summary: sp.whyItWorks,
+                        content: `# ${sp.title}\n\n${sp.whyItWorks}\n\n${sp.actionIdea}`,
+                        company: 'DgtProduct',
+                        productCode: 'DGT-01',
+                        action: 'publish-seo-article',
+                        publish: false,
+                      })
+                      setPromotingKey(null)
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    <Globe size={12} /> ลงเว็บ SEO
                   </button>
                 </div>
               </div>

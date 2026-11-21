@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
       assetType,
       price,
       deliveryUrl,
+      publish,
+      category,
+      keyword,
     } = body
 
     const state = await getBrainStudioState()
@@ -119,6 +122,13 @@ export async function POST(request: NextRequest) {
         process.env.HEALTHSCALE_DEFAULT_COMPANY ||
         'DgtProduct'
 
+      const resolvedAction =
+        action === 'publish-digital-asset'
+          ? 'publish-digital-asset'
+          : action === 'publish-seo-article'
+            ? 'publish-seo-article'
+            : 'dispatch'
+
       const bridgeRes = await fetch(`${baseUrl}/api/bridge/brain-idea`, {
         method: 'POST',
         headers: {
@@ -127,10 +137,13 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           company: resolvedCompany,
-          action: action === 'publish-digital-asset' ? 'publish-digital-asset' : 'dispatch',
+          action: resolvedAction,
           assetType: typeof assetType === 'string' ? assetType : undefined,
           price: typeof price === 'number' ? price : undefined,
           deliveryUrl: typeof deliveryUrl === 'string' ? deliveryUrl : '',
+          publish: typeof publish === 'boolean' ? publish : undefined,
+          category: typeof category === 'string' ? category : undefined,
+          keyword: typeof keyword === 'string' ? keyword : undefined,
           title: finalTitle,
           summary: finalSummary,
           content: finalContent,
@@ -155,16 +168,21 @@ export async function POST(request: NextRequest) {
       const targetPath =
         bridgeData.action === 'publish-digital-asset'
           ? bridgeData.dafUrl || '/dashboard/daf'
-          : bridgeData.dashboardUrl || '/dashboard/master'
+          : bridgeData.action === 'publish-seo-article'
+            ? bridgeData.webmasterUrl || '/dashboard/webmaster'
+            : bridgeData.dashboardUrl || '/dashboard/master'
 
       return NextResponse.json({
         success: true,
         target: 'healthscale',
-        action: bridgeData.action || action || 'dispatch',
+        action: bridgeData.action || resolvedAction,
         companyName: bridgeData.company?.companyName || resolvedCompany,
-        title: finalTitle,
+        title: bridgeData.article?.title || finalTitle,
         tasksCreated: bridgeData.tasksCreated || 1,
         productName: bridgeData.product?.name || '',
+        articleUrl: bridgeData.articleUrl || bridgeData.article?.link || '',
+        articleStatus: bridgeData.articleStatus || bridgeData.article?.status || '',
+        webmasterUrl: `${baseUrl}${bridgeData.webmasterUrl || '/dashboard/webmaster'}`,
         healthScaleUrl: `${baseUrl}${targetPath}`,
       })
     }

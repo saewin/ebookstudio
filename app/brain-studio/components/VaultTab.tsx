@@ -24,6 +24,7 @@ import {
   Target,
   Zap,
   ShoppingBag,
+  Globe,
 } from 'lucide-react'
 import type { BrainCategory, BrainNote } from '@/lib/brainStudioDb'
 import { BRAIN_CATEGORIES, getCategoryMeta } from './brainMeta'
@@ -50,10 +51,12 @@ interface VaultTabProps {
       productCode?: string
       targetRole?: string
       company?: string
-      action?: 'dispatch' | 'publish-digital-asset'
+      action?: 'dispatch' | 'publish-digital-asset' | 'publish-seo-article'
       assetType?: string
       price?: number
       deliveryUrl?: string
+      publish?: boolean
+      category?: string
     }
   ) => Promise<PromoteResult | null>
   onAddFocusTask?: (taskText: string, delegateTo?: 'self' | 'ai-agent') => Promise<void>
@@ -96,7 +99,7 @@ export default function VaultTab({
 
   // Brain-to-Action feedback
   const [promoting, setPromoting] = useState<
-    'ebook' | 'course' | 'focus' | 'healthscale' | 'healthscale-publish' | null
+    'ebook' | 'course' | 'focus' | 'healthscale' | 'healthscale-publish' | 'healthscale-seo' | null
   >(null)
   const [inlinePromo, setInlinePromo] = useState<PromoteResult | null>(null)
   const [focusAddedNotice, setFocusAddedNotice] = useState(false)
@@ -105,6 +108,7 @@ export default function VaultTab({
   const [hsAssetType, setHsAssetType] = useState<
     'ebook' | 'course' | 'prompts' | 'templates' | 'audiobook' | 'drip'
   >('ebook')
+  const [hsSeoPublishMode, setHsSeoPublishMode] = useState<'draft' | 'published'>('draft')
 
   useEffect(() => {
     setCategoryFilter(initialCategory)
@@ -995,6 +999,47 @@ export default function VaultTab({
                       {promoting === 'healthscale-publish'
                         ? 'กำลังขึ้นขายใน DgtProduct...'
                         : '🛒 ขึ้นขายใน DgtProduct ทันที'}
+                    </button>
+                  </div>
+
+                  {/* Direct 1-click SEO/AEO Article publish straight to onepersonceo.com Webmaster */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={hsSeoPublishMode}
+                      onChange={(e) => setHsSeoPublishMode(e.target.value as 'draft' | 'published')}
+                      className="px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-indigo-500"
+                      title="เลือกสถานะบทความบนเว็บ onepersonceo.com"
+                    >
+                      <option value="draft">📝 ส่งเป็น Draft ใน Webmaster (แนะนำ)</option>
+                      <option value="published">🚀 เขียนและ Publish ขึ้น onepersonceo.com ทันที</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={promoting !== null}
+                      onClick={async () => {
+                        const [targetCompany, targetProduct] = hsTargetCompanyProduct.split('|')
+                        setPromoting('healthscale-seo')
+                        const res = await onPromoteNote('healthscale', {
+                          noteId: activeNote.id,
+                          title: activeNote.title,
+                          summary: activeNote.summary,
+                          content: activeNote.content,
+                          company: targetCompany === 'saewin' ? 'DgtProduct' : targetCompany || 'DgtProduct',
+                          productCode:
+                            targetCompany === 'saewin' ? 'DGT-01' : targetProduct || 'DGT-01',
+                          action: 'publish-seo-article',
+                          publish: hsSeoPublishMode === 'published',
+                        })
+                        if (res) setInlinePromo(res)
+                        setPromoting(null)
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      <Globe size={14} />
+                      {promoting === 'healthscale-seo'
+                        ? 'กำลังเขียนบทความ SEO/AEO...'
+                        : '🌐 ส่งเขียนบทความลง onepersonceo.com'}
                     </button>
                   </div>
                 </div>
