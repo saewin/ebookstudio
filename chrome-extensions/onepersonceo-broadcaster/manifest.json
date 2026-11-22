@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OnePersonCEO Knowledge Broadcaster",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "เครื่องมือบรอดแคสต์ให้ความรู้เฉพาะเพจ OnePersonCEO (เสวิญ) ผ่าน Meta Business Suite Inbox พร้อม 4 Presets, Spintax และระบบป้องกันส่งซ้ำ",
   "permissions": [
     "storage",

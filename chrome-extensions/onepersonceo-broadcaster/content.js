@@ -1,7 +1,7 @@
-// OnePersonCEO Knowledge Broadcaster — Content Script v1.0.2 for Meta Business Suite Inbox
+// OnePersonCEO Knowledge Broadcaster — Content Script v1.0.3 for Meta Business Suite Inbox
 
 (() => {
-  const SCRIPT_VERSION = '1.0.2';
+  const SCRIPT_VERSION = '1.0.3';
   if (window.__ONEPERSONCEO_BROADCASTER_VER__ === SCRIPT_VERSION) {
     return;
   }
@@ -294,24 +294,112 @@
     };
   }
 
+  function normalizeForCompare(str) {
+    return (str || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function getActiveChatHeaderTexts() {
+    const texts = [];
+    const vw = window.innerWidth;
+    // Center chat header (above conversation messages) and right profile panel top
+    const nodes = document.querySelectorAll('h1, h2, h3, h4, span, div, a');
+    for (const el of nodes) {
+      if (el.children.length > 2) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10 || rect.height > 60) continue;
+      // Center pane header or right profile card header
+      const inCenterHeader = rect.left >= vw * 0.24 && rect.left <= vw * 0.72 && rect.top >= 110 && rect.top <= 340;
+      const inRightHeader = rect.left >= vw * 0.72 && rect.top >= 110 && rect.top <= 320;
+      if (!inCenterHeader && !inRightHeader) continue;
+
+      const t = normalizeText(el.innerText || el.textContent);
+      if (t && t.length >= 2 && t.length <= 90) {
+        texts.push(t);
+      }
+    }
+    return texts;
+  }
+
+  function isActiveChatMatching(targetName) {
+    const want = normalizeForCompare(targetName);
+    if (!want) return false;
+    const headerTexts = getActiveChatHeaderTexts();
+    return headerTexts.some((t) => {
+      const got = normalizeForCompare(t);
+      return got === want || (got.length >= 3 && (got.includes(want) || want.includes(got)));
+    });
+  }
+
+  function triggerRealClick(rowEl) {
+    const clickable =
+      rowEl.querySelector('a[href], [role="button"], [tabindex="0"]') ||
+      rowEl;
+
+    const rect = clickable.getBoundingClientRect();
+    const clientX = rect.left + Math.min(rect.width / 2, 80);
+    const clientY = rect.top + rect.height / 2;
+
+    const opts = { bubbles: true, cancelable: true, view: window, clientX, clientY };
+    clickable.dispatchEvent(new MouseEvent('mouseover', opts));
+    clickable.dispatchEvent(new MouseEvent('mousedown', opts));
+    clickable.dispatchEvent(new MouseEvent('mouseup', opts));
+    clickable.dispatchEvent(new MouseEvent('click', opts));
+    if (typeof clickable.click === 'function') {
+      clickable.click();
+    }
+  }
+
   async function findAndClickContact(targetName, targetKey) {
+    // If already open on the exact target chat, verify and proceed
+    if (isActiveChatMatching(targetName)) {
+      return { ok: true, verified: true };
+    }
+
     const container = findThreadListContainer();
     if (!container) return { ok: false, error: 'ไม่พบแถบรายการแชทฝั่งซ้าย' };
 
-    container.scrollTop = 0;
-    await sleep(250);
+    if (container !== document.body) {
+      container.scrollTop = 0;
+      await sleep(250);
+    }
 
     for (let attempt = 0; attempt < 25; attempt++) {
       const items = extractThreadElements(container);
-      const exactMatch = items.find((i) => i.key === targetKey) || items.find((i) => i.name === targetName);
+      const exactMatch =
+        items.find((i) => i.key === targetKey) ||
+        items.find((i) => normalizeForCompare(i.name) === normalizeForCompare(targetName));
+
       if (exactMatch && exactMatch.element) {
-        exactMatch.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await sleep(200);
-        exactMatch.element.click();
-        await sleep(700);
-        return { ok: true };
+        exactMatch.element.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(250);
+        triggerRealClick(exactMatch.element);
+
+        // STRICT VERIFICATION: wait up to 4.5s for the center chat header to actually switch to targetName
+        for (let check = 0; check < 15; check++) {
+          await sleep(300);
+          if (isActiveChatMatching(targetName)) {
+            await sleep(250);
+            return { ok: true, verified: true };
+          }
+        }
+
+        // Retry click once on the outer row element itself
+        triggerRealClick(exactMatch.element.parentElement || exactMatch.element);
+        for (let check = 0; check < 10; check++) {
+          await sleep(300);
+          if (isActiveChatMatching(targetName)) {
+            await sleep(250);
+            return { ok: true, verified: true };
+          }
+        }
+
+        return {
+          ok: false,
+          error: `ป้องกันการส่งผิดคน: คลิกแชท "${targetName}" แล้วแต่หน้าแชทตรงกลางไม่เปลี่ยนตาม (ข้ามคนนี้เพื่อความปลอดภัย)`,
+        };
       }
 
+      if (container === document.body) break;
       const prevTop = container.scrollTop;
       container.scrollTop += Math.max(400, container.clientHeight * 0.8);
       await sleep(450);
@@ -322,7 +410,6 @@
   }
 
   function findMessageComposer() {
-    // Meta Business Suite Messenger composer is typically a textarea or contenteditable textbox near the bottom-center
     const candidates = [
       'textarea[placeholder*="Messenger"]',
       'textarea[placeholder*="ตอบกลับ"]',
@@ -349,6 +436,7 @@
     if (composer.tagName === 'TEXTAREA' || composer.tagName === 'INPUT') {
       const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
       if (nativeSetter) {
+        nativeSetter.call(composer, '');
         nativeSetter.call(composer, text);
       } else {
         composer.value = text;
@@ -356,7 +444,6 @@
       composer.dispatchEvent(new Event('input', { bubbles: true }));
       composer.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
-      // contenteditable div (Lexical / Draft.js)
       const selection = window.getSelection();
       const range = document.createRange();
       range.selectNodeContents(composer);
@@ -388,7 +475,6 @@
       }
     }
 
-    // Fallback: press Enter on the composer
     composer.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Enter',
@@ -406,7 +492,14 @@
     const opened = await findAndClickContact(name, key);
     if (!opened.ok) return opened;
 
-    // Wait up to 4 seconds for composer to render
+    // Double-check active chat header RIGHT before typing
+    if (!isActiveChatMatching(name)) {
+      return {
+        ok: false,
+        error: `ป้องกันการส่งผิดคน: ชื่อหัวแชทไม่ตรงกับ "${name}" — ยกเลิกการส่งทันที`,
+      };
+    }
+
     let composer = null;
     for (let i = 0; i < 8; i++) {
       composer = findMessageComposer();
@@ -422,6 +515,13 @@
     await sleep(450);
 
     if (autoSend) {
+      // Final verification right before clicking Send
+      if (!isActiveChatMatching(name)) {
+        return {
+          ok: false,
+          error: `ป้องกันการส่งผิดคน: ชื่อแชทเปลี่ยนก่อนกดส่ง ("${name}") — หยุดการส่งทันที`,
+        };
+      }
       clickSendButton(composer);
       await sleep(500);
       return { ok: true, mode: 'sent' };
@@ -430,11 +530,20 @@
     return { ok: true, mode: 'draft' };
   }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // Remove any previous listener from an earlier version to prevent duplicate messages
+  if (window.__ONEPERSONCEO_MSG_LISTENER__) {
+    try {
+      chrome.runtime.onMessage.removeListener(window.__ONEPERSONCEO_MSG_LISTENER__);
+    } catch {
+      // ignore
+    }
+  }
+
+  const messageHandler = (message, _sender, sendResponse) => {
     if (!message || !message.type) return false;
 
     if (message.type === 'PING') {
-      sendResponse({ ok: true });
+      sendResponse({ ok: true, version: SCRIPT_VERSION });
       return false;
     }
 
@@ -446,6 +555,7 @@
           const hasList = Boolean(findThreadListContainer());
           sendResponse({
             ok: true,
+            version: SCRIPT_VERSION,
             isInbox,
             pageName,
             hasList,
@@ -476,6 +586,10 @@
     })();
 
     return true;
-  });
+  };
+
+  window.__ONEPERSONCEO_MSG_LISTENER__ = messageHandler;
+  chrome.runtime.onMessage.addListener(messageHandler);
 })();
+
 
