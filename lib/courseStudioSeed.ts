@@ -14,7 +14,7 @@ export function createFlagshipPrototypeCourse(): CourseProject {
     bigIdea: 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1',
     format: 'workshop-1day',
     durationLabel: 'Workshop สด 1 วัน (09:00 – 17:30 น.)',
-    instructor: 'อดิศร เทพวัลย์ (Director · Ebook Studio)',
+    instructor: 'เสวิญ (Saewin · OnePersonCEO)',
     targetAudience:
       'เจ้าของธุรกิจ SME, Solopreneur, ผู้ประกอบการอิสระ และผู้เชี่ยวชาญที่อยากสร้างธุรกิจที่เติบโตอย่างมั่งคั่ง มีเวลา และสุขภาพดี ด้วยทีม AI Agents บน Google Antigravity',
     status: 'ready',

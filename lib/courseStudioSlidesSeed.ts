@@ -16,7 +16,7 @@ export const FLAGSHIP_SLIDES: CourseSlide[] = [
     bullets: [
       'ระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity',
       'เติบโตอย่างมั่งคั่ง มีเวลาใช้ชีวิต และสุขภาพดี',
-      'โดย อดิศร เทพวัลย์ (Director · Ebook Studio)',
+      'โดย เสวิญ (Saewin · OnePersonCEO)',
     ],
     highlightBox: 'เป้าหมายวันนี้: จบ 1 วัน คุณจะได้ทั้งคลังความรู้ BrainStudio + ทีม 8 AI Agents + AI CEO กลับไปใช้งานจริง',
     speakerNotes:

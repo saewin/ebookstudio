@@ -6,6 +6,13 @@ import { createFlagshipPrototypeCourse, FLAGSHIP_PROTOTYPE_ID } from './courseSt
 
 const DB_DIR = path.join(process.cwd(), 'public', 'uploads', 'db')
 const COURSES_FILE = path.join(DB_DIR, 'courses.json')
+const REAL_NAME_PATTERN =
+  /\u0E2D\u0E14\u0E34\u0E28\u0E23(?:\s+\u0E40\u0E17\u0E1E\u0E27\u0E31\u0E25\u0E22\u0E4C)?(?:\s*\(Director\s*·\s*Ebook Studio\))?/g
+const PEN_NAME_CREDIT = 'เสวิญ (Saewin · OnePersonCEO)'
+
+function replaceRealName(value: string): string {
+  return value.replace(REAL_NAME_PATTERN, PEN_NAME_CREDIT)
+}
 
 async function ensureDbDir(): Promise<void> {
   if (!existsSync(DB_DIR)) {
@@ -37,6 +44,7 @@ export async function getCourses(): Promise<CourseProject[]> {
     // One-time migration for the flagship prototype course when upgrading from older seed versions
     let migrated = false
     const nextCourses = parsed.map((c) => {
+      let updatedCourse = c
       if (c.id === FLAGSHIP_PROTOTYPE_ID) {
         const needsTitleMigration =
           c.title === 'ฉันนี่แหละประธานบริษัท 2.0: The AI-Native Solopreneur' || !c.seriesTitle
@@ -80,7 +88,7 @@ export async function getCourses(): Promise<CourseProject[]> {
             }
           }
 
-          return {
+          updatedCourse = {
             ...c,
             ...(needsTitleMigration
               ? {
@@ -96,7 +104,34 @@ export async function getCourses(): Promise<CourseProject[]> {
           }
         }
       }
-      return c
+
+      // Idempotent pen-name migration: replace any legacy real-name credits without overwriting user edits
+      const nextInstructor = updatedCourse.instructor
+        ? replaceRealName(updatedCourse.instructor)
+        : updatedCourse.instructor
+      if (nextInstructor !== updatedCourse.instructor) {
+        migrated = true
+        updatedCourse = { ...updatedCourse, instructor: nextInstructor }
+      }
+      if (Array.isArray(updatedCourse.slides)) {
+        let slidesChanged = false
+        const nextSlides = updatedCourse.slides.map((sl) => {
+          if (!Array.isArray(sl.bullets)) return sl
+          const nextBullets = sl.bullets.map((b) => replaceRealName(b))
+          const changed = nextBullets.some((b, idx) => b !== sl.bullets[idx])
+          if (changed) {
+            slidesChanged = true
+            return { ...sl, bullets: nextBullets }
+          }
+          return sl
+        })
+        if (slidesChanged) {
+          migrated = true
+          updatedCourse = { ...updatedCourse, slides: nextSlides }
+        }
+      }
+
+      return updatedCourse
     })
     if (migrated) {
       await writeCourses(nextCourses)
@@ -174,7 +209,7 @@ export function createBlankCourse(params: {
         : format === 'workshop-2day'
           ? 'Workshop สด 2 วัน'
           : 'คอร์สออนไลน์',
-    instructor: 'อดิศร เทพวัลย์',
+    instructor: 'เสวิญ (Saewin)',
     targetAudience: params.targetAudience?.trim() || 'เจ้าของธุรกิจและผู้ประกอบการยุค AI',
     status: 'draft',
     slideTheme: 'executive-blue',
