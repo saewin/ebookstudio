@@ -12,7 +12,7 @@
       <div class="brand-logo">1P</div>
       <div>
         <div class="brand-title">OnePersonCEO Knowledge Broadcaster</div>
-        <div class="brand-sub">ระบบบรอดแคสต์ให้ความรู้เฉพาะเพจ OnePersonCEO (เสวิญ) • v1.0.3</div>
+        <div class="brand-sub">ระบบบรอดแคสต์ให้ความรู้ + ฐานข้อมูล CDP &amp; RFM เฉพาะเพจ OnePersonCEO (เสวิญ) • v1.1.0</div>
       </div>
     </div>
     <div class="topbar-right">
@@ -25,10 +25,10 @@
   <main class="container">
     <div class="banner">
       <div>
-        <strong>🛡️ โหมดปลอดภัยสำหรับเพจให้ความรู้ (Spintax + Cooldown + Safe Draft):</strong>
-        ทำงานผ่านเบราว์เซอร์ของคุณโดยตรง ห้ามปิดแท็บนี้ขณะกำลังส่ง และควรสลับเพจใน Meta Business Suite ให้เป็น <strong>One Person Ceo</strong> ก่อนดึงรายชื่อเสมอ
+        <strong>🛡️ โหมดปลอดภัย + ฐานข้อมูล CDP ส่วนตัว (IndexedDB รองรับ 100,000+ รายชื่อ):</strong>
+        ดึงรายชื่อเก็บลงเครื่องอัตโนมัติ แบ่งกลุ่ม RFM/RSV และล็อกตรวจชื่อหัวแชท 3 ชั้นก่อนส่งทุกครั้ง
       </div>
-      <span id="cooldownSummary" class="pill">ประวัติส่งแล้ว: 0 คน</span>
+      <span id="cooldownSummary" class="pill">ฐานข้อมูล: 0 คน • ส่งแล้ว: 0 คน</span>
     </div>
 
     <section class="card">
@@ -45,8 +45,8 @@
           <div id="statusPage" class="status-value">-</div>
         </div>
         <div class="status-box">
-          <div class="status-label">รายการแชทที่พร้อมส่ง</div>
-          <div id="statusContacts" class="status-value">0 คน (กดปุ่มดึงรายชื่อด้านล่าง)</div>
+          <div class="status-label">ฐานข้อมูล CDP เพจ One Person Ceo</div>
+          <div id="statusContacts" class="status-value">0 คน (พร้อมดึงเพิ่มไม่จำกัด)</div>
         </div>
       </div>
     </section>
@@ -97,33 +97,44 @@
           </div>
         </section>
 
-        <!-- 2. CONTACTS -->
+        <!-- 2. CDP & RFM CONTACTS -->
         <section class="card">
           <div class="card-header">
-            <div class="card-title">👥 2. ดึงรายชื่อแชทจาก Inbox เพจ One Person Ceo</div>
+            <div class="card-title">👥 2. ฐานข้อมูลลูกค้า (CDP) &amp; แบ่งกลุ่ม RFM / RSV</div>
             <div class="row">
-              <select id="scanDepth" style="width: auto; padding: 6px 10px;">
-                <option value="4">สแกนเร็ว (~40-60 คน)</option>
-                <option value="10" selected>สแกนปกติ (~100-150 คน)</option>
-                <option value="20">สแกนลึก (~200-300 คน)</option>
+              <select id="scanTargetCount" style="width: auto; padding: 6px 10px;">
+                <option value="500">ดึงสูงสุด 500 คน</option>
+                <option value="2000" selected>ดึงสูงสุด 2,000 คน</option>
+                <option value="5000">ดึงสูงสุด 5,000 คน</option>
+                <option value="0">ดึงไม่จำกัด (จนสุด Inbox)</option>
               </select>
-              <button id="btnScanInbox" class="btn btn-success btn-sm">⚡ ดึงรายชื่อแชทสดจาก Inbox</button>
+              <button id="btnScanInbox" class="btn btn-success btn-sm">⚡ ดึงรายชื่อเข้าฐานข้อมูล</button>
+              <button id="btnStopScan" class="btn btn-danger btn-sm" style="display: none;">⏹ หยุดสแกน</button>
             </div>
           </div>
 
+          <div style="margin-bottom: 12px;">
+            <label class="field-label" for="segmentSelect">เลือกกลุ่มเป้าหมาย (RFM &amp; Lead Segment)</label>
+            <select id="segmentSelect"></select>
+          </div>
+
           <div class="row-between" style="margin-bottom: 10px;">
-            <input id="contactSearch" type="text" placeholder="ค้นหาชื่อลูกเพจ..." style="max-width: 260px;" />
+            <input id="contactSearch" type="text" placeholder="ค้นหาชื่อหรือป้ายกำกับ..." style="max-width: 240px;" />
             <div class="row">
               <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <input id="chkSelectAll" type="checkbox" checked /> เลือกทั้งหมดที่พร้อมส่ง
+                <input id="chkSelectAll" type="checkbox" checked /> เลือกทั้งกลุ่มนี้
               </label>
-              <button id="btnClearHistory" class="btn btn-sm">ล้างประวัติ Cooldown</button>
+              <button id="btnImportCsv" class="btn btn-sm">📥 Import CSV</button>
+              <input id="csvFileInput" type="file" accept=".csv,text/csv" style="display: none;" />
+              <button id="btnExportCsv" class="btn btn-sm">📤 Export CSV</button>
+              <button id="btnClearHistory" class="btn btn-sm">ล้าง Cooldown</button>
+              <button id="btnClearDb" class="btn btn-danger btn-sm">ล้าง DB</button>
             </div>
           </div>
 
           <div id="contactsList" class="contacts-list">
             <div style="color: var(--muted); font-size: 13px; padding: 14px; text-align: center;">
-              ยังไม่มีรายชื่อ — เปิดแท็บ Meta Business Suite เลือกเพจ One Person Ceo แล้วกดปุ่ม "ดึงรายชื่อแชทสดจาก Inbox"
+              กำลังโหลดฐานข้อมูล CDP...
             </div>
           </div>
         </section>
@@ -143,7 +154,7 @@
               <div class="preview-avatar">1P</div>
               <div>
                 <div style="font-size: 13px; font-weight: 700;">One Person Ceo • เสวิญ</div>
-                <div style="font-size: 11px; color: #6b7280;">Messenger Preview (ตัวอย่างชื่อ: <span id="previewSampleName">คุณธนพล</span>)</div>
+                <div style="font-size: 11px; color: #6b7280;">Messenger Preview (ตัวอย่างชื่อ: <span id="previewSampleName">ธนพล</span>)</div>
               </div>
             </div>
             <div id="previewBubble" class="preview-bubble"></div>
@@ -174,13 +185,13 @@
 
           <div style="margin-bottom: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border);">
             <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-              <input id="chkAutoSend" type="checkbox" checked />
-              <span><strong>ส่งข้อความอัตโนมัติ (Auto-Send)</strong> — ถ้าเอาติ๊กออก ระบบจะวางข้อความไว้ในช่องแชทให้คุณกด Enter ตรวจเอง (Safe Draft)</span>
+              <input id="chkAutoSend" type="checkbox" />
+              <span><strong>ส่งข้อความอัตโนมัติ (Auto-Send)</strong> — ค่าเริ่มต้นปิดไว้ (Safe Draft) เพื่อทดสอบว่าเปิดแชทถูกคนก่อน แล้วค่อยติ๊กเปิดเพื่อส่งจริง</span>
             </label>
           </div>
 
           <div class="row" style="margin-bottom: 14px;">
-            <button id="btnStartSend" class="btn btn-primary" style="flex: 1;">▶ เริ่มบรอดแคสต์ให้ความรู้</button>
+            <button id="btnStartSend" class="btn btn-primary" style="flex: 1;">▶ เริ่มบรอดแคสต์ให้กลุ่มที่เลือก</button>
             <button id="btnPauseSend" class="btn" disabled>⏸ พัก</button>
             <button id="btnStopSend" class="btn btn-danger" disabled>⏹ หยุด</button>
           </div>
@@ -198,7 +209,7 @@
           <div style="margin-top: 12px;">
             <label class="field-label">บันทึกการทำงานแบบ Real-time</label>
             <div id="logBox" class="log-box">
-              <div class="log-info">[ระบบ] พร้อมใช้งาน — กด "ตรวจสอบการเชื่อมต่อ" เพื่อเริ่ม</div>
+              <div class="log-info">[ระบบ] พร้อมใช้งาน v1.1.0 (CDP + RFM + Unlimited Sync)</div>
             </div>
           </div>
         </section>
@@ -206,6 +217,7 @@
     </div>
   </main>
 
+  <script src="db.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

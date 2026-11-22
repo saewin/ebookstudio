@@ -1,4 +1,4 @@
-// OnePersonCEO Knowledge Broadcaster — Dashboard Controller
+// OnePersonCEO Knowledge Broadcaster v1.1.0 — Dashboard Controller (CDP + RFM + Unlimited Sync)
 
 const STORAGE_KEYS = {
   PRESETS: 'onepersonceo_presets_v1',
@@ -10,6 +10,16 @@ const GREETINGS = [
   'ทักทายครับ',
   'หวัดดีครับ',
   'สวัสดีครับผม',
+];
+
+const SEGMENT_DEFS = [
+  { id: 'all', label: '📋 ทั้งหมดในฐานข้อมูล (All Contacts)' },
+  { id: 'hot_leads', label: '🔥 Hot Leads (ทักมา ≤ 7 วัน — สดใหม่พร้อมคุย)' },
+  { id: 'warm_leads', label: '☀️ Warm Leads (ทักมา 8–30 วัน — อุ่นเครื่องให้ความรู้)' },
+  { id: 'cold_inquirers', label: '❄️ Cold Inquirers (> 30 วัน — ปลุกความสนใจด้วย AI)' },
+  { id: 'ads_inquirers', label: '🏷️ Ads & Intake (ทักจากโฆษณา / ติดป้าย Intake)' },
+  { id: 'buyers', label: '🎓 Buyers / Alumni (เคยซื้อ E-book / Workshop)' },
+  { id: 'vip', label: '👑 VIP / Repeat Buyers (ซื้อซ้ำ ≥ 2 ครั้ง หรือยอด ≥ 5,000฿)' },
 ];
 
 const DEFAULT_PRESETS = [
@@ -95,14 +105,15 @@ Ref: #{code}`,
 // State
 let presets = [];
 let activePresetId = null;
-let contacts = [];
+let allContacts = []; // Loaded from IndexedDB CDP
+let activeSegment = 'all';
 let selectedKeys = new Set();
-let sentHistory = {}; // { [contactKey]: timestampMs }
+let sentHistory = {};
 let isSending = false;
 let isPaused = false;
 let shouldStop = false;
+let isScanning = false;
 
-// DOM refs
 const el = {
   connectionPill: document.getElementById('connectionPill'),
   btnCheckConn: document.getElementById('btnCheckConn'),
@@ -119,11 +130,17 @@ const el = {
   btnAddPreset: document.getElementById('btnAddPreset'),
   btnDeletePreset: document.getElementById('btnDeletePreset'),
   btnResetPresets: document.getElementById('btnResetPresets'),
-  scanDepth: document.getElementById('scanDepth'),
+  scanTargetCount: document.getElementById('scanTargetCount'),
   btnScanInbox: document.getElementById('btnScanInbox'),
+  btnStopScan: document.getElementById('btnStopScan'),
+  segmentSelect: document.getElementById('segmentSelect'),
   contactSearch: document.getElementById('contactSearch'),
   chkSelectAll: document.getElementById('chkSelectAll'),
+  btnImportCsv: document.getElementById('btnImportCsv'),
+  csvFileInput: document.getElementById('csvFileInput'),
+  btnExportCsv: document.getElementById('btnExportCsv'),
   btnClearHistory: document.getElementById('btnClearHistory'),
+  btnClearDb: document.getElementById('btnClearDb'),
   contactsList: document.getElementById('contactsList'),
   btnRandomizePreview: document.getElementById('btnRandomizePreview'),
   previewSampleName: document.getElementById('previewSampleName'),
@@ -154,13 +171,11 @@ function addLog(text, level = 'info') {
 function randomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let out = '';
-  for (let i = 0; i < 4; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
+  for (let i = 0; i < 4; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
 }
 
-function renderSpintax(template, contactName = 'คุณธนพล') {
+function renderSpintax(template, contactName = 'ธนพล') {
   const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
   let text = (template || '')
     .replace(/\{greeting\}/g, greeting)
@@ -168,7 +183,6 @@ function renderSpintax(template, contactName = 'คุณธนพล') {
     .replace(/#\{code\}/g, `#${randomCode()}`)
     .replace(/\{code\}/g, randomCode());
 
-  // Resolve {option1|option2|option3} spintax blocks
   text = text.replace(/\{([^{}|]+\|[^{}]+)\}/g, (_match, group) => {
     const parts = group.split('|');
     return parts[Math.floor(Math.random() * parts.length)];
@@ -186,15 +200,54 @@ function isContactInCooldown(key) {
   return diffDays < days;
 }
 
+function getFilteredContacts() {
+  const query = (el.contactSearch.value || '').trim().toLowerCase();
+  return allContacts.filter((c) => {
+    if (activeSegment !== 'all' && c.segment !== activeSegment) return false;
+    if (!query) return true;
+    const labelStr = (c.labels || []).join(' ').toLowerCase();
+    return (
+      (c.name || '').toLowerCase().includes(query) ||
+      (c.snippet || '').toLowerCase().includes(query) ||
+      labelStr.includes(query)
+    );
+  });
+}
+
+function updateSummaryCounters() {
+  const sentCount = Object.keys(sentHistory).length;
+  el.cooldownSummary.textContent = `ฐานข้อมูล: ${allContacts.length.toLocaleString()} คน • ส่งแล้ว: ${sentCount.toLocaleString()} คน`;
+  const readyInView = getFilteredContacts().filter((c) => !isContactInCooldown(c.key)).length;
+  el.statusContacts.textContent = `ทั้งหมด ${allContacts.length.toLocaleString()} คน (กลุ่มนี้พร้อมส่ง ${readyInView.toLocaleString()} คน)`;
+}
+
+function renderSegmentOptions() {
+  const counts = { all: allContacts.length };
+  for (const c of allContacts) {
+    counts[c.segment] = (counts[c.segment] || 0) + 1;
+  }
+
+  el.segmentSelect.innerHTML = '';
+  for (const seg of SEGMENT_DEFS) {
+    const opt = document.createElement('option');
+    opt.value = seg.id;
+    const cnt = counts[seg.id] || 0;
+    opt.textContent = `${seg.label} — (${cnt.toLocaleString()} คน)`;
+    if (seg.id === activeSegment) opt.selected = true;
+    el.segmentSelect.appendChild(opt);
+  }
+}
+
 function updatePreview() {
-  const sampleContact = contacts.find((c) => selectedKeys.has(c.key));
+  const filtered = getFilteredContacts();
+  const sampleContact = filtered.find((c) => selectedKeys.has(c.key) && !isContactInCooldown(c.key)) || filtered[0];
   const sampleName = sampleContact ? sampleContact.name : 'ธนพล';
   el.previewSampleName.textContent = sampleName;
   el.previewBubble.textContent = renderSpintax(el.messageInput.value, sampleName);
   el.charCount.textContent = `${el.messageInput.value.length} ตัวอักษร`;
 
-  const readySelectedCount = contacts.filter((c) => selectedKeys.has(c.key) && !isContactInCooldown(c.key)).length;
-  el.previewFooter.textContent = `พร้อมส่งให้ ${readySelectedCount} คน`;
+  const readySelectedCount = filtered.filter((c) => selectedKeys.has(c.key) && !isContactInCooldown(c.key)).length;
+  el.previewFooter.textContent = `พร้อมส่งในกลุ่มนี้ ${readySelectedCount.toLocaleString()} คน`;
 }
 
 function renderPresets() {
@@ -203,10 +256,7 @@ function renderPresets() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `preset-btn${p.id === activePresetId ? ' active' : ''}`;
-    btn.innerHTML = `
-      <div class="preset-btn-title"></div>
-      <div class="preset-btn-desc"></div>
-    `;
+    btn.innerHTML = `<div class="preset-btn-title"></div><div class="preset-btn-desc"></div>`;
     btn.querySelector('.preset-btn-title').textContent = p.title;
     btn.querySelector('.preset-btn-desc').textContent = p.desc || 'คลิกเพื่อโหลดข้อความนี้';
     btn.addEventListener('click', () => selectPreset(p.id));
@@ -230,17 +280,26 @@ async function persistPresets() {
 
 async function persistHistory() {
   await chrome.storage.local.set({ [STORAGE_KEYS.SENT_HISTORY]: sentHistory });
-  el.cooldownSummary.textContent = `ประวัติส่งแล้ว: ${Object.keys(sentHistory).length} คน`;
+  updateSummaryCounters();
 }
 
+const SEGMENT_BADGE_MAP = {
+  hot_leads: '🔥 Hot',
+  warm_leads: '☀️ Warm',
+  cold_inquirers: '❄️ Cold',
+  ads_inquirers: '🏷️ Ads/Intake',
+  buyers: '🎓 Buyer',
+  vip: '👑 VIP',
+};
+
 function renderContacts() {
-  const query = (el.contactSearch.value || '').trim().toLowerCase();
-  const filtered = contacts.filter((c) => !query || c.name.toLowerCase().includes(query) || (c.snippet || '').toLowerCase().includes(query));
+  const filtered = getFilteredContacts();
+  updateSummaryCounters();
 
   if (filtered.length === 0) {
     el.contactsList.innerHTML = `
       <div style="color: var(--muted); font-size: 13px; padding: 14px; text-align: center;">
-        ${contacts.length === 0 ? 'ยังไม่มีรายชื่อ — กดปุ่ม "ดึงรายชื่อแชทสดจาก Inbox" ด้านบน' : 'ไม่พบรายชื่อที่ตรงกับคำค้นหา'}
+        ${allContacts.length === 0 ? 'ยังไม่มีรายชื่อในฐานข้อมูล CDP — กดปุ่ม "⚡ ดึงรายชื่อเข้าฐานข้อมูล" หรือ "📥 Import CSV"' : 'ไม่พบรายชื่อในกลุ่มหรือคำค้นหานี้'}
       </div>
     `;
     updatePreview();
@@ -248,7 +307,11 @@ function renderContacts() {
   }
 
   el.contactsList.innerHTML = '';
-  filtered.forEach((c, idx) => {
+  // Render up to 200 items in DOM for smooth performance even with 50,000+ contacts in IndexedDB
+  const displayLimit = 200;
+  const slice = filtered.slice(0, displayLimit);
+
+  slice.forEach((c, idx) => {
     const cooldown = isContactInCooldown(c.key);
     const item = document.createElement('div');
     item.className = `contact-item${cooldown ? ' cooldown' : ''}`;
@@ -271,10 +334,17 @@ function renderContacts() {
     nameRow.className = 'contact-name';
     nameRow.textContent = `${idx + 1}. ${c.name}`;
 
-    const badge = document.createElement('span');
-    badge.className = `badge ${cooldown ? 'badge-cooldown' : 'badge-ready'}`;
-    badge.textContent = cooldown ? 'ติด Cooldown (ส่งแล้ว)' : 'พร้อมส่ง';
-    nameRow.appendChild(badge);
+    const segBadge = document.createElement('span');
+    segBadge.className = 'badge';
+    segBadge.style.background = 'rgba(99, 102, 241, 0.22)';
+    segBadge.style.color = '#c7d2fe';
+    segBadge.textContent = `${SEGMENT_BADGE_MAP[c.segment] || c.segment} (R${c.rScore || 1}·F${c.fScore || 1}·M${c.mScore || 1})`;
+    nameRow.appendChild(segBadge);
+
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `badge ${cooldown ? 'badge-cooldown' : 'badge-ready'}`;
+    statusBadge.textContent = cooldown ? 'Cooldown' : 'พร้อมส่ง';
+    nameRow.appendChild(statusBadge);
 
     if (c.timeText) {
       const timeSpan = document.createElement('span');
@@ -286,7 +356,9 @@ function renderContacts() {
 
     const snippet = document.createElement('div');
     snippet.className = 'contact-snippet';
-    snippet.textContent = c.snippet || 'แชทใน Inbox เพจ One Person Ceo';
+    const labelPreview = c.labels && c.labels.length > 0 ? `[${c.labels.join(', ')}] ` : '';
+    const spendPreview = c.totalSpend > 0 ? `ยอดซื้อ ${Number(c.totalSpend).toLocaleString()}฿ (${c.ordersCount} ออเดอร์) • ` : '';
+    snippet.textContent = `${spendPreview}${labelPreview}${c.snippet || 'แชทเพจ One Person Ceo'}`;
 
     meta.appendChild(nameRow);
     meta.appendChild(snippet);
@@ -296,9 +368,35 @@ function renderContacts() {
     el.contactsList.appendChild(item);
   });
 
-  const readyCount = contacts.filter((c) => !isContactInCooldown(c.key)).length;
-  el.statusContacts.textContent = `ดึงได้ ${contacts.length} คน (พร้อมส่ง ${readyCount} คน)`;
+  if (filtered.length > displayLimit) {
+    const more = document.createElement('div');
+    more.style.cssText = 'text-align:center;font-size:12px;color:var(--muted);padding:10px;';
+    more.textContent = `แสดง ${displayLimit} คนแรกจากทั้งหมด ${filtered.length.toLocaleString()} คนในกลุ่มนี้ (เมื่อกด "เลือกทั้งกลุ่มนี้" ระบบจะส่งให้ครบทั้ง ${filtered.length.toLocaleString()} คน)`;
+    el.contactsList.appendChild(more);
+  }
+
   updatePreview();
+}
+
+function selectAllInActiveSegment() {
+  const filtered = getFilteredContacts();
+  selectedKeys = new Set(filtered.filter((c) => !isContactInCooldown(c.key)).map((c) => c.key));
+  el.chkSelectAll.checked = true;
+}
+
+async function loadFromCdpDb() {
+  const rows = await window.OnePersonCdpDb.getAll();
+  // Recompute RFM scores cleanly on load
+  allContacts = rows.map((r) => {
+    const daysAgo = window.OnePersonCdpDb.parseDaysAgo(r.timeText);
+    const rfm = window.OnePersonCdpDb.computeRfmSegment({ ...r, daysAgo });
+    return { ...r, daysAgo, ...rfm };
+  });
+  // Sort newest / highest value first
+  allContacts.sort((a, b) => (a.daysAgo ?? 999) - (b.daysAgo ?? 999));
+  renderSegmentOptions();
+  selectAllInActiveSegment();
+  renderContacts();
 }
 
 function sendToBackground(action, payload = {}) {
@@ -329,37 +427,172 @@ async function checkConnection() {
 
   const info = res.data;
   el.connectionPill.className = 'pill ok';
-  el.connectionPill.textContent = 'เชื่อมต่อแล้ว';
+  el.connectionPill.textContent = `เชื่อมต่อแล้ว (v${info.version || '1.1.0'})`;
   el.statusTab.textContent = info.isInbox ? 'พบแท็บ Inbox กำลังเปิดอยู่ (พร้อมใช้งาน)' : 'พบ Meta Business Suite (กรุณาเปิดหน้า กล่องข้อความ)';
   el.statusPage.textContent = info.pageName || 'ตรวจพบแท็บแล้ว';
-  addLog(`เชื่อมต่อสำเร็จ — เพจที่ตรวจพบ: ${info.pageName || 'ไม่ทราบชื่อ'}`, 'ok');
+  addLog(`เชื่อมต่อสำเร็จ — เพจ: ${info.pageName || 'ไม่ทราบชื่อ'}`, 'ok');
 }
 
 async function scanInboxContacts() {
+  if (isScanning) return;
+  isScanning = true;
   el.btnScanInbox.disabled = true;
   el.btnScanInbox.textContent = '⏳ กำลังดึงรายชื่อ...';
-  const maxScrolls = Number(el.scanDepth.value) || 10;
+  el.btnStopScan.style.display = 'inline-flex';
 
-  addLog(`เริ่มสแกนรายชื่อแชทสดจาก Inbox (ความลึก ${maxScrolls} รอบ)...`, 'info');
-  const res = await sendToBackground('SCAN_INBOX', { maxScrolls, maxContacts: 300 });
+  const maxContacts = Number(el.scanTargetCount.value) || 0;
+  const maxScrolls = maxContacts === 0 ? 0 : Math.ceil(maxContacts / 5);
 
+  addLog(`เริ่มดึงรายชื่อแชทสดเข้าฐานข้อมูล CDP (${maxContacts === 0 ? 'ไม่จำกัดจนสุด Inbox' : `สูงสุด ${maxContacts.toLocaleString()} คน`})...`, 'info');
+  const res = await sendToBackground('SCAN_INBOX', { maxScrolls, maxContacts });
+
+  isScanning = false;
   el.btnScanInbox.disabled = false;
-  el.btnScanInbox.textContent = '⚡ ดึงรายชื่อแชทสดจาก Inbox';
+  el.btnScanInbox.textContent = '⚡ ดึงรายชื่อเข้าฐานข้อมูล';
+  el.btnStopScan.style.display = 'none';
 
   if (!res.ok || !res.data || !res.data.ok) {
     addLog(res.error || res.data?.error || 'ดึงรายชื่อไม่สำเร็จ', 'err');
     return;
   }
 
-  contacts = res.data.contacts || [];
-  if (res.data.pageName) {
-    el.statusPage.textContent = res.data.pageName;
+  const scanned = res.data.contacts || [];
+  if (res.data.pageName) el.statusPage.textContent = res.data.pageName;
+
+  // Merge with existing CDP records to preserve ordersCount / totalSpend from CSV imports
+  const existingMap = new Map(allContacts.map((c) => [c.key, c]));
+  const now = Date.now();
+  const toSave = scanned.map((c) => {
+    const prev = existingMap.get(c.key) || {};
+    const mergedLabels = Array.from(new Set([...(prev.labels || []), ...(c.labels || [])]));
+    const daysAgo = window.OnePersonCdpDb.parseDaysAgo(c.timeText || prev.timeText);
+    const merged = {
+      ...prev,
+      ...c,
+      labels: mergedLabels,
+      ordersCount: prev.ordersCount || 0,
+      totalSpend: prev.totalSpend || 0,
+      daysAgo,
+      updatedAt: now,
+    };
+    const rfm = window.OnePersonCdpDb.computeRfmSegment(merged);
+    return { ...merged, ...rfm };
+  });
+
+  await window.OnePersonCdpDb.upsert(toSave);
+  await loadFromCdpDb();
+  addLog(`บันทึกเข้าฐานข้อมูล CDP สำเร็จ +${toSave.length.toLocaleString()} รายชื่อ (รวมในฐานข้อมูล ${allContacts.length.toLocaleString()} คน)`, 'ok');
+}
+
+function parseCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+async function handleCsvImport(file) {
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) {
+    addLog('ไฟล์ CSV ไม่มีข้อมูล (ต้องมีแถวหัวตารางและข้อมูลอย่างน้อย 1 แถว)', 'err');
+    return;
   }
 
-  selectedKeys = new Set(contacts.filter((c) => !isContactInCooldown(c.key)).map((c) => c.key));
-  el.chkSelectAll.checked = true;
-  renderContacts();
-  addLog(`ดึงรายชื่อสำเร็จ ${contacts.length} คน (พร้อมส่ง ${selectedKeys.size} คน)`, 'ok');
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+  const idxName = headers.findIndex((h) => /^(name|ชื่อ|customer|ลูกค้า|fullname)/.test(h));
+  const idxOrders = headers.findIndex((h) => /^(orders|orderscount|จำนวนครั้ง|ออเดอร์|frequency)/.test(h));
+  const idxSpend = headers.findIndex((h) => /^(spend|totalspend|ยอดซื้อ|monetary|amount)/.test(h));
+  const idxTags = headers.findIndex((h) => /^(tags|labels|ป้ายกำกับ|segment)/.test(h));
+  const idxTime = headers.findIndex((h) => /^(last_active|timetext|วันที่|recency|date)/.test(h));
+
+  if (idxName === -1) {
+    addLog('ไม่พบคอลัมน์ชื่อในไฟล์ CSV (กรุณาตั้งชื่อคอลัมน์ว่า name หรือ ชื่อ)', 'err');
+    return;
+  }
+
+  const existingByName = new Map(allContacts.map((c) => [(c.name || '').toLowerCase(), c]));
+  const toSave = [];
+  const now = Date.now();
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const name = (cols[idxName] || '').trim();
+    if (!name) continue;
+
+    const prev = existingByName.get(name.toLowerCase()) || {};
+    const ordersCount = idxOrders >= 0 ? Number(cols[idxOrders]) || prev.ordersCount || 0 : prev.ordersCount || 0;
+    const totalSpend = idxSpend >= 0 ? Number((cols[idxSpend] || '').replace(/[^\d.]/g, '')) || prev.totalSpend || 0 : prev.totalSpend || 0;
+    const newTags = idxTags >= 0 && cols[idxTags] ? cols[idxTags].split(/[;|]/).map((t) => t.trim()).filter(Boolean) : [];
+    const timeText = idxTime >= 0 && cols[idxTime] ? cols[idxTime] : prev.timeText || '';
+    const labels = Array.from(new Set([...(prev.labels || []), ...newTags]));
+    const daysAgo = window.OnePersonCdpDb.parseDaysAgo(timeText);
+
+    const record = {
+      key: prev.key || `${name.toLowerCase()}__csv`,
+      name,
+      snippet: prev.snippet || 'นำเข้าจาก CSV',
+      timeText,
+      labels,
+      ordersCount,
+      totalSpend,
+      daysAgo,
+      updatedAt: now,
+    };
+    const rfm = window.OnePersonCdpDb.computeRfmSegment(record);
+    toSave.push({ ...record, ...rfm });
+  }
+
+  await window.OnePersonCdpDb.upsert(toSave);
+  await loadFromCdpDb();
+  addLog(`นำเข้า CSV และคำนวณ RFM สำเร็จ ${toSave.length.toLocaleString()} รายชื่อ`, 'ok');
+}
+
+function exportCsv() {
+  if (allContacts.length === 0) {
+    addLog('ยังไม่มีข้อมูลในฐานข้อมูล CDP สำหรับส่งออก', 'warn');
+    return;
+  }
+  const header = ['name', 'segment', 'r_score', 'f_score', 'm_score', 'orders', 'spend', 'tags', 'last_active', 'snippet'];
+  const rows = allContacts.map((c) => [
+    c.name || '',
+    c.segment || '',
+    c.rScore || 1,
+    c.fScore || 1,
+    c.mScore || 1,
+    c.ordersCount || 0,
+    c.totalSpend || 0,
+    (c.labels || []).join('|'),
+    c.timeText || '',
+    c.snippet || '',
+  ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+
+  const csv = '\uFEFF' + [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `onepersonceo_cdp_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  addLog(`ส่งออก CSV เรียบร้อย (${allContacts.length.toLocaleString()} รายชื่อ)`, 'ok');
 }
 
 async function waitWithControls(seconds) {
@@ -383,9 +616,9 @@ async function startBroadcast() {
     return;
   }
 
-  const queue = contacts.filter((c) => selectedKeys.has(c.key) && !isContactInCooldown(c.key));
+  const queue = getFilteredContacts().filter((c) => selectedKeys.has(c.key) && !isContactInCooldown(c.key));
   if (queue.length === 0) {
-    addLog('ไม่มีรายชื่อที่เลือกไว้สำหรับส่ง กรุณาดึงรายชื่อก่อนครับ', 'warn');
+    addLog('ไม่มีรายชื่อที่เลือกไว้สำหรับส่งในกลุ่มนี้', 'warn');
     return;
   }
 
@@ -401,7 +634,7 @@ async function startBroadcast() {
   el.btnStopSend.disabled = false;
   el.btnPauseSend.textContent = '⏸ พัก';
 
-  addLog(`เริ่มบรอดแคสต์ให้ ${queue.length} คน (โหมด: ${autoSend ? 'ส่งอัตโนมัติ' : 'Safe Draft วางข้อความรอตรวจ'})`, 'info');
+  addLog(`เริ่มบรอดแคสต์ให้กลุ่ม "${activeSegment}" จำนวน ${queue.length.toLocaleString()} คน (โหมด: ${autoSend ? 'ส่งอัตโนมัติ' : 'Safe Draft วางข้อความรอตรวจ'})`, 'info');
 
   let done = 0;
   let success = 0;
@@ -469,6 +702,14 @@ function insertAtCursor(textarea, text) {
   updatePreview();
 }
 
+// Listen for real-time scan progress from content.js
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === 'SCAN_PROGRESS' && isScanning) {
+    el.btnScanInbox.textContent = `⏳ ดึงได้แล้ว ${msg.count.toLocaleString()} คน...`;
+    el.progressLabel.textContent = `กำลังสแกน Inbox รอบที่ ${msg.round} — พบแล้ว ${msg.count.toLocaleString()} คน`;
+  }
+});
+
 async function init() {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.PRESETS, STORAGE_KEYS.SENT_HISTORY]);
   presets = Array.isArray(stored[STORAGE_KEYS.PRESETS]) && stored[STORAGE_KEYS.PRESETS].length > 0
@@ -476,8 +717,8 @@ async function init() {
     : JSON.parse(JSON.stringify(DEFAULT_PRESETS));
   sentHistory = stored[STORAGE_KEYS.SENT_HISTORY] || {};
 
-  el.cooldownSummary.textContent = `ประวัติส่งแล้ว: ${Object.keys(sentHistory).length} คน`;
   selectPreset(presets[0].id);
+  await loadFromCdpDb();
 
   // Events
   el.btnCheckConn.addEventListener('click', checkConnection);
@@ -485,7 +726,18 @@ async function init() {
     await sendToBackground('OPEN_INBOX');
     setTimeout(checkConnection, 1500);
   });
+
   el.btnScanInbox.addEventListener('click', scanInboxContacts);
+  el.btnStopScan.addEventListener('click', async () => {
+    addLog('ส่งคำสั่งหยุดสแกน — กำลังบันทึกรายชื่อที่ดึงมาได้...', 'warn');
+    await sendToBackground('STOP_SCAN');
+  });
+
+  el.segmentSelect.addEventListener('change', () => {
+    activeSegment = el.segmentSelect.value;
+    selectAllInActiveSegment();
+    renderContacts();
+  });
 
   el.messageInput.addEventListener('input', updatePreview);
   el.btnRandomizePreview.addEventListener('click', updatePreview);
@@ -494,17 +746,23 @@ async function init() {
 
   el.chkSelectAll.addEventListener('change', () => {
     if (el.chkSelectAll.checked) {
-      selectedKeys = new Set(contacts.filter((c) => !isContactInCooldown(c.key)).map((c) => c.key));
+      selectAllInActiveSegment();
     } else {
       selectedKeys = new Set();
     }
     renderContacts();
   });
 
+  el.btnImportCsv.addEventListener('click', () => el.csvFileInput.click());
+  el.csvFileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) await handleCsvImport(file);
+    el.csvFileInput.value = '';
+  });
+  el.btnExportCsv.addEventListener('click', exportCsv);
+
   document.querySelectorAll('.tag-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      insertAtCursor(el.messageInput, chip.dataset.tag || '');
-    });
+    chip.addEventListener('click', () => insertAtCursor(el.messageInput, chip.dataset.tag || ''));
   });
 
   el.btnSavePreset.addEventListener('click', async () => {
@@ -519,16 +777,15 @@ async function init() {
 
   el.btnAddPreset.addEventListener('click', async () => {
     const newId = `custom-${Date.now()}`;
-    const newPreset = {
+    presets.push({
       id: newId,
       title: `✨ Preset ใหม่ #${presets.length + 1}`,
       desc: 'ข้อความให้ความรู้กำหนดเอง',
       message: `{greeting}คุณ {name} ครับ 👋 เสวิญ (OnePersonCEO) เองครับ\n\n(พิมพ์ข้อความให้ความรู้ตรงนี้)\n\nRef: #{code}`,
-    };
-    presets.push(newPreset);
+    });
     await persistPresets();
     selectPreset(newId);
-    addLog(`เพิ่ม Preset ใหม่เรียบร้อย`, 'ok');
+    addLog('เพิ่ม Preset ใหม่เรียบร้อย', 'ok');
   });
 
   el.btnDeletePreset.addEventListener('click', async () => {
@@ -554,6 +811,16 @@ async function init() {
     await persistHistory();
     renderContacts();
     addLog('ล้างประวัติ Cooldown เรียบร้อย', 'warn');
+  });
+
+  el.btnClearDb.addEventListener('click', async () => {
+    if (!confirm('ต้องการล้างรายชื่อทั้งหมดในฐานข้อมูล CDP ของเพจ OnePersonCEO ใช่หรือไม่?')) return;
+    await window.OnePersonCdpDb.clearAll();
+    allContacts = [];
+    selectedKeys = new Set();
+    renderSegmentOptions();
+    renderContacts();
+    addLog('ล้างฐานข้อมูล CDP เรียบร้อย', 'warn');
   });
 
   el.btnStartSend.addEventListener('click', startBroadcast);

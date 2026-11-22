@@ -1,11 +1,13 @@
-// OnePersonCEO Knowledge Broadcaster — Content Script v1.0.3 for Meta Business Suite Inbox
+// OnePersonCEO Knowledge Broadcaster — Content Script v1.1.0 (Unlimited Sync + RFM Labels + Strict Verify)
 
 (() => {
-  const SCRIPT_VERSION = '1.0.3';
+  const SCRIPT_VERSION = '1.1.0';
   if (window.__ONEPERSONCEO_BROADCASTER_VER__ === SCRIPT_VERSION) {
     return;
   }
   window.__ONEPERSONCEO_BROADCASTER_VER__ = SCRIPT_VERSION;
+
+  let stopScanRequested = false;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -81,7 +83,11 @@
 
     if (rawLines.length === 0) return null;
 
-    const lines = rawLines.filter((l) => !/^(ad_id|ad_id\.\.\.|Intake|ลำดับความสำคัญ|ความสำคัญ|และอื่นๆ|ยังไม่ได้อ่าน|•)$/i.test(l));
+    // Extract Meta Inbox badge/label tags for RFM/Lead classification
+    const labelRegex = /^(ad_id.*|Intake|ลำดับความสำคัญ|ความสำคัญ|การรับข้อมูล|ลูกค้าใหม่|โอนแล้ว|ซื้อแล้ว|VIP|Workshop|สนใจ)$/i;
+    const labels = rawLines.filter((l) => labelRegex.test(l));
+
+    const lines = rawLines.filter((l) => !labelRegex.test(l) && !/^(และอื่นๆ|ยังไม่ได้อ่าน|•)$/i.test(l));
     if (lines.length === 0) return null;
 
     const name = lines[0];
@@ -98,13 +104,14 @@
     const timeLine =
       lines.find((l) => /\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}|เมื่อวาน|วันนี้|นาที|ชม\.|วัน|Yesterday|Today|\d+[mhdw]\b/i.test(l)) || '';
     const snippet = lines.slice(1).find((l) => l !== timeLine && l.length > 1) || '';
-    const key = `${name}__${timeLine || snippet.slice(0, 24)}`;
+    const key = `${name.toLowerCase()}__${timeLine || snippet.slice(0, 24)}`;
 
     return {
       key,
       name,
       snippet: snippet.slice(0, 90),
       timeText: timeLine,
+      labels,
       element: el,
     };
   }
@@ -561,6 +568,12 @@
             hasList,
             url: window.location.href,
           });
+          return;
+        }
+
+        if (message.type === 'STOP_SCAN') {
+          stopScanRequested = true;
+          sendResponse({ ok: true });
           return;
         }
 
