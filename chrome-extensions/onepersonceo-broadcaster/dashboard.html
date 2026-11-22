@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OnePersonCEO Knowledge Broadcaster</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo">1P</div>
+      <div>
+        <div class="brand-title">OnePersonCEO Knowledge Broadcaster</div>
+        <div class="brand-sub">ระบบบรอดแคสต์ให้ความรู้เฉพาะเพจ OnePersonCEO (เสวิญ) • v1.0.0</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="connectionPill" class="pill warn">กำลังตรวจสอบการเชื่อมต่อ...</span>
+      <button id="btnCheckConn" class="btn btn-sm">ตรวจสอบการเชื่อมต่อ</button>
+      <button id="btnOpenInbox" class="btn btn-primary btn-sm">เปิด Meta Business Suite</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="banner">
+      <div>
+        <strong>🛡️ โหมดปลอดภัยสำหรับเพจให้ความรู้ (Spintax + Cooldown + Safe Draft):</strong>
+        ทำงานผ่านเบราว์เซอร์ของคุณโดยตรง ห้ามปิดแท็บนี้ขณะกำลังส่ง และควรสลับเพจใน Meta Business Suite ให้เป็น <strong>One Person Ceo</strong> ก่อนดึงรายชื่อเสมอ
+      </div>
+      <span id="cooldownSummary" class="pill">ประวัติส่งแล้ว: 0 คน</span>
+    </div>
+
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">🔗 สถานะการเชื่อมต่อ Meta Business Suite Inbox</div>
+      </div>
+      <div class="status-grid">
+        <div class="status-box">
+          <div class="status-label">แท็บ Meta Business Suite Inbox</div>
+          <div id="statusTab" class="status-value">ยังไม่พบแท็บ Inbox</div>
+        </div>
+        <div class="status-box">
+          <div class="status-label">เพจที่ตรวจพบในเบราว์เซอร์</div>
+          <div id="statusPage" class="status-value">-</div>
+        </div>
+        <div class="status-box">
+          <div class="status-label">รายการแชทที่พร้อมส่ง</div>
+          <div id="statusContacts" class="status-value">0 คน (กดปุ่มดึงรายชื่อด้านล่าง)</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="main-grid">
+      <!-- LEFT COLUMN -->
+      <div class="stack">
+        <!-- 1. PRESETS -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">📚 1. ชุดความรู้ &amp; คอนเทนต์ OnePersonCEO (คลิกเพื่อโหลดข้อความพร้อมใช้)</div>
+            <div class="row">
+              <button id="btnResetPresets" class="btn btn-sm">คืนค่าเริ่มต้น</button>
+            </div>
+          </div>
+
+          <div id="presetGrid" class="preset-grid"></div>
+
+          <div class="row-between" style="margin-bottom: 12px;">
+            <div class="row">
+              <button id="btnSavePreset" class="btn btn-success btn-sm">💾 บันทึกทับ Preset นี้</button>
+              <button id="btnAddPreset" class="btn btn-sm">+ เพิ่ม Preset ใหม่</button>
+            </div>
+            <button id="btnDeletePreset" class="btn btn-danger btn-sm">ลบ Preset นี้</button>
+          </div>
+
+          <div style="margin-bottom: 10px;">
+            <label class="field-label" for="presetTitleInput">ชื่อปุ่ม Preset</label>
+            <input id="presetTitleInput" type="text" placeholder="เช่น 🧠 ความรู้: สร้าง AI Workforce 3 ขั้น" />
+          </div>
+
+          <div style="margin-bottom: 8px;">
+            <label class="field-label">แท็กแทรกข้อความป้องกันแบน (คลิกเพื่อแทรก)</label>
+            <div class="tag-row">
+              <button class="tag-chip" data-tag="{greeting}">👋 {greeting} (สุ่มทักทาย)</button>
+              <button class="tag-chip" data-tag="{name}">👤 {name} (ชื่อลูกเพจ)</button>
+              <button class="tag-chip" data-tag="#{code}">🛡️ #{code} (รหัสสุ่มกันแบน)</button>
+              <button class="tag-chip" data-tag="{คำที่1|คำที่2|คำที่3}">🎲 {คำ1|คำ2} (Spintax)</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="row-between" style="margin-bottom: 6px;">
+              <label class="field-label" for="messageInput" style="margin-bottom: 0;">ข้อความให้ความรู้ที่จะส่ง</label>
+              <span id="charCount" style="font-size: 11px; color: var(--muted);">0 ตัวอักษร</span>
+            </div>
+            <textarea id="messageInput" placeholder="พิมพ์ข้อความให้ความรู้ที่นี่..."></textarea>
+          </div>
+        </section>
+
+        <!-- 2. CONTACTS -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">👥 2. ดึงรายชื่อแชทจาก Inbox เพจ One Person Ceo</div>
+            <div class="row">
+              <select id="scanDepth" style="width: auto; padding: 6px 10px;">
+                <option value="4">สแกนเร็ว (~40-60 คน)</option>
+                <option value="10" selected>สแกนปกติ (~100-150 คน)</option>
+                <option value="20">สแกนลึก (~200-300 คน)</option>
+              </select>
+              <button id="btnScanInbox" class="btn btn-success btn-sm">⚡ ดึงรายชื่อแชทสดจาก Inbox</button>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-bottom: 10px;">
+            <input id="contactSearch" type="text" placeholder="ค้นหาชื่อลูกเพจ..." style="max-width: 260px;" />
+            <div class="row">
+              <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input id="chkSelectAll" type="checkbox" checked /> เลือกทั้งหมดที่พร้อมส่ง
+              </label>
+              <button id="btnClearHistory" class="btn btn-sm">ล้างประวัติ Cooldown</button>
+            </div>
+          </div>
+
+          <div id="contactsList" class="contacts-list">
+            <div style="color: var(--muted); font-size: 13px; padding: 14px; text-align: center;">
+              ยังไม่มีรายชื่อ — เปิดแท็บ Meta Business Suite เลือกเพจ One Person Ceo แล้วกดปุ่ม "ดึงรายชื่อแชทสดจาก Inbox"
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="stack">
+        <!-- 3. LIVE PREVIEW -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">📱 3. ตัวอย่างข้อความจริง (Messenger Live Preview)</div>
+            <button id="btnRandomizePreview" class="btn btn-sm">🎲 สุ่มตัวอย่างใหม่</button>
+          </div>
+
+          <div class="preview-phone">
+            <div class="preview-header">
+              <div class="preview-avatar">1P</div>
+              <div>
+                <div style="font-size: 13px; font-weight: 700;">One Person Ceo • เสวิญ</div>
+                <div style="font-size: 11px; color: #6b7280;">Messenger Preview (ตัวอย่างชื่อ: <span id="previewSampleName">คุณธนพล</span>)</div>
+              </div>
+            </div>
+            <div id="previewBubble" class="preview-bubble"></div>
+            <div id="previewFooter" class="preview-footer">พร้อมส่งให้ 0 คน</div>
+          </div>
+        </section>
+
+        <!-- 4. SEND CONTROL -->
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">🚀 4. ตั้งค่าความปลอดภัย &amp; ควบคุมการส่ง</div>
+          </div>
+
+          <div class="settings-grid" style="margin-bottom: 14px;">
+            <div>
+              <label class="field-label" for="minDelay">หน่วงขั้นต่ำ (วินาที)</label>
+              <input id="minDelay" type="number" min="5" max="120" value="15" />
+            </div>
+            <div>
+              <label class="field-label" for="maxDelay">หน่วงสูงสุด (วินาที)</label>
+              <input id="maxDelay" type="number" min="10" max="180" value="35" />
+            </div>
+            <div>
+              <label class="field-label" for="cooldownDays">กันส่งซ้ำ (วัน)</label>
+              <input id="cooldownDays" type="number" min="0" max="90" value="10" />
+            </div>
+          </div>
+
+          <div style="margin-bottom: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border);">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+              <input id="chkAutoSend" type="checkbox" checked />
+              <span><strong>ส่งข้อความอัตโนมัติ (Auto-Send)</strong> — ถ้าเอาติ๊กออก ระบบจะวางข้อความไว้ในช่องแชทให้คุณกด Enter ตรวจเอง (Safe Draft)</span>
+            </label>
+          </div>
+
+          <div class="row" style="margin-bottom: 14px;">
+            <button id="btnStartSend" class="btn btn-primary" style="flex: 1;">▶ เริ่มบรอดแคสต์ให้ความรู้</button>
+            <button id="btnPauseSend" class="btn" disabled>⏸ พัก</button>
+            <button id="btnStopSend" class="btn btn-danger" disabled>⏹ หยุด</button>
+          </div>
+
+          <div style="margin-bottom: 8px;">
+            <div class="row-between" style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">
+              <span id="progressLabel">พร้อมทำงาน</span>
+              <span id="progressCount">0 / 0</span>
+            </div>
+            <div class="progress-wrap">
+              <div id="progressBar" class="progress-bar"></div>
+            </div>
+          </div>
+
+          <div style="margin-top: 12px;">
+            <label class="field-label">บันทึกการทำงานแบบ Real-time</label>
+            <div id="logBox" class="log-box">
+              <div class="log-info">[ระบบ] พร้อมใช้งาน — กด "ตรวจสอบการเชื่อมต่อ" เพื่อเริ่ม</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "OnePersonCEO Knowledge Broadcaster",
+  "version": "1.0.0",
+  "description": "เครื่องมือบรอดแคสต์ให้ความรู้เฉพาะเพจ OnePersonCEO (เสวิญ) ผ่าน Meta Business Suite Inbox พร้อม 4 Presets, Spintax และระบบป้องกันส่งซ้ำ",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://business.facebook.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "เปิด OnePersonCEO Knowledge Broadcaster",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://business.facebook.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
