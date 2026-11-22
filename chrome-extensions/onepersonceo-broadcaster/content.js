@@ -44,96 +44,204 @@ if (!window.__ONEPERSONCEO_BROADCASTER_LOADED__) {
     return document.title || 'Meta Business Suite';
   }
 
-  function findThreadListContainer() {
-    // Look for the scrollable conversation list on the left side of Meta Business Suite Inbox
-    const scrollables = Array.from(document.querySelectorAll('div')).filter((el) => {
-      const style = window.getComputedStyle(el);
-      const isScrollable = style.overflowY === 'auto' || style.overflowY === 'scroll';
-      if (!isScrollable) return false;
-      const rect = el.getBoundingClientRect();
-      return rect.left >= 120 && rect.left <= 520 && rect.width >= 200 && rect.width <= 480 && rect.height >= 250;
-    });
+  function isScrollableEl(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const style = window.getComputedStyle(el);
+    const oy = style.overflowY;
+    const canScrollStyle = oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+    return (canScrollStyle && el.scrollHeight > el.clientHeight + 20) || el.scrollHeight > el.clientHeight + 120;
+  }
 
-    // Prefer the scrollable container that contains the most thread-like items
+  function findScrollableAncestor(el) {
+    let cur = el ? el.parentElement : null;
+    while (cur && cur !== document.body) {
+      if (isScrollableEl(cur)) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+
+  function looksLikeThreadRow(el) {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 140 || rect.width > 620 || rect.height < 42 || rect.height > 190) return false;
+    // Thread list sits in the left half of the viewport
+    if (rect.left > window.innerWidth * 0.55) return false;
+    // Must contain some text (at least a name)
+    const text = normalizeText(el.innerText || '');
+    if (text.length < 2) return false;
+    return true;
+  }
+
+  function parseThreadRow(el) {
+    const rawLines = (el.innerText || '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (rawLines.length === 0) return null;
+
+    // Filter out pure icon/badge noise lines
+    const lines = rawLines.filter((l) => !/^(ad_id|Intake|ความสำคัญ|และอื่นๆ|ยังไม่ได้อ่าน|•)$/i.test(l));
+    if (lines.length === 0) return null;
+
+    const name = lines[0];
+    if (
+      !name ||
+      name.length > 80 ||
+      /^(จัดการ|ค้นหา|เรียงตาม|ตัวกรอง|Messenger|Instagram|WhatsApp|ข้อความ|ทั้งหมด|ยังไม่ได้อ่าน|หน้าหลัก|การแจ้งเตือน|กล่องข้อความ|ศูนย์ข้อมูลลูกค้า|เนื้อหา|แพลนเนอร์|โฆษณา|ข้อมูลเชิงลึก|การสร้างรายได้|เครื่องมือทั้งหมด|การตั้งค่า|ความช่วยเหลือ|ตัวจัดการโฆษณา|ความคิดเห็นบน|การตอบกลับโฆษณา|ระดับความสำคัญ)$/i.test(
+        name
+      )
+    ) {
+      return null;
+    }
+
+    const timeLine =
+      lines.find((l) => /\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}|เมื่อวาน|วันนี้|นาที|ชม\.|วัน|Yesterday|Today|\d+[mhdw]\b/i.test(l)) || '';
+    const snippet = lines.slice(1).find((l) => l !== timeLine && l.length > 1) || '';
+    const key = `${name}__${timeLine || snippet.slice(0, 24)}`;
+
+    return {
+      key,
+      name,
+      snippet: snippet.slice(0, 90),
+      timeText: timeLine,
+      element: el,
+    };
+  }
+
+  function findRowFromAvatar(avatarEl) {
+    let cur = avatarEl.parentElement;
     let best = null;
-    let bestScore = 0;
-    for (const container of scrollables) {
-      const items = container.querySelectorAll('[role="presentation"], [role="listitem"], div[tabindex="0"]');
-      if (items.length > bestScore) {
-        bestScore = items.length;
-        best = container;
+    for (let depth = 0; depth < 8 && cur && cur !== document.body; depth++) {
+      const rect = cur.getBoundingClientRect();
+      if (rect.width >= 170 && rect.width <= 580 && rect.height >= 48 && rect.height <= 185) {
+        best = cur;
+        if (
+          cur.getAttribute('role') === 'button' ||
+          cur.getAttribute('role') === 'listitem' ||
+          cur.getAttribute('role') === 'row' ||
+          cur.getAttribute('tabindex') === '0' ||
+          cur.tagName === 'A'
+        ) {
+          return cur;
+        }
       }
+      cur = cur.parentElement;
     }
     return best;
   }
 
-  function extractThreadElements(container) {
-    if (!container) return [];
+  function extractThreadElements(scopeRoot) {
+    const root = scopeRoot || document;
+    const candidateEls = new Set();
 
-    // Try standard Meta Inbox thread row patterns
-    const rawItems = Array.from(
-      container.querySelectorAll('[role="presentation"] [tabindex="0"], [role="listitem"], div[role="button"][tabindex="0"]')
-    );
+    // Strategy 1: Standard ARIA / link selectors used by Meta Business Suite
+    const selectorList = [
+      'a[href*="selected_item_id"]',
+      'div[role="grid"] div[role="row"]',
+      'div[role="list"] div[role="listitem"]',
+      'div[role="presentation"] div[tabindex="0"]',
+      'div[role="button"][tabindex="0"]',
+      'div[data-testid*="thread"]',
+      'div[data-testid*="conversation"]',
+    ];
+
+    for (const sel of selectorList) {
+      try {
+        root.querySelectorAll(sel).forEach((el) => {
+          if (looksLikeThreadRow(el)) candidateEls.add(el);
+        });
+      } catch {
+        // ignore invalid selector
+      }
+    }
+
+    // Strategy 2: Detect rows via circular profile avatars (img / svg image) in the left thread list pane
+    const avatars = Array.from(root.querySelectorAll('img, svg image')).filter((img) => {
+      const r = img.getBoundingClientRect();
+      // Thread list avatars sit roughly between x=60..460, y>90, size 24..64px
+      return r.left >= 40 && r.left <= window.innerWidth * 0.45 && r.top >= 85 && r.width >= 24 && r.width <= 68 && r.height >= 24 && r.height <= 68;
+    });
+
+    for (const av of avatars) {
+      const row = findRowFromAvatar(av);
+      if (row && looksLikeThreadRow(row)) {
+        candidateEls.add(row);
+      }
+    }
+
+    // Deduplicate nested elements (keep the most specific clickable row)
+    const list = Array.from(candidateEls);
+    const filteredEls = list.filter((el) => !list.some((other) => other !== el && el.contains(other)));
 
     const results = [];
     const seenKeys = new Set();
 
-    for (const el of rawItems) {
-      const rect = el.getBoundingClientRect();
-      if (rect.height < 42 || rect.height > 180 || rect.width < 150) continue;
-
-      const lines = (el.innerText || '')
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
-
-      if (lines.length === 0) continue;
-
-      const name = lines[0];
-      // Skip UI header / filter buttons
-      if (
-        !name ||
-        name.length > 80 ||
-        /^(จัดการ|ค้นหา|เรียงตาม|ตัวกรอง|Messenger|Instagram|WhatsApp|ข้อความ|ทั้งหมด|ยังไม่ได้อ่าน)$/i.test(name)
-      ) {
-        continue;
-      }
-
-      const timeLine = lines.find((l) => /\d+\/\d+\/\d+|\d+:\d+|เมื่อวาน|วันนี้|นาที|ชม\.|วัน/i.test(l)) || '';
-      const snippet = lines.slice(1).find((l) => l !== timeLine && l.length > 1) || '';
-      const key = `${name}__${timeLine || snippet.slice(0, 24)}`;
-
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-
-      results.push({
-        key,
-        name,
-        snippet: snippet.slice(0, 90),
-        timeText: timeLine,
-        element: el,
-      });
+    for (const el of filteredEls) {
+      const parsed = parseThreadRow(el);
+      if (!parsed) continue;
+      if (seenKeys.has(parsed.key)) continue;
+      seenKeys.add(parsed.key);
+      results.push(parsed);
     }
 
     return results;
   }
 
+  function findThreadListContainer() {
+    // First find actual thread rows, then walk up to their scrollable container
+    const rows = extractThreadElements(document);
+    if (rows.length > 0) {
+      const counts = new Map();
+      for (const r of rows) {
+        const scroller = findScrollableAncestor(r.element);
+        if (scroller) {
+          counts.set(scroller, (counts.get(scroller) || 0) + 1);
+        }
+      }
+      let bestScroller = null;
+      let maxCount = 0;
+      for (const [scroller, count] of counts.entries()) {
+        if (count > maxCount) {
+          maxCount = count;
+          bestScroller = scroller;
+        }
+      }
+      if (bestScroller) return bestScroller;
+      // Even if list is short and doesn't overflow yet, return common parent
+      return rows[0].element.parentElement || document.body;
+    }
+
+    // Fallback: any scrollable container in the left half of the page
+    const scrollables = Array.from(document.querySelectorAll('div')).filter((el) => {
+      if (!isScrollableEl(el)) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.left >= 40 && rect.left <= window.innerWidth * 0.45 && rect.width >= 180 && rect.width <= 540 && rect.height >= 200;
+    });
+    return scrollables[0] || null;
+  }
+
   async function scanInbox({ maxScrolls = 6, maxContacts = 200 } = {}) {
     const container = findThreadListContainer();
-    if (!container) {
+    const initialRows = extractThreadElements(container || document);
+
+    if (!container && initialRows.length === 0) {
       return {
         ok: false,
-        error: 'ไม่พบรายการแชทในหน้านี้ กรุณาตรวจสอบว่าเปิดหน้า "กล่องข้อความ > Messenger" ของเพจ One Person Ceo อยู่ครับ',
+        error: 'ไม่พบรายการแชทในหน้านี้ กรุณาเปิดแท็บ "กล่องข้อความ > Messenger" ของเพจ One Person Ceo ให้อยู่บนหน้าจอแล้วลองกดดึงรายชื่ออีกครั้งครับ',
         contacts: [],
       };
     }
 
     const collected = new Map();
-    container.scrollTop = 0;
-    await sleep(300);
+    if (container && container !== document.body) {
+      container.scrollTop = 0;
+      await sleep(300);
+    }
 
     for (let i = 0; i <= maxScrolls; i++) {
-      const items = extractThreadElements(container);
+      const items = extractThreadElements(container || document);
       for (const item of items) {
         if (!collected.has(item.key)) {
           collected.set(item.key, {
@@ -147,6 +255,7 @@ if (!window.__ONEPERSONCEO_BROADCASTER_LOADED__) {
       }
 
       if (collected.size >= maxContacts) break;
+      if (!container || container === document.body) break;
 
       const prevScrollTop = container.scrollTop;
       container.scrollTop += Math.max(450, container.clientHeight * 0.85);
@@ -154,8 +263,17 @@ if (!window.__ONEPERSONCEO_BROADCASTER_LOADED__) {
       if (container.scrollTop === prevScrollTop) break;
     }
 
-    // Reset scroll back to top
-    container.scrollTop = 0;
+    if (container && container !== document.body) {
+      container.scrollTop = 0;
+    }
+
+    if (collected.size === 0) {
+      return {
+        ok: false,
+        error: 'พบแท็บ Inbox แล้วแต่ยังไม่เห็นรายการแชท (ลองคลิกเปิดแท็บ Meta Business Suite ให้หน้าแชทโหลดขึ้นมา แล้วกลับมากดดึงรายชื่ออีกครั้งครับ)',
+        contacts: [],
+      };
+    }
 
     return {
       ok: true,
