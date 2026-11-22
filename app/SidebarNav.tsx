@@ -14,10 +14,13 @@ import {
   Landmark,
   Presentation,
   Brain,
+  BookMarked,
+  type LucideIcon,
 } from 'lucide-react'
 
-const productionLinks: { href: string; icon: any; label: string; badge?: string }[] = [
+const productionLinks: { href: string; icon: LucideIcon; label: string; badge?: string }[] = [
   { href: '/', icon: LayoutDashboard, label: 'แดชบอร์ด' },
+  { href: '/ceo-brain', icon: BookMarked, label: 'CeoBrain', badge: 'OS' },
   { href: '/brain-studio', icon: Brain, label: 'BrainStudio', badge: 'AI' },
   { href: '/briefing', icon: FileText, label: 'ห้องบรีฟงาน' },
   { href: '/structure', icon: ListOrdered, label: 'กระดานโครงสร้าง' },
@@ -37,11 +40,11 @@ const financialLinks = [
   },
 ]
 
-const systemLinks: { href: string; icon: any; label: string; badge?: string }[] = [
+const systemLinks: { href: string; icon: LucideIcon; label: string; badge?: string }[] = [
   { href: '/settings', icon: Settings, label: 'ตั้งค่า' },
 ]
 
-export default function SidebarNav() {
+export default function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
 
   const isActive = (href: string) => {
@@ -64,6 +67,7 @@ export default function SidebarNav() {
               label={item.label}
               badge={item.badge}
               active={isActive(item.href)}
+              onNavigate={onNavigate}
             />
           ))}
         </div>
@@ -82,6 +86,7 @@ export default function SidebarNav() {
               label={item.label}
               badge={item.badge}
               active={isActive(item.href)}
+              onNavigate={onNavigate}
             />
           ))}
         </div>
@@ -100,6 +105,7 @@ export default function SidebarNav() {
               label={item.label}
               badge={item.badge}
               active={isActive(item.href)}
+              onNavigate={onNavigate}
             />
           ))}
         </div>
@@ -114,16 +120,19 @@ function NavLink({
   label,
   active,
   badge,
+  onNavigate,
 }: {
   href: string
-  icon: any
+  icon: LucideIcon
   label: string
   active?: boolean
   badge?: string
+  onNavigate?: () => void
 }) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={`group flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 ${
         active
           ? 'bg-blue-50 text-blue-700 font-semibold shadow-xs border border-blue-100'

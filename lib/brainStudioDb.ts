@@ -787,3 +787,29 @@ export function buildMasterBrainContext(state: BrainStudioState): string {
 
   return sections.join('\n')
 }
+
+export async function appendBulletThreadToNote(
+  noteId: string,
+  line: string
+): Promise<BrainNote | null> {
+  const state = await getBrainStudioState()
+  const note = state.notes.find((n) => n.id === noteId)
+  if (!note) return null
+
+  const trimmedLine = line.trim()
+  if (!trimmedLine) return note
+  if (note.content.includes(trimmedLine)) {
+    return note
+  }
+
+  const sectionHeading = '## บันทึกร้อยด้ายจาก CeoBrain (Daily Log)'
+  const baseContent = note.content.trimEnd()
+  const nextContent = baseContent.includes(sectionHeading)
+    ? `${baseContent}\n${trimmedLine}\n`
+    : `${baseContent}\n\n${sectionHeading}\n${trimmedLine}\n`
+
+  return saveBrainNote({
+    ...note,
+    content: nextContent,
+  })
+}

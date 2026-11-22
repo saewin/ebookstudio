@@ -609,3 +609,10 @@ body {
     page-break-after: avoid !important;
   }
 }
+
+/* CeoBrain Minimalist Dot-Grid Paper */
+.ceobrain-dot-grid {
+  background-color: #ffffff;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 20px 20px;
+}
