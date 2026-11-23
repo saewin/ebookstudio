@@ -223,18 +223,10 @@ export async function POST(req: NextRequest) {
         const fullPrompt = `${rawSubject}. Art style: ${styleDirective} Strictly NO overlaid words, NO letters, NO garbled text, NO typography inside the artwork.`;
 
         let generated: { buffer: Buffer; mimeType: string; modelUsed: string } | null = null;
-        let geminiErrMsg = '';
+        let lastErrMsg = '';
 
-        if (apiKey) {
-            try {
-                generated = await generateWithGeminiImageApi(apiKey, fullPrompt, aspectRatio);
-            } catch (err: any) {
-                geminiErrMsg = err?.message || String(err);
-                console.warn('[ebookStudio][generate-image] Gemini failed, trying fallbacks:', geminiErrMsg.slice(0, 200));
-            }
-        }
-
-        if (!generated && falApiKey) {
+        // Prefer FAL -> OpenRouter first (fast & reliable credits), then fallback to Google Gemini Direct
+        if (falApiKey) {
             generated = await generateWithFalFallback(falApiKey, fullPrompt, aspectRatio);
         }
 
@@ -242,8 +234,17 @@ export async function POST(req: NextRequest) {
             generated = await generateWithOpenRouterFallback(openRouterKey, fullPrompt);
         }
 
+        if (!generated && apiKey) {
+            try {
+                generated = await generateWithGeminiImageApi(apiKey, fullPrompt, aspectRatio);
+            } catch (err: any) {
+                lastErrMsg = err?.message || String(err);
+                console.warn('[ebookStudio][generate-image] Gemini fallback failed:', lastErrMsg.slice(0, 200));
+            }
+        }
+
         if (!generated) {
-            throw new Error(geminiErrMsg || 'Image generation failed across Gemini, FAL, and OpenRouter');
+            throw new Error(lastErrMsg || 'Image generation failed across FAL, OpenRouter, and Gemini');
         }
 
         const { buffer, mimeType, modelUsed } = generated;
