@@ -59,6 +59,7 @@ const MIGRATIONS_FILE = path.join(DB_DIR, 'migrations_state.json');
 
 const CEO_OS_2026_PROJECT_ID = 'a5ab85d5-3671-4dae-a051-5e9c3b7cb136';
 const CEO_OS_2026_CTA_MIGRATION_KEY = 'ceo_os_2026_funnel_ctas_v1';
+const CEO_OS_2026_CTA_MIGRATION_V2_KEY = 'ceo_os_2026_funnel_ctas_v2';
 const LEGACY_REAL_NAME_PATTERN =
     /\u0E2D\u0E14\u0E34\u0E28\u0E23(?:\s+\u0E40\u0E17\u0E1E\u0E27\u0E31\u0E25\u0E22\u0E4C)?(?:\s*\(Director\s*·\s*Ebook Studio\))?/g;
 const PEN_NAME_CREDIT = 'เสวิญ (Saewin · OnePersonCEO)';
@@ -237,9 +238,23 @@ function appendCtaBoxIfMissing(content: string, urlFragment: string, htmlSnippet
     return { text: nextText, added: true };
 }
 
+function removeSingleLineCtaBox(content: string, urlFragment: string): { text: string; removed: boolean } {
+    if (!content.includes(urlFragment)) {
+        return { text: content, removed: false };
+    }
+    const escaped = urlFragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const boxRegex = new RegExp(`<div\\s+class=["']executive-cta-box[^"']*["']>[^\\n]*${escaped}[^\\n]*<\\/div>`, 'g');
+    const stripped = content.replace(boxRegex, '');
+    if (stripped === content) {
+        return { text: content, removed: false };
+    }
+    const collapsed = stripped.replace(/\n{3,}/g, '\n\n').trimEnd();
+    return { text: collapsed ? `${collapsed}\n` : '', removed: true };
+}
+
 /**
- * Idempotent one-time migration to insert the 4 OnePersonCEO CTA+QR boxes into
- * "CEO OPERATING SYSTEM 2026" without overwriting subsequent user edits.
+ * Idempotent one-time migration (v2: early-book Ch 1-4 + Ch 9 placement) to insert
+ * OnePersonCEO CTA+QR boxes into "CEO OPERATING SYSTEM 2026" without overwriting user edits.
  */
 export async function runCeoOs2026FunnelCtaMigration(
     baseDbDir: string = DB_DIR
@@ -262,7 +277,7 @@ export async function runCeoOs2026FunnelCtaMigration(
         migrationState = {};
     }
 
-    if (migrationState[CEO_OS_2026_CTA_MIGRATION_KEY]) {
+    if (migrationState[CEO_OS_2026_CTA_MIGRATION_V2_KEY]) {
         return { applied: false, updatedChapterNos: [] };
     }
 
@@ -319,24 +334,15 @@ export async function runCeoOs2026FunnelCtaMigration(
         assessmentByContent[assessmentByContent.length - 1] ||
         chapters[chapters.length - 1];
 
-    // 2. Identify Early Chapter (prefer ch 3 -> ch 2 -> earliest non-assessment chapter)
+    // 2. Identify Early-Book Chapters (Ch 1-4 non-assessment) for lead-magnet readers
     const nonAssessment = chapters.filter((c) => c.id !== assessmentChapter?.id);
-    const earlyChapter =
-        nonAssessment.find((c) => c.chapterNo === 3) ||
-        nonAssessment.find((c) => c.chapterNo === 2) ||
-        nonAssessment[2] ||
-        nonAssessment[1] ||
-        nonAssessment[0] ||
-        null;
-
-    // 3. Identify Mid Chapter (prefer ch 6 -> ch 5 -> remaining mid chapter)
-    const remaining = nonAssessment.filter((c) => c.id !== earlyChapter?.id);
-    const midChapter =
-        remaining.find((c) => c.chapterNo === 6) ||
-        remaining.find((c) => c.chapterNo === 5) ||
-        remaining[Math.min(Math.max(remaining.length - 1, 0), 3)] ||
-        remaining[remaining.length - 1] ||
-        null;
+    const ch1 = nonAssessment.find((c) => c.chapterNo === 1) || nonAssessment[0] || null;
+    const remAfter1 = nonAssessment.filter((c) => c.id !== ch1?.id);
+    const ch2 = remAfter1.find((c) => c.chapterNo === 2) || remAfter1[0] || null;
+    const remAfter2 = remAfter1.filter((c) => c.id !== ch2?.id);
+    const ch3 = remAfter2.find((c) => c.chapterNo === 3) || remAfter2[0] || null;
+    const remAfter3 = remAfter2.filter((c) => c.id !== ch3?.id);
+    const ch4 = remAfter3.find((c) => c.chapterNo === 4) || remAfter3[0] || null;
 
     const [articlesHtml, ebooksHtml, ceo2Html, consultHtml] = await Promise.all([
         buildPresetCtaSnippet('articles'),
@@ -371,7 +377,32 @@ export async function runCeoOs2026FunnelCtaMigration(
             modified = true;
         }
 
-        if (earlyChapter && ch.id === earlyChapter.id) {
+        // Clean up old v1 Ch 6 /go/ebooks box so /go/ebooks moves cleanly to Ch 1 without duplicate
+        if (ch.chapterNo === 6 && (!ch1 || ch.id !== ch1.id) && (!assessmentChapter || ch.id !== assessmentChapter.id)) {
+            const removed = removeSingleLineCtaBox(nextContent, 'onepersonceo.com/go/ebooks');
+            if (removed.removed) {
+                nextContent = removed.text;
+                modified = true;
+            }
+        }
+
+        if (ch1 && ch.id === ch1.id) {
+            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/ebooks', ebooksHtml);
+            if (res.added) {
+                nextContent = res.text;
+                modified = true;
+            }
+        }
+
+        if (ch2 && ch.id === ch2.id) {
+            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/ceo2', ceo2Html);
+            if (res.added) {
+                nextContent = res.text;
+                modified = true;
+            }
+        }
+
+        if (ch3 && ch.id === ch3.id) {
             const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/articles', articlesHtml);
             if (res.added) {
                 nextContent = res.text;
@@ -379,8 +410,8 @@ export async function runCeoOs2026FunnelCtaMigration(
             }
         }
 
-        if (midChapter && ch.id === midChapter.id) {
-            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/ebooks', ebooksHtml);
+        if (ch4 && ch.id === ch4.id) {
+            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/consult', consultHtml);
             if (res.added) {
                 nextContent = res.text;
                 modified = true;
@@ -426,7 +457,7 @@ export async function runCeoOs2026FunnelCtaMigration(
         await writeFile(chaptersIndexFile, JSON.stringify(index, null, 2), 'utf-8');
     }
 
-    migrationState[CEO_OS_2026_CTA_MIGRATION_KEY] = {
+    migrationState[CEO_OS_2026_CTA_MIGRATION_V2_KEY] = {
         appliedAt: now,
         projectId: targetProjectId,
         updatedChapterNos,
@@ -445,7 +476,7 @@ async function ensureCeoOs2026FunnelCtas(): Promise<void> {
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
-                    if (parsed && parsed[CEO_OS_2026_CTA_MIGRATION_KEY]) {
+                    if (parsed && parsed[CEO_OS_2026_CTA_MIGRATION_V2_KEY]) {
                         ceoOs2026MigrationDoneInMemory = true;
                     }
                 }

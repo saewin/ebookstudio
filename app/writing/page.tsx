@@ -21,8 +21,15 @@ import {
     updateChapterImage
 } from '@/lib/actions'
 import { sanitizeBookContent } from '@/lib/sanitize'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
+
+function allowSafeMarkdownUrl(url: string): string {
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(url)) {
+        return url
+    }
+    return defaultUrlTransform(url)
+}
 
 interface ChatMessage {
     role: 'user' | 'assistant'
@@ -861,7 +868,7 @@ function WritingContent() {
                         <div className={`w-full flex-1 overflow-y-auto prose prose-slate max-w-none text-slate-800 font-serif leading-relaxed ${
                             isFullScreen ? 'p-8 md:py-12 md:px-20 lg:px-32 xl:px-48 prose-lg' : 'h-full p-8 md:p-12'
                         }`}>
-                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                            <ReactMarkdown rehypePlugins={[rehypeRaw]} urlTransform={allowSafeMarkdownUrl}>
                                 {sanitizeBookContent(data?.content || '').replace(/src=(["'])\/uploads\//gi, 'src=$1/api/uploads/')}
                             </ReactMarkdown>
                         </div>

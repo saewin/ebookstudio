@@ -13,9 +13,16 @@ import {
 } from 'lucide-react'
 import { triggerBookBinder } from '@/lib/actions'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 // @ts-ignore
 import rehypeRaw from 'rehype-raw'
+
+export function allowSafeMarkdownUrl(url: string): string {
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(url)) {
+        return url;
+    }
+    return defaultUrlTransform(url);
+}
 import { Chapter, Project } from '@/lib/notion'
 import { sanitizeBookContent } from '@/lib/sanitize'
 import {
@@ -2135,6 +2142,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                     <div lang="th" className={`prose ${sizeClass} max-w-none break-words prose-code:before:content-none prose-code:after:content-none book-body-content flex-1`}>
                                         <ReactMarkdown 
                                             rehypePlugins={[rehypeRaw]}
+                                            urlTransform={allowSafeMarkdownUrl}
                                             components={{
                                                 h1: ({node, className, ...props}) => <h3 className={`${headingScale.h2} font-bold text-slate-900 ${pageSize === 'a5' ? 'mt-3.5 mb-2' : 'mt-5 mb-2.5'} border-l-4 border-blue-600 pl-3 ${className || ''}`} {...props} />,
                                                 h2: ({node, className, ...props}) => <h4 className={`${headingScale.h2} font-bold text-slate-900 ${pageSize === 'a5' ? 'mt-3.5 mb-2' : 'mt-5 mb-2.5'} border-l-4 border-blue-600 pl-3 ${className || ''}`} {...props} />,
@@ -2196,7 +2204,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                             <span>คลังคำศัพท์สำคัญประจำบท (Key Terminology)</span>
                                         </div>
                                         <div className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-xs'} text-slate-700 leading-relaxed`}>
-                                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} urlTransform={allowSafeMarkdownUrl}>
                                                 {sanitizeBookContent(page.keyTerminology)}
                                             </ReactMarkdown>
                                         </div>
@@ -2211,7 +2219,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                             <span>สรุปประเด็นสำคัญ (Key Takeaways)</span>
                                         </div>
                                         <div className={`${pageSize === 'a5' ? 'text-[11px]' : 'text-xs'} text-slate-700 leading-relaxed`}>
-                                            <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                                            <ReactMarkdown rehypePlugins={[rehypeRaw]} urlTransform={allowSafeMarkdownUrl}>
                                                 {sanitizeBookContent(page.keyTakeaways)}
                                             </ReactMarkdown>
                                         </div>
