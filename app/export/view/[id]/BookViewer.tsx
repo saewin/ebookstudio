@@ -2157,6 +2157,27 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                                                 blockquote: ({node, className, ...props}) => (
                                                     <blockquote className={`border-l-4 border-amber-400 bg-amber-50/60 ${pageSize === 'a5' ? 'p-3 my-2.5' : 'p-4 my-4'} rounded-r-lg text-slate-700 italic ${className || ''}`} {...props} />
                                                 ),
+                                                a: ({node, href, className, children, ...props}) => {
+                                                    const isExternal = Boolean(href && /^https?:\/\//i.test(href));
+                                                    const hasCustomClass = Boolean(
+                                                        className && /(?:cta-btn|cta-url-hint|cross-ref-badge)/.test(className)
+                                                    );
+                                                    return (
+                                                        <a
+                                                            href={href}
+                                                            target={isExternal ? '_blank' : undefined}
+                                                            rel={isExternal ? 'noopener noreferrer' : undefined}
+                                                            className={
+                                                                hasCustomClass
+                                                                    ? className
+                                                                    : `text-blue-700 underline decoration-blue-400 underline-offset-2 font-medium hover:text-blue-900 ${className || ''}`
+                                                            }
+                                                            {...props}
+                                                        >
+                                                            {children}
+                                                        </a>
+                                                    );
+                                                },
                                             }}
                                         >
                                             {transformCrossReferences(

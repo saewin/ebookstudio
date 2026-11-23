@@ -1,21 +1,31 @@
 {
   "manifest_version": 3,
   "name": "OnePersonCEO Knowledge Broadcaster",
-  "version": "1.1.0",
-  "description": "เครื่องมือบรอดแคสต์ให้ความรู้เฉพาะเพจ OnePersonCEO (เสวิญ) ผ่าน Meta Business Suite Inbox พร้อม 4 Presets, Spintax และระบบป้องกันส่งซ้ำ",
+  "version": "2.3.0",
+  "description": "ระบบ CDP, RFM/RSV Multi-Step Follow-up Workflow & Broadcaster เฉพาะเพจ OnePersonCEO (เสวิญ) — เชื่อม Meta Graph API, Turbo Direct, เวลาทองรายบุคคล และซิงก์ HealthScale Server",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "tabs",
-    "scripting"
+    "scripting",
+    "alarms",
+    "notifications",
+    "declarativeNetRequest",
+    "cookies"
   ],
   "host_permissions": [
-    "https://business.facebook.com/*"
+    "https://business.facebook.com/*",
+    "https://www.facebook.com/*",
+    "https://upload.facebook.com/*",
+    "https://graph.facebook.com/*",
+    "https://dashboard.aimar.cloud/*",
+    "https://onepersonceo.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "เปิด OnePersonCEO Knowledge Broadcaster",
+    "default_title": "เปิด OnePersonCEO Smart Broadcaster v2.3",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

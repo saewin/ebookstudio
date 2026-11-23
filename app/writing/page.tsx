@@ -5,11 +5,13 @@ import {
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
     Image as ImageIcon, Upload, Link as LinkIcon,
-    Eye, Edit3, Copy, Plus, Maximize2, Minimize2
+    Eye, Edit3, Copy, Plus, Maximize2, Minimize2, QrCode
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, useRef, Suspense } from 'react'
+import QRCode from 'qrcode'
+import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from '@/lib/onepersonCeoLinks'
 import { 
     fetchChapterDetails, 
     chatWithGhostwriter, 
@@ -122,6 +124,115 @@ function WritingContent() {
             setCursorPos(textareaRef.current.selectionStart)
         }
         setShowImageModal(true)
+    }
+
+    function openCtaModal() {
+        if (textareaRef.current) {
+            setCursorPos(textareaRef.current.selectionStart)
+        }
+        setShowCtaModal(true)
+    }
+
+    // CTA / Web Link Modal states
+    const [showCtaModal, setShowCtaModal] = useState(false)
+    const [ctaPresetId, setCtaPresetId] = useState<string>(ONEPERSON_FUNNEL_PRESETS[0].id)
+    const [ctaInsertMode, setCtaInsertMode] = useState<'box' | 'inline'>('box')
+    const [ctaVariant, setCtaVariant] = useState<'dark' | 'light'>(ONEPERSON_FUNNEL_PRESETS[0].variant)
+    const [ctaEyebrow, setCtaEyebrow] = useState(ONEPERSON_FUNNEL_PRESETS[0].eyebrow)
+    const [ctaTitle, setCtaTitle] = useState(ONEPERSON_FUNNEL_PRESETS[0].title)
+    const [ctaDesc, setCtaDesc] = useState(ONEPERSON_FUNNEL_PRESETS[0].description)
+    const [ctaBonus, setCtaBonus] = useState(ONEPERSON_FUNNEL_PRESETS[0].bonusLabel)
+    const [ctaBtnLabel, setCtaBtnLabel] = useState(ONEPERSON_FUNNEL_PRESETS[0].buttonLabel)
+    const [ctaUrl, setCtaUrl] = useState(ONEPERSON_FUNNEL_PRESETS[0].url)
+    const [ctaIncludeQr, setCtaIncludeQr] = useState(true)
+    const [ctaQrDataUrl, setCtaQrDataUrl] = useState('')
+    const [insertingCta, setInsertingCta] = useState(false)
+
+    useEffect(() => {
+        if (!showCtaModal || !ctaUrl.trim()) {
+            return
+        }
+        let cancelled = false
+        QRCode.toDataURL(ctaUrl.trim(), {
+            width: 220,
+            margin: 1,
+            color: { dark: '#0f172a', light: '#ffffff' },
+        })
+            .then((dataUrl) => {
+                if (!cancelled) setCtaQrDataUrl(dataUrl)
+            })
+            .catch(() => {
+                if (!cancelled) setCtaQrDataUrl('')
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [showCtaModal, ctaUrl])
+
+    function applyCtaPreset(presetId: string) {
+        setCtaPresetId(presetId)
+        const p = ONEPERSON_FUNNEL_PRESETS.find((x) => x.id === presetId)
+        if (!p) return
+        setCtaVariant(p.variant)
+        setCtaEyebrow(p.eyebrow)
+        setCtaTitle(p.title)
+        setCtaDesc(p.description)
+        setCtaBonus(p.bonusLabel)
+        setCtaBtnLabel(p.buttonLabel)
+        setCtaUrl(p.url)
+    }
+
+    async function handleInsertCta() {
+        const cleanUrl = ctaUrl.trim()
+        if (!cleanUrl) {
+            alert('กรุณาระบุ URL ปลายทางก่อนครับ')
+            return
+        }
+
+        setInsertingCta(true)
+        try {
+            let snippet = ''
+            if (ctaInsertMode === 'inline') {
+                snippet = `[${ctaBtnLabel.trim() || cleanUrl}](${cleanUrl})`
+            } else {
+                const qr = ctaIncludeQr
+                    ? ctaQrDataUrl || (await QRCode.toDataURL(cleanUrl, { width: 220, margin: 1 }))
+                    : ''
+                snippet = `\n\n${buildExecutiveCtaHtml({
+                    eyebrow: ctaEyebrow,
+                    title: ctaTitle,
+                    description: ctaDesc,
+                    bonusLabel: ctaBonus,
+                    buttonLabel: ctaBtnLabel || 'เปิดดูรายละเอียด →',
+                    url: cleanUrl,
+                    qrDataUrl: qr,
+                    variant: ctaVariant,
+                })}\n\n`
+            }
+
+            const currentContent = data?.content || ''
+            const insertAt =
+                cursorPos !== null && cursorPos !== undefined && cursorPos >= 0 && cursorPos <= currentContent.length
+                    ? cursorPos
+                    : currentContent.length
+
+            const newContent = `${currentContent.slice(0, insertAt)}${snippet}${currentContent.slice(insertAt)}`
+            setData((prev) => (prev ? { ...prev, content: newContent } : null))
+            setShowCtaModal(false)
+
+            if (chapterId) {
+                setSaving(true)
+                const res = await updateChapterContent(chapterId, newContent)
+                setSaving(false)
+                if (res.success) {
+                    alert('✨ แทรกลิงก์ / กล่อง CTA พร้อม QR Code และบันทึกเรียบร้อยแล้ว!')
+                } else {
+                    alert('แทรกลงหน้าเขียนแล้ว แต่บันทึกไม่สำเร็จ: ' + res.error)
+                }
+            }
+        } finally {
+            setInsertingCta(false)
+        }
     }
 
     // Image Modal states
@@ -537,6 +648,15 @@ function WritingContent() {
                         </button>
 
                         <button
+                            onClick={openCtaModal}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-medium rounded-lg text-xs md:text-sm transition-colors cursor-pointer"
+                            title="แทรกลิงก์เชื่อมเว็บ onepersonceo.com / Messenger / คอร์ส พร้อม QR Code อัตโนมัติ"
+                        >
+                            <QrCode size={15} className="text-amber-700" />
+                            <span>แทรกลิงก์ / CTA เว็บ</span>
+                        </button>
+
+                        <button
                             onClick={handleSave}
                             disabled={saving || typesetting}
                             className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg text-sm transition-colors disabled:opacity-50 cursor-pointer"
@@ -698,6 +818,14 @@ function WritingContent() {
                                     >
                                         <ImageIcon size={13} className="text-blue-600" />
                                         <span>แทรกรูปภาพ</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={openCtaModal}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-900 font-medium rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
+                                    >
+                                        <QrCode size={13} className="text-amber-700" />
+                                        <span>แทรกลิงก์ / CTA</span>
                                     </button>
                                     <button
                                         type="button"
@@ -895,6 +1023,156 @@ function WritingContent() {
                     </div>
                 </div>
             </div>
+
+            {/* CTA / Web Link Insertion Modal */}
+            {showCtaModal && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2 text-sm md:text-base">
+                                <QrCode size={18} className="text-amber-600" />
+                                แทรกลิงก์เชื่อม OnePersonCEO.com &amp; กล่อง CTA พร้อม QR Code
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowCtaModal(false)}
+                                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">1. เลือกลิงก์ Funnel มาตรฐานของ OnePersonCEO</label>
+                                <select
+                                    value={ctaPresetId}
+                                    onChange={(e) => applyCtaPreset(e.target.value)}
+                                    className="w-full p-2.5 border border-slate-200 rounded-lg bg-white text-xs font-medium"
+                                >
+                                    {ONEPERSON_FUNNEL_PRESETS.map((p) => (
+                                        <option key={p.id} value={p.id}>{p.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl font-semibold">
+                                <button
+                                    type="button"
+                                    onClick={() => setCtaInsertMode('box')}
+                                    className={`flex-1 py-1.5 rounded-lg cursor-pointer ${ctaInsertMode === 'box' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}
+                                >
+                                    ✨ กล่อง CTA พรีเมียม + QR Code (แนะนำ)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCtaInsertMode('inline')}
+                                    className={`flex-1 py-1.5 rounded-lg cursor-pointer ${ctaInsertMode === 'inline' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}
+                                >
+                                    🔗 ลิงก์ข้อความสั้น (Markdown)
+                                </button>
+                            </div>
+
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">URL ปลายทาง</label>
+                                <input
+                                    type="url"
+                                    value={ctaUrl}
+                                    onChange={(e) => setCtaUrl(e.target.value)}
+                                    className="w-full p-2 border border-slate-200 rounded-lg font-mono text-xs"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block font-semibold text-slate-700 mb-1">ข้อความปุ่ม / ข้อความลิงก์</label>
+                                <input
+                                    type="text"
+                                    value={ctaBtnLabel}
+                                    onChange={(e) => setCtaBtnLabel(e.target.value)}
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-xs"
+                                />
+                            </div>
+
+                            {ctaInsertMode === 'box' && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <div>
+                                            <label className="block font-semibold text-slate-700 mb-1">ธีมกล่อง CTA</label>
+                                            <select
+                                                value={ctaVariant}
+                                                onChange={(e) => setCtaVariant(e.target.value as 'dark' | 'light')}
+                                                className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                            >
+                                                <option value="dark">Executive Dark Navy + Gold</option>
+                                                <option value="light">Warm Gold Light Box</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block font-semibold text-slate-700 mb-1">Eyebrow (ป้ายด้านบน)</label>
+                                            <input
+                                                type="text"
+                                                value={ctaEyebrow}
+                                                onChange={(e) => setCtaEyebrow(e.target.value)}
+                                                className="w-full p-2 border border-slate-200 rounded-lg text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block font-semibold text-slate-700 mb-1">หัวข้อกล่อง CTA</label>
+                                        <input
+                                            type="text"
+                                            value={ctaTitle}
+                                            onChange={(e) => setCtaTitle(e.target.value)}
+                                            className="w-full p-2 border border-slate-200 rounded-lg text-xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block font-semibold text-slate-700 mb-1">คำอธิบาย</label>
+                                        <textarea
+                                            rows={2}
+                                            value={ctaDesc}
+                                            onChange={(e) => setCtaDesc(e.target.value)}
+                                            className="w-full p-2 border border-slate-200 rounded-lg text-xs"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3 pt-1">
+                                        <label className="inline-flex items-center gap-2 font-semibold text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={ctaIncludeQr}
+                                                onChange={(e) => setCtaIncludeQr(e.target.checked)}
+                                            />
+                                            <span>แนบ QR Code คู่ลิงก์ (ฝังในเล่ม PDF/EPUB อัตโนมัติ)</span>
+                                        </label>
+                                        {ctaIncludeQr && ctaQrDataUrl && (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            <img src={ctaQrDataUrl} alt="QR Preview" className="w-16 h-16 border border-slate-200 rounded p-1 bg-white" />
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => setShowCtaModal(false)}
+                                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                            >
+                                ยกเลิก
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleInsertCta}
+                                disabled={insertingCta}
+                                className="px-5 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                                {insertingCta ? 'กำลังแทรก...' : '📥 แทรกลงตำแหน่งเคอร์เซอร์'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Image Insertion Modal */}
             {showImageModal && (

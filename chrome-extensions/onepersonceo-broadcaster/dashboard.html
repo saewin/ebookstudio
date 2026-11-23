@@ -3,221 +3,792 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OnePersonCEO Knowledge Broadcaster</title>
+  <title>OnePersonCEO Smart Broadcaster v2.3</title>
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-logo">1P</div>
-      <div>
-        <div class="brand-title">OnePersonCEO Knowledge Broadcaster</div>
-        <div class="brand-sub">ระบบบรอดแคสต์ให้ความรู้ + ฐานข้อมูล CDP &amp; RFM เฉพาะเพจ OnePersonCEO (เสวิญ) • v1.1.0</div>
+  <div class="sticky-header">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo">1P</div>
+        <div>
+          <div class="brand-title">OnePersonCEO Smart Broadcaster</div>
+          <div class="brand-sub">ระบบ CDP (RFM · RSV · Customer 360) · Workflow Follow-up &amp; Turbo Direct • v2.3.0</div>
+        </div>
       </div>
-    </div>
-    <div class="topbar-right">
-      <span id="connectionPill" class="pill warn">กำลังตรวจสอบการเชื่อมต่อ...</span>
-      <button id="btnCheckConn" class="btn btn-sm">ตรวจสอบการเชื่อมต่อ</button>
-      <button id="btnOpenInbox" class="btn btn-primary btn-sm">เปิด Meta Business Suite</button>
-    </div>
-  </header>
+      <div class="topbar-right">
+        <span id="apiStatusPill" class="pill warn">Meta API: ยังไม่เชื่อมต่อ</span>
+        <span id="cdpCountPill" class="pill">CDP: 0 คน</span>
+        <span id="schedulerPill" class="pill">Scheduler: เปิด</span>
+        <button id="btnOpenInboxTop" class="btn btn-sm" type="button">เปิด Meta Business Suite</button>
+      </div>
+    </header>
+
+    <nav class="tabbar" role="tablist" aria-label="เมนูหลัก">
+      <button class="tab-btn active" type="button" role="tab" data-tab="connect" aria-selected="true">🔗 1. Meta API &amp; ซิงค์ฐานลูกค้า</button>
+      <button class="tab-btn" type="button" role="tab" data-tab="segment" aria-selected="false">🎯 2. แบ่ง Segment (RFM · RSV · เวลาทอง)</button>
+      <button class="tab-btn" type="button" role="tab" data-tab="copy" aria-selected="false">✍️ 3. ข้อความ &amp; Dynamic Copy</button>
+      <button class="tab-btn" type="button" role="tab" data-tab="launch" aria-selected="false">🚀 4. ยิง Batch &amp; ตั้งเวลาทองรายบุคคล</button>
+      <button class="tab-btn" type="button" role="tab" data-tab="workflows" aria-selected="false">🔄 5. Workflow Follow-up (RFM/RSV)</button>
+      <button class="tab-btn" type="button" role="tab" data-tab="legacy" aria-selected="false">🧭 6. โหมด Inbox เดิม (DOM)</button>
+    </nav>
+  </div>
 
   <main class="container">
-    <div class="banner">
-      <div>
-        <strong>🛡️ โหมดปลอดภัย + ฐานข้อมูล CDP ส่วนตัว (IndexedDB รองรับ 100,000+ รายชื่อ):</strong>
-        ดึงรายชื่อเก็บลงเครื่องอัตโนมัติ แบ่งกลุ่ม RFM/RSV และล็อกตรวจชื่อหัวแชท 3 ชั้นก่อนส่งทุกครั้ง
+    <!-- TAB 1: META API & CURSOR SYNC & CUSTOMER 360 -->
+    <section id="tab-connect" class="tab-panel active">
+      <div class="banner">
+        <div>
+          <strong>⚡ ดึงรายชื่อหลักหมื่น–แสนคนผ่าน Official Meta Graph API (Cursor Pagination):</strong>
+          ไม่เลื่อนหน้าจอ DOM ช้าๆ อีกต่อไป ดึง PSID ตรงตัวเก็บลง IndexedDB ในเครื่องคุณ พร้อมผสานข้อมูลสั่งซื้อ Customer 360 เพื่อทำ RFM, RSV และตั้งเวลาส่งรายบุคคล
+        </div>
+        <span id="cooldownGlobalPill" class="pill">ประวัติส่งแล้ว: 0 คน</span>
       </div>
-      <span id="cooldownSummary" class="pill">ฐานข้อมูล: 0 คน • ส่งแล้ว: 0 คน</span>
-    </div>
 
-    <section class="card">
-      <div class="card-header">
-        <div class="card-title">🔗 สถานะการเชื่อมต่อ Meta Business Suite Inbox</div>
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">🔐 1.1 เชื่อมต่อ Official Meta Graph API (Page Access Token)</div>
+          <span class="pill" style="font-size: 11px;">Graph API v21.0 • เก็บ Token เฉพาะในเครื่อง</span>
+        </div>
+
+        <div class="row" style="margin-bottom: 10px;">
+          <div style="flex: 1; min-width: 280px; display: flex; gap: 8px;">
+            <input id="tokenInput" type="password" placeholder="วาง Page Access Token หรือ User Access Token ของเพจ One Person Ceo..." />
+            <button id="btnToggleToken" class="btn btn-sm" type="button">👁 แสดง</button>
+          </div>
+          <button id="btnVerifyToken" class="btn btn-primary" type="button">🔍 ตรวจสอบและเชื่อมต่อ Token</button>
+        </div>
+
+        <div id="tokenStatusMsg" class="inline-alert hidden" style="margin-bottom: 12px;"></div>
+
+        <details class="helper-details" style="margin-bottom: 12px;">
+          <summary>❓ ยังไม่มี Page Access Token? ดูวิธีรับ Token ของเพจใน 30 วินาที</summary>
+          <div class="helper-body">
+            <ol>
+              <li>เปิด <strong>Meta Graph API Explorer</strong> แล้วเลือก Meta App ของคุณด้านขวาบน (ต้องเพิ่ม Product <strong>Messenger</strong> ใน App แล้ว)</li>
+              <li>ในช่อง <strong>Permissions</strong> ด้านขวา ให้เพิ่มสิทธิ์ให้ครบทั้ง 4 ตัว: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_messaging</code>, <code>pages_manage_metadata</code></li>
+              <li>กดปุ่มสีน้ำเงิน <strong>Generate Access Token</strong> → อนุญาตสิทธิ์ → แล้วเปลี่ยนช่อง <strong>User or Page</strong> ด้านขวาบนให้เป็นชื่อเพจ <strong>One Person Ceo</strong> จากนั้น Copy Token มาวางช่องด้านบน แล้วกด <strong>🔍 ตรวจสอบและเชื่อมต่อ Token</strong></li>
+            </ol>
+            <div style="margin-top: 8px;">
+              <button id="btnOpenGraphExplorer" class="btn btn-sm" type="button">🔑 เปิด Meta Graph API Explorer</button>
+            </div>
+          </div>
+        </details>
+
+        <div id="pageSelectRow" class="row hidden" style="margin-bottom: 12px;">
+          <label class="field-label" for="pageSelect" style="margin: 0;">เลือกเพจจาก User Token:</label>
+          <select id="pageSelect" style="max-width: 380px;"></select>
+        </div>
+
+        <div class="quiet-box" style="margin-bottom: 12px;">
+          <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">🚀 โหมด BroadTurbo Direct (ใช้เซสชัน Chrome + FBID จริง — ไม่ต้องรอ App Review / ส่งข้าม 24 ชม.)</div>
+          <div class="row" style="margin-bottom: 8px;">
+            <input id="turboPageIdInput" type="text" placeholder="ระบุ Page ID เช่น 561475983873000" style="max-width: 240px;" />
+            <button id="btnUseOnePersonPage" class="btn btn-sm" type="button">✨ ใช้เพจ OnePersonCEO (561475983873000)</button>
+            <button id="btnDetectPageFromTab" class="btn btn-sm" type="button">🔎 ดึง Page ID จากแท็บ Inbox</button>
+            <button id="btnDiagnoseTurbo" class="btn btn-primary btn-sm" type="button">🩺 ตรวจระบบ BroadTurbo สด</button>
+          </div>
+          <div id="turboDiagBox" class="inline-alert hidden"></div>
+        </div>
+
+        <div class="status-grid-4">
+          <div class="status-box">
+            <div class="status-label">เพจที่กำลังใช้งาน</div>
+            <div id="kpiPageName" class="status-value">ยังไม่เชื่อมต่อ (หรือโหมด Demo)</div>
+          </div>
+          <div class="status-box">
+            <div class="status-label">Page ID</div>
+            <div id="kpiPageId" class="status-value">-</div>
+          </div>
+          <div class="status-box">
+            <div class="status-label">รายชื่อใน IndexedDB</div>
+            <div id="kpiDbContacts" class="status-value">0 คน</div>
+          </div>
+          <div class="status-box">
+            <div class="status-label">Meta API Rate Usage</div>
+            <div id="kpiApiUsage" class="status-value">0% (ปกติ)</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="two-col-grid">
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">📡 1.2 ดึงแชทเก่าแบบ Cursor Pagination (10,000–100,000+ คน)</div>
+          </div>
+
+          <div class="row" style="margin-bottom: 12px;">
+            <div style="min-width: 200px; flex: 1;">
+              <label class="field-label" for="syncTargetSelect">เป้าหมายการดึง (สูงสุด)</label>
+              <select id="syncTargetSelect">
+                <option value="1000">1,000 คน (ทดสอบเร็ว)</option>
+                <option value="5000">5,000 คน</option>
+                <option value="20000" selected>20,000 คน (แนะนำ)</option>
+                <option value="50000">50,000 คน</option>
+                <option value="200000">ทั้งหมด (สูงสุด 200,000 คน)</option>
+              </select>
+            </div>
+            <div style="min-width: 140px;">
+              <label class="field-label" for="syncBatchLimit">ชุดละ (ต่อ Request)</label>
+              <select id="syncBatchLimit">
+                <option value="50">50 คน/รอบ</option>
+                <option value="100" selected>100 คน/รอบ (เร็วสุด)</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="syncAlertBox" class="inline-alert hidden" style="margin-bottom: 10px;"></div>
+
+          <div class="row" style="margin-bottom: 12px;">
+            <button id="btnStartTurboSync" class="btn btn-success" type="button">🚀 ซิงค์แชทสดแบบ BroadTurbo (ดึง FBID จริง — แนะนำ!)</button>
+            <button id="btnStartSync" class="btn btn-primary" type="button">⚡ ซิงค์ผ่าน Graph API</button>
+            <button id="btnResumeSync" class="btn btn-sm" type="button" disabled>▶ ทำต่อจาก Cursor เดิม</button>
+            <button id="btnPauseSync" class="btn btn-sm" type="button" disabled>⏸ พัก (จำ Cursor)</button>
+            <button id="btnResetSync" class="btn btn-danger btn-sm" type="button">↺ ล้าง Cursor</button>
+          </div>
+
+          <div class="progress-wrap" style="margin-bottom: 8px;">
+            <div id="syncProgressBar" class="progress-bar"></div>
+          </div>
+          <div class="row-between" style="font-size: 12px; color: var(--muted);">
+            <span id="syncStatusText">พร้อมซิงค์ผ่าน GET /{page-id}/conversations</span>
+            <span id="syncSpeedInfo">0 คน/วินาที</span>
+          </div>
+          <div id="syncCursorInfo" style="font-size: 11px; color: var(--muted); margin-top: 6px; word-break: break-all;">
+            Cursor: ยังไม่มีจุดพัก
+          </div>
+
+          <div class="row" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);">
+            <button id="btnSyncFromInboxToCdp" class="btn btn-sm" type="button">🧭 ดึงจากแท็บ Inbox เข้า CDP (ไม่ต้องใช้ Token)</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">💎 1.3 ผสาน Customer 360 (CSV / JSON) &amp; Demo CDP</div>
+          </div>
+
+          <p style="font-size: 12px; color: var(--muted); margin-bottom: 12px;">
+            นำเข้าไฟล์ยอดสั่งซื้อย้อนหลังเพื่อคำนวณ <strong>RFM</strong>, <strong>RSV รอบซื้อซ้ำ</strong>, <strong>LTV</strong> และ <strong>เวลาสั่งซื้อเฉพาะรายบุคคล</strong> (จับคู่ด้วย <code>psid</code> หรือชื่อลูกค้าอัตโนมัติ)
+          </p>
+
+          <div class="row" style="margin-bottom: 12px;">
+            <input id="c360FileInput" type="file" accept=".csv,.json,.txt" style="flex: 1;" />
+            <button id="btnImportC360" class="btn btn-primary btn-sm" type="button">📥 นำเข้า Customer 360</button>
+          </div>
+
+          <div class="row" style="margin-bottom: 12px;">
+            <button id="btnDownloadSampleCsv" class="btn btn-sm" type="button">📄 ดาวน์โหลดตัวอย่าง CSV</button>
+            <button id="btnLoadDemoCdp" class="btn btn-success btn-sm" type="button">✨ โหลดข้อมูลจำลอง 240 คน (Demo CDP)</button>
+            <button id="btnClearPageDb" class="btn btn-danger btn-sm" type="button">🗑️ ล้างฐานข้อมูลเพจนี้</button>
+          </div>
+
+          <div id="c360SummaryBox" class="status-box" style="font-size: 12px; color: var(--muted);">
+            ยังไม่มีการนำเข้า Customer 360 — คุณสามารถกด "✨ โหลดข้อมูลจำลอง 240 คน" เพื่อทดลองแบ่ง Segment และตั้งเวลาทองรายบุคคลได้ทันทีครับ
+          </div>
+        </section>
       </div>
-      <div class="status-grid">
-        <div class="status-box">
-          <div class="status-label">แท็บ Meta Business Suite Inbox</div>
-          <div id="statusTab" class="status-value">ยังไม่พบแท็บ Inbox</div>
+    </section>
+
+    <!-- TAB 2: SEGMENTATION (RFM · RSV · GOLDEN HOUR) -->
+    <section id="tab-segment" class="tab-panel">
+      <div class="kpi-grid-5">
+        <div class="kpi-card">
+          <div class="kpi-label">ฐานลูกค้าทั้งหมด (CDP)</div>
+          <div id="segKpiTotal" class="kpi-val">0</div>
         </div>
-        <div class="status-box">
-          <div class="status-label">เพจที่ตรวจพบในเบราว์เซอร์</div>
-          <div id="statusPage" class="status-value">-</div>
+        <div class="kpi-card">
+          <div class="kpi-label">อยู่ในหน้าต่าง 24 ชม.</div>
+          <div id="segKpi24h" class="kpi-val" style="color: var(--success);">0</div>
         </div>
-        <div class="status-box">
-          <div class="status-label">ฐานข้อมูล CDP เพจ One Person Ceo</div>
-          <div id="statusContacts" class="status-value">0 คน (พร้อมดึงเพิ่มไม่จำกัด)</div>
+        <div class="kpi-card">
+          <div class="kpi-label">Champions + Loyal</div>
+          <div id="segKpiChampions" class="kpi-val" style="color: #fcd34d;">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">🔥 RSV ครบกำหนดซื้อซ้ำ</div>
+          <div id="segKpiRsvDue" class="kpi-val" style="color: #fb7185;">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">มูลค่า LTV รวม</div>
+          <div id="segKpiLtv" class="kpi-val" style="color: #93c5fd;">฿0</div>
+        </div>
+      </div>
+
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">🎛️ 2.1 ตัวกรอง Segment อัจฉริยะ (RFM · RSV · พฤติกรรม)</div>
+          <button id="btnResetFilters" class="btn btn-sm" type="button">↺ ล้างตัวกรองทั้งหมด</button>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+          <div class="field-label">กลุ่ม RFM (คลิกเพื่อกรอง):</div>
+          <div id="rfmFilterPills" class="filter-pills"></div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <div class="field-label">สถานะ RSV รอบซื้อซ้ำ (คลิกเพื่อกรอง):</div>
+          <div id="rsvFilterPills" class="filter-pills"></div>
+        </div>
+
+        <div class="row-between" style="gap: 12px;">
+          <div class="row" style="gap: 14px;">
+            <label class="chk-inline"><input id="fltWithin24h" type="checkbox" /> อยู่ในหน้าต่าง 24 ชม.</label>
+            <label class="chk-inline"><input id="fltHasOrders" type="checkbox" /> มีประวัติสั่งซื้อ (Customer 360)</label>
+            <label class="chk-inline"><input id="fltHasMktToken" type="checkbox" /> มี Marketing Token</label>
+            <label class="chk-inline"><input id="fltHideCooldown" type="checkbox" checked /> ซ่อนคนที่ติด Cooldown</label>
+          </div>
+          <input id="fltContactSearch" type="text" placeholder="🔍 ค้นหาชื่อ / PSID / สินค้าล่าสุด..." style="max-width: 280px;" />
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">📊 2.2 กราฟชั่วโมงทองรายบุคคล (เวลา Asia/Bangkok ที่ลูกค้าทัก/สั่งซื้อบ่อยสุด)</div>
+          <div class="row">
+            <span id="hourFilterBadge" class="pill">แสดงทุกชั่วโมง (00–23 น.)</span>
+            <button id="btnClearHourFilter" class="btn btn-sm hidden" type="button">แสดงทุกชั่วโมง</button>
+          </div>
+        </div>
+        <div id="hourChart" class="hour-chart" aria-label="กราฟเวลาทอง 24 ชั่วโมง"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">👥 2.3 รายชื่อตามตัวกรอง (<span id="filteredCountLabel">0</span> คน)</div>
+          <div class="row">
+            <span id="selectedCountBadge" class="pill ok">เลือกสำหรับแคมเปญ: 0 คน</span>
+            <button id="btnSelectAllFiltered" class="btn btn-success btn-sm" type="button">✅ เลือกทั้งหมดในตัวกรองนี้ (0 คน)</button>
+            <button id="btnClearSelected" class="btn btn-sm" type="button">ล้างที่เลือก</button>
+            <button id="btnGoToCopy" class="btn btn-primary btn-sm" type="button">✍️ ไปตั้งข้อความ &amp; ยิงต่อ →</button>
+          </div>
+        </div>
+
+        <div id="cdpContactList" class="cdp-list"></div>
+
+        <div class="row-between" style="margin-top: 12px;">
+          <span id="pageInfo" style="font-size: 12px; color: var(--muted);">หน้า 1 / 1</span>
+          <div class="row">
+            <button id="btnPrevPage" class="btn btn-sm" type="button">← ก่อนหน้า</button>
+            <button id="btnNextPage" class="btn btn-sm" type="button">ถัดไป →</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- TAB 3: DYNAMIC COPY & LIVE PREVIEW -->
+    <section id="tab-copy" class="tab-panel">
+      <div class="main-grid">
+        <div class="stack">
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title">📚 3.1 ชุดข้อความ &amp; ตัวแปรเฉพาะบุคคล OnePersonCEO (เสวิญ)</div>
+              <button id="btnResetPresets" class="btn btn-sm" type="button">คืนค่าเริ่มต้น</button>
+            </div>
+
+            <div id="presetGrid" class="preset-grid"></div>
+
+            <div class="row-between" style="margin-bottom: 12px;">
+              <div class="row">
+                <button id="btnSavePreset" class="btn btn-success btn-sm" type="button">💾 บันทึกทับ Preset นี้</button>
+                <button id="btnAddPreset" class="btn btn-sm" type="button">+ เพิ่ม Preset ใหม่</button>
+              </div>
+              <button id="btnDeletePreset" class="btn btn-danger btn-sm" type="button">ลบ Preset นี้</button>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+              <label class="field-label" for="presetTitleInput">ชื่อปุ่ม Preset</label>
+              <input id="presetTitleInput" type="text" placeholder="ชื่อ Preset..." />
+            </div>
+
+            <div id="imageDropzone" class="image-picker-box" style="margin-bottom: 12px;">
+              <label class="field-label">🖼️ แนบรูปภาพส่งพร้อมข้อความ (เลือกจากเครื่อง / ลากรูปมาวาง / กด Cmd+V วางภาพ — สูงสุด 4 รูป)</label>
+              <div class="row" style="margin-bottom: 8px;">
+                <input id="imageFileInput" type="file" accept="image/*" multiple class="hidden" />
+                <button id="btnPickImages" class="btn btn-primary btn-sm" type="button">🖼️ เลือกรูปจากเครื่อง (PNG / JPG)</button>
+                <select id="sendOrderSelect" style="width: auto; padding: 6px 10px;">
+                  <option value="image_first" selected>ส่งรูปก่อน → ตามด้วยข้อความ</option>
+                  <option value="text_first">ส่งข้อความก่อน → ตามด้วยรูป</option>
+                </select>
+                <button id="btnClearImages" class="btn btn-danger btn-sm hidden" type="button">ล้างรูปทั้งหมด</button>
+              </div>
+              <div id="attachedImagesGrid" class="attached-images-grid"></div>
+              <input id="imageUrlInput" type="text" placeholder="หรือวางลิงก์รูปภาพ https://... (ไม่บังคับ)" />
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <label class="field-label">แท็ก Dynamic Personalization &amp; Spintax (คลิกเพื่อแทรก)</label>
+              <div class="tag-row">
+                <button class="tag-chip" type="button" data-tag="{greeting}">👋 {greeting}</button>
+                <button class="tag-chip" type="button" data-tag="{name}">👤 {name}</button>
+                <button class="tag-chip" type="button" data-tag="{segment}">🏷️ {segment}</button>
+                <button class="tag-chip" type="button" data-tag="{rsv_stage}">🔥 {rsv_stage}</button>
+                <button class="tag-chip" type="button" data-tag="{last_product}">📦 {last_product}</button>
+                <button class="tag-chip" type="button" data-tag="{preferred_time}">⏰ {preferred_time}</button>
+                <button class="tag-chip" type="button" data-tag="{ltv}">💰 {ltv}</button>
+                <button class="tag-chip" type="button" data-tag="#{code}">🛡️ #{code}</button>
+                <button class="tag-chip" type="button" data-tag="{คำที่1|คำที่2|คำที่3}">🎲 {คำ1|คำ2}</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="row-between" style="margin-bottom: 6px;">
+                <label class="field-label" for="messageInput" style="margin-bottom: 0;">ข้อความหลัก (ใช้กับทุกกลุ่มที่ไม่มีข้อความเฉพาะ)</label>
+                <span id="charCount" style="font-size: 11px; color: var(--muted);">0 ตัวอักษร</span>
+              </div>
+              <textarea id="messageInput" placeholder="พิมพ์ข้อความให้ความรู้ที่นี่..."></textarea>
+            </div>
+
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+              <label class="chk-inline" style="margin-bottom: 10px;">
+                <input id="chkSegmentOverrides" type="checkbox" />
+                <span><strong>✨ แยกข้อความตาม Segment อัตโนมัติ (1 แคมเปญส่งคนละบทพูดตาม RFM / RSV)</strong></span>
+              </label>
+
+              <div id="segmentOverridesPanel" class="hidden override-grid">
+                <div>
+                  <label class="field-label" for="ovrDueNow">🔥 เฉพาะกลุ่ม RSV Due Now (ครบกำหนดซื้อซ้ำ)</label>
+                  <textarea id="ovrDueNow" class="mini-textarea" placeholder="เว้นว่าง = ใช้ข้อความหลัก"></textarea>
+                </div>
+                <div>
+                  <label class="field-label" for="ovrChampions">👑 เฉพาะกลุ่ม Champions (VIP ซื้อซ้ำ)</label>
+                  <textarea id="ovrChampions" class="mini-textarea" placeholder="เว้นว่าง = ใช้ข้อความหลัก"></textarea>
+                </div>
+                <div>
+                  <label class="field-label" for="ovrAtRisk">⚠️ เฉพาะกลุ่ม At Risk (เริ่มห่างหาย)</label>
+                  <textarea id="ovrAtRisk" class="mini-textarea" placeholder="เว้นว่าง = ใช้ข้อความหลัก"></textarea>
+                </div>
+                <div>
+                  <label class="field-label" for="ovrWarmLead">💬 เฉพาะกลุ่ม Warm Lead (เพิ่งทัก 7 วัน)</label>
+                  <textarea id="ovrWarmLead" class="mini-textarea" placeholder="เว้นว่าง = ใช้ข้อความหลัก"></textarea>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title">📱 3.2 ตัวอย่างข้อความจริงรายบุคคล (Messenger Live Preview)</div>
+              <button id="btnRandomizePreview" class="btn btn-sm" type="button">🎲 สุ่ม Spintax</button>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+              <label class="field-label" for="previewContactSelect">จำลองดูมุมมองของลูกค้า:</label>
+              <select id="previewContactSelect"></select>
+            </div>
+
+            <div id="previewSampleMeta" style="font-size: 11px; color: var(--muted); margin-bottom: 10px;"></div>
+
+            <div class="preview-phone">
+              <div class="preview-header">
+                <div class="preview-avatar">1P</div>
+                <div>
+                  <div style="font-size: 13px; font-weight: 700;">One Person Ceo • เสวิญ</div>
+                  <div style="font-size: 11px; color: #6b7280;">Messenger API Preview</div>
+                </div>
+              </div>
+              <div id="previewChatStack" class="preview-chat-stack">
+                <div id="previewImagesWrap" class="preview-images-wrap hidden"></div>
+                <div id="previewBubble" class="preview-bubble"></div>
+              </div>
+              <div id="previewFooter" class="preview-footer">เลือกเป้าหมายในแท็บ 2 แล้ว: 0 คน</div>
+            </div>
+          </section>
+
+          <button id="btnGoToLaunch" class="btn btn-primary" type="button" style="width: 100%; padding: 12px; font-size: 14px;">🚀 ไปหน้ายิงจริงให้กลุ่มที่เลือก (0 คน) — แท็บ 4 →</button>
+
+          <section class="card">
+            <div class="card-header">
+              <div class="card-title">🧪 3.3 ทดสอบส่งให้ 1 คน (ไม่ต้องกรอก PSID)</div>
+            </div>
+            <button id="btnTestSendOne" class="btn btn-sm" type="button" style="width: 100%;">🧪 ส่งทดสอบจริงให้คนที่เลือกในตัวอย่างด้านบน (1 คน)</button>
+            <div id="testSendResult" style="font-size: 12px; color: var(--muted); margin-top: 8px;"></div>
+          </section>
         </div>
       </div>
     </section>
 
-    <div class="main-grid">
-      <!-- LEFT COLUMN -->
-      <div class="stack">
-        <!-- 1. PRESETS -->
+    <!-- TAB 4: BATCH QUEUE & PER-PERSON GOLDEN HOUR SCHEDULER -->
+    <section id="tab-launch" class="tab-panel">
+      <div class="banner">
+        <div>
+          <strong>⚠️ ระหว่างยิงโหมด Batch ทันที กรุณาอย่าปิดแท็บนี้</strong> — ย่อหน้าต่างหรือสลับไปทำงานอื่นได้ตามปกติ •
+          ส่วนโหมด <strong>🕒 ตั้งเวลาทองรายบุคคล</strong> ระบบ Background Scheduler (<code>chrome.alarms</code>) จะส่งให้อัตโนมัติแม้พับแท็บ
+        </div>
+        <span id="launchSelectedPill" class="pill ok">กลุ่มเป้าหมายที่เลือก: 0 คน</span>
+      </div>
+
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">⚙️ 4.1 ตั้งค่าแคมเปญ &amp; รูปแบบการส่ง</div>
+        </div>
+
+        <div class="mode-switch-grid" style="margin-bottom: 14px;">
+          <label class="mode-card active" id="modeCardBatch">
+            <input type="radio" name="deliveryMode" value="batch" checked />
+            <div>
+              <div class="mode-card-title">⚡ ส่งทันทีเป็น Batch (Batch Queue)</div>
+              <div class="mode-card-desc">แบ่งกลุ่มเป็นชุดละ 500–5,000 คน แบบ BroadTurbo พร้อมเรียงคิวส่งให้คนสำคัญ (RSV/LTV) ก่อน และดูกราฟสีเขียว/แดงรายชุด</div>
+            </div>
+          </label>
+          <label class="mode-card" id="modeCardSmartTime">
+            <input type="radio" name="deliveryMode" value="smart_time" />
+            <div>
+              <div class="mode-card-title">🕒 ส่งตามเวลาทองรายบุคคล (Per-Person Send-Time)</div>
+              <div class="mode-card-desc">ส่งหาแต่ละคนไม่พร้อมกัน — ระบบคำนวณชั่วโมงทองเฉพาะตัว (จากเวลาที่เคยสั่งซื้อ/ทักแชท) + Quiet Hours กันทักกลางดึก</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="settings-grid-4" style="margin-bottom: 12px;">
+          <div>
+            <label class="field-label" for="campaignTitleInput">ชื่อแคมเปญ</label>
+            <input id="campaignTitleInput" type="text" value="แคมเปญความรู้ OnePersonCEO" />
+          </div>
+          <div>
+            <label class="field-label" for="messagingModeSelect">ช่องทางและประเภทการส่ง</label>
+            <select id="messagingModeSelect">
+              <option value="TURBO_DIRECT" selected>🚀 โหมด Turbo Direct (แบบ BroadTurbo — ยิงตรงด้วย PSID ไม่ต้องค้นหาชื่อ / ข้าม 24 ชม.)</option>
+              <option value="INBOX_DOM">🧭 แท็บ Meta Business Suite Inbox (โหมดคลิกหน้าจอ DOM)</option>
+              <option value="RESPONSE">Meta API: RESPONSE (เฉพาะคนทักใน 24 ชม.)</option>
+              <option value="MESSAGE_TAG">Meta API: MESSAGE_TAG (ส่งนอก 24 ชม. ตาม Tag)</option>
+              <option value="MARKETING_MESSAGES">Meta API: MARKETING_MESSAGES (ใช้ Opt-in Token)</option>
+            </select>
+          </div>
+          <div id="messageTagWrap" class="hidden">
+            <label class="field-label" for="messageTagSelect">Message Tag</label>
+            <select id="messageTagSelect">
+              <option value="ACCOUNT_UPDATE">ACCOUNT_UPDATE</option>
+              <option value="CONFIRMED_EVENT_UPDATE">CONFIRMED_EVENT_UPDATE</option>
+              <option value="POST_PURCHASE_UPDATE">POST_PURCHASE_UPDATE</option>
+              <option value="HUMAN_AGENT">HUMAN_AGENT</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="batchSizeSelect">ขนาดต่อชุด (Batch Size)</label>
+            <select id="batchSizeSelect">
+              <option value="50">50 คน/ชุด (ทดสอบ)</option>
+              <option value="500" selected>500 คน/ชุด</option>
+              <option value="1000">1,000 คน/ชุด</option>
+              <option value="2500">2,500 คน/ชุด</option>
+              <option value="5000">5,000 คน/ชุด</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="sortPrioritySelect">เรียงลำดับคิวก่อน-หลัง</label>
+            <select id="sortPrioritySelect">
+              <option value="rsv">🔥 RSV Score สูงสุดก่อน</option>
+              <option value="ltv">💰 LTV ยอดซื้อสูงสุดก่อน</option>
+              <option value="recent">💬 ทักล่าสุดก่อน</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="apiDelayMs">หน่วงระหว่างคน (ms)</label>
+            <input id="apiDelayMs" type="number" min="40" max="5000" value="120" />
+          </div>
+          <div>
+            <label class="field-label" for="cooldownDaysInput">กันส่งซ้ำ Cooldown (วัน)</label>
+            <input id="cooldownDaysInput" type="number" min="0" max="90" value="14" />
+          </div>
+        </div>
+
+        <div id="quietHoursPanel" class="hidden quiet-box" style="margin-bottom: 12px;">
+          <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">🌙 Quiet Hours Guardrail (ป้องกันส่งรบกวนช่วงดึกตามเวลาไทย Asia/Bangkok)</div>
+          <div class="settings-grid-4">
+            <div>
+              <label class="field-label" for="quietStartHour">ห้ามส่งตั้งแต่เวลา (น.)</label>
+              <input id="quietStartHour" type="number" min="0" max="23" value="22" />
+            </div>
+            <div>
+              <label class="field-label" for="quietEndHour">เปิดส่งอีกครั้งเวลา (น.)</label>
+              <input id="quietEndHour" type="number" min="0" max="23" value="8" />
+            </div>
+            <div>
+              <label class="field-label" for="quietShiftTarget">ถ้าเวลาทองอยู่ช่วงดึก ให้เลื่อนไป</label>
+              <select id="quietShiftTarget">
+                <option value="morning" selected>🌅 ช่วงเช้า (เวลาเปิดส่ง เช่น 08:00 น.)</option>
+                <option value="evening">🌆 ช่วงค่ำก่อนดึก (เช่น 21:00 น.)</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="jitterMinutes">สุ่มกระจายนาที (Jitter ±)</label>
+              <input id="jitterMinutes" type="number" min="0" max="45" value="12" />
+            </div>
+          </div>
+        </div>
+
+        <div id="launchWindowHint" class="inline-alert warn hidden row-between" style="margin-bottom: 12px;">
+          <span id="launchWindowHintText"></span>
+          <button id="btnSwitchToInboxDom" class="btn btn-primary btn-sm hidden" type="button">🧭 เปลี่ยนเป็นส่งผ่านแท็บ Inbox ทันที</button>
+        </div>
+
+        <div class="row-between" style="margin-bottom: 14px;">
+          <div class="row" style="gap: 16px;">
+            <label class="chk-inline"><input id="chkNotifyDesktop" type="checkbox" checked /> 🔔 แจ้งเตือนบนหน้าจอ</label>
+            <label class="chk-inline"><input id="chkAutoContinueBatch" type="checkbox" /> ⏭ ส่งต่อชุดถัดไปอัตโนมัติ</label>
+            <label class="chk-inline"><input id="chkDryRun" type="checkbox" /> 🧪 โหมดทดสอบ Dry-Run (จำลองไม่ยิง API จริง)</label>
+          </div>
+          <button id="btnCreateCampaign" class="btn btn-primary" type="button">⚡ สร้างคิว &amp; เริ่มยิงทันที (0 คน)</button>
+        </div>
+      </section>
+
+      <!-- BATCH QUEUE PANEL -->
+      <section id="batchQueuePanel" class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="activeCampaignTitle">📦 4.2 คิวบรอดแคสต์รายชุด (Batch Progress Monitor)</div>
+            <div id="activeCampaignMeta" style="font-size: 12px; color: var(--muted);">ยังไม่มีแคมเปญที่เปิดอยู่ — กด "สร้างคิวแคมเปญ" ด้านบนเพื่อเริ่มต้น</div>
+          </div>
+          <div class="row">
+            <button id="btnPauseCampaign" class="btn btn-sm" type="button" disabled>⏸ พักการส่ง</button>
+            <button id="btnStopCampaign" class="btn btn-danger btn-sm" type="button" disabled>⏹ หยุด</button>
+            <button id="btnRetryRateLimited" class="btn btn-sm" type="button" disabled>🔄 ส่งซ้ำเฉพาะ Rate Limit</button>
+            <button id="btnExportFailedCsv" class="btn btn-sm" type="button" disabled>📥 Export รายชื่อที่ส่งไม่สำเร็จ (CSV)</button>
+          </div>
+        </div>
+
+        <div id="batchCardsContainer" class="batch-list">
+          <div style="color: var(--muted); font-size: 13px; text-align: center; padding: 18px;">
+            ยังไม่มี Batch คิวในแคมเปญนี้
+          </div>
+        </div>
+      </section>
+
+      <!-- PER-PERSON SCHEDULE PANEL -->
+      <section id="smartSchedulePanel" class="card hidden">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🕒 4.2 ตารางส่งอัจฉริยะตามเวลาทองรายบุคคล (24-Hour Individual Dispatch)</div>
+            <div id="scheduleSummaryBar" style="font-size: 12px; color: var(--muted);">ยังไม่มีตารางส่งแบบรายบุคคล</div>
+          </div>
+          <div class="row">
+            <button id="btnTriggerSchedulerNow" class="btn btn-success btn-sm" type="button">⚡ ยิงรอบที่ถึงเวลาตอนนี้</button>
+            <button id="btnToggleScheduler" class="btn btn-sm" type="button">⏸ พัก Scheduler</button>
+            <button id="btnCancelScheduledCampaign" class="btn btn-danger btn-sm" type="button">⏹ ยกเลิกตารางนี้</button>
+          </div>
+        </div>
+
+        <div id="scheduleHourBreakdown" class="schedule-hour-grid"></div>
+      </section>
+
+      <div class="two-col-grid">
         <section class="card">
           <div class="card-header">
-            <div class="card-title">📚 1. ชุดความรู้ &amp; คอนเทนต์ OnePersonCEO (คลิกเพื่อโหลดข้อความพร้อมใช้)</div>
-            <div class="row">
-              <button id="btnResetPresets" class="btn btn-sm">คืนค่าเริ่มต้น</button>
-            </div>
+            <div class="card-title">📜 บันทึกการทำงานแบบ Real-time</div>
           </div>
-
-          <div id="presetGrid" class="preset-grid"></div>
-
-          <div class="row-between" style="margin-bottom: 12px;">
-            <div class="row">
-              <button id="btnSavePreset" class="btn btn-success btn-sm">💾 บันทึกทับ Preset นี้</button>
-              <button id="btnAddPreset" class="btn btn-sm">+ เพิ่ม Preset ใหม่</button>
-            </div>
-            <button id="btnDeletePreset" class="btn btn-danger btn-sm">ลบ Preset นี้</button>
-          </div>
-
-          <div style="margin-bottom: 10px;">
-            <label class="field-label" for="presetTitleInput">ชื่อปุ่ม Preset</label>
-            <input id="presetTitleInput" type="text" placeholder="เช่น 🧠 ความรู้: สร้าง AI Workforce 3 ขั้น" />
-          </div>
-
-          <div style="margin-bottom: 8px;">
-            <label class="field-label">แท็กแทรกข้อความป้องกันแบน (คลิกเพื่อแทรก)</label>
-            <div class="tag-row">
-              <button class="tag-chip" data-tag="{greeting}">👋 {greeting} (สุ่มทักทาย)</button>
-              <button class="tag-chip" data-tag="{name}">👤 {name} (ชื่อลูกเพจ)</button>
-              <button class="tag-chip" data-tag="#{code}">🛡️ #{code} (รหัสสุ่มกันแบน)</button>
-              <button class="tag-chip" data-tag="{คำที่1|คำที่2|คำที่3}">🎲 {คำ1|คำ2} (Spintax)</button>
-            </div>
-          </div>
-
-          <div>
-            <div class="row-between" style="margin-bottom: 6px;">
-              <label class="field-label" for="messageInput" style="margin-bottom: 0;">ข้อความให้ความรู้ที่จะส่ง</label>
-              <span id="charCount" style="font-size: 11px; color: var(--muted);">0 ตัวอักษร</span>
-            </div>
-            <textarea id="messageInput" placeholder="พิมพ์ข้อความให้ความรู้ที่นี่..."></textarea>
+          <div id="apiLogBox" class="log-box">
+            <div class="log-info">[ระบบ v2.0] พร้อมทำงาน — รองรับ Cursor Sync + RFM/RSV + Batch &amp; Per-Person Time</div>
           </div>
         </section>
 
-        <!-- 2. CDP & RFM CONTACTS -->
         <section class="card">
           <div class="card-header">
-            <div class="card-title">👥 2. ฐานข้อมูลลูกค้า (CDP) &amp; แบ่งกลุ่ม RFM / RSV</div>
-            <div class="row">
-              <select id="scanTargetCount" style="width: auto; padding: 6px 10px;">
-                <option value="500">ดึงสูงสุด 500 คน</option>
-                <option value="2000" selected>ดึงสูงสุด 2,000 คน</option>
-                <option value="5000">ดึงสูงสุด 5,000 คน</option>
-                <option value="0">ดึงไม่จำกัด (จนสุด Inbox)</option>
-              </select>
-              <button id="btnScanInbox" class="btn btn-success btn-sm">⚡ ดึงรายชื่อเข้าฐานข้อมูล</button>
-              <button id="btnStopScan" class="btn btn-danger btn-sm" style="display: none;">⏹ หยุดสแกน</button>
-            </div>
+            <div class="card-title">🗂️ ประวัติแคมเปญที่ผ่านมา</div>
           </div>
-
-          <div style="margin-bottom: 12px;">
-            <label class="field-label" for="segmentSelect">เลือกกลุ่มเป้าหมาย (RFM &amp; Lead Segment)</label>
-            <select id="segmentSelect"></select>
-          </div>
-
-          <div class="row-between" style="margin-bottom: 10px;">
-            <input id="contactSearch" type="text" placeholder="ค้นหาชื่อหรือป้ายกำกับ..." style="max-width: 240px;" />
-            <div class="row">
-              <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <input id="chkSelectAll" type="checkbox" checked /> เลือกทั้งกลุ่มนี้
-              </label>
-              <button id="btnImportCsv" class="btn btn-sm">📥 Import CSV</button>
-              <input id="csvFileInput" type="file" accept=".csv,text/csv" style="display: none;" />
-              <button id="btnExportCsv" class="btn btn-sm">📤 Export CSV</button>
-              <button id="btnClearHistory" class="btn btn-sm">ล้าง Cooldown</button>
-              <button id="btnClearDb" class="btn btn-danger btn-sm">ล้าง DB</button>
-            </div>
-          </div>
-
-          <div id="contactsList" class="contacts-list">
-            <div style="color: var(--muted); font-size: 13px; padding: 14px; text-align: center;">
-              กำลังโหลดฐานข้อมูล CDP...
-            </div>
+          <div id="pastCampaignsList" class="past-campaigns-list">
+            <div style="color: var(--muted); font-size: 12px;">ยังไม่มีประวัติแคมเปญ</div>
           </div>
         </section>
       </div>
+    </section>
 
-      <!-- RIGHT COLUMN -->
-      <div class="stack">
-        <!-- 3. LIVE PREVIEW -->
+    <!-- TAB 5: MULTI-STEP FOLLOW-UP WORKFLOWS (RFM / RSV) & HEALTHSCALE SYNC -->
+    <section id="tab-workflows" class="tab-panel">
+      <div class="banner">
+        <div>
+          <strong>🔄 ระบบ Follow-up อัตโนมัติแบบ ManyChat ตามหลัก RFM &amp; RSV (Day 0–30):</strong>
+          นำรายชื่อที่เลือกจากแท็บ 2 เข้าสู่ Workflow หลายขั้นตอน (หยุดทันทีเมื่อซื้อแล้ว — Stop-on-Convert) และซิงก์ Lead จากหน้า <code>dashboard.aimar.cloud</code> ได้ในคลิกเดียว
+        </div>
+        <span id="wfActiveEnrollPill" class="pill ok">คิว Workflow: 0 คน</span>
+      </div>
+
+      <div class="two-col-grid" style="margin-bottom: 14px;">
         <section class="card">
           <div class="card-header">
-            <div class="card-title">📱 3. ตัวอย่างข้อความจริง (Messenger Live Preview)</div>
-            <button id="btnRandomizePreview" class="btn btn-sm">🎲 สุ่มตัวอย่างใหม่</button>
+            <div class="card-title">⚡ 5.1 เลือก &amp; แก้ไข Workflow ตามลำดับวัน (RFM / RSV)</div>
+            <div class="row">
+              <button id="btnWfResetDefaults" class="btn btn-sm" type="button">↺ คืนค่าเริ่มต้น</button>
+              <button id="btnWfSave" class="btn btn-success btn-sm" type="button">💾 บันทึก Workflow</button>
+            </div>
           </div>
 
-          <div class="preview-phone">
-            <div class="preview-header">
-              <div class="preview-avatar">1P</div>
-              <div>
-                <div style="font-size: 13px; font-weight: 700;">One Person Ceo • เสวิญ</div>
-                <div style="font-size: 11px; color: #6b7280;">Messenger Preview (ตัวอย่างชื่อ: <span id="previewSampleName">ธนพล</span>)</div>
-              </div>
+          <div class="row" style="margin-bottom: 10px;">
+            <select id="wfSelect" style="flex: 1;"></select>
+            <button id="btnWfAddStep" class="btn btn-sm" type="button">+ เพิ่ม Step</button>
+          </div>
+
+          <div class="row" style="margin-bottom: 10px;">
+            <label class="chk-inline"><input id="chkWfActive" type="checkbox" checked /> เปิดทำงาน</label>
+            <label class="chk-inline"><input id="chkWfStopConvert" type="checkbox" checked /> หยุดเมื่อซื้อแล้ว (Stop-on-Convert)</label>
+            <label class="chk-inline"><input id="chkWfQuietHours" type="checkbox" checked /> เลี่ยงส่งดึก (22:00–08:00 น.)</label>
+          </div>
+
+          <div id="wfStepsContainer" class="stack" style="max-height: 460px; overflow-y: auto; gap: 10px;"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">🚀 5.2 นำลูกค้าที่เลือกเข้า Workflow &amp; คิวส่งอัตโนมัติ</div>
+            <button id="btnWfRunDueNow" class="btn btn-primary btn-sm" type="button">⚡ รัน Step ที่ครบกำหนดตอนนี้</button>
+          </div>
+
+          <div class="quiet-box" style="margin-bottom: 12px;">
+            <div class="row-between" style="margin-bottom: 8px;">
+              <span style="font-size: 12.5px; font-weight: 700;">นำกลุ่มที่เลือกไว้จากแท็บ 2 (<span id="wfSelectedCountLabel">0</span> คน) เข้า Workflow นี้</span>
+              <label class="chk-inline"><input id="chkWfDryRun" type="checkbox" /> 🧪 ทดสอบ Dry-Run</label>
             </div>
-            <div id="previewBubble" class="preview-bubble"></div>
-            <div id="previewFooter" class="preview-footer">พร้อมส่งให้ 0 คน</div>
+            <div class="row">
+              <select id="wfDeliveryModeSelect" style="flex: 1;">
+                <option value="TURBO_DIRECT" selected>🚀 Turbo Direct (ใช้เซสชัน Chrome)</option>
+                <option value="RESPONSE">Meta API: RESPONSE (ใน 24 ชม.)</option>
+              </select>
+              <button id="btnWfEnrollSelected" class="btn btn-success btn-sm" type="button">➕ นำเข้า Workflow ทันที</button>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-bottom: 8px;">
+            <span style="font-size: 12px; color: var(--muted); font-weight: 600;">รายชื่อในคิว Workflow ปัจจุบัน (<span id="wfEnrollmentsCount">0</span> คน)</span>
+            <button id="btnWfClearCompleted" class="btn btn-sm" type="button">ล้างที่จบแล้ว</button>
+          </div>
+
+          <div id="wfEnrollmentsList" class="contacts-list" style="max-height: 290px;"></div>
+
+          <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <div style="font-size: 12.5px; font-weight: 700; margin-bottom: 8px;">☁️ ซิงก์กับ HealthScale Server (dashboard.aimar.cloud)</div>
+            <div class="row" style="margin-bottom: 8px;">
+              <input id="wfServerUrlInput" type="text" value="https://dashboard.aimar.cloud" placeholder="https://dashboard.aimar.cloud" style="flex: 1;" />
+              <input id="wfServerSecretInput" type="password" placeholder="ORCHESTRATOR_SECRET (x-secret-key)..." style="flex: 1;" />
+            </div>
+            <div class="row">
+              <button id="btnWfPullServer" class="btn btn-sm" type="button">📥 ดึง Lead จาก Ebook Funnel เข้า CDP</button>
+              <button id="btnWfPushServer" class="btn btn-primary btn-sm" type="button">📤 ส่งกลุ่มที่เลือกขึ้น Server</button>
+            </div>
+            <div id="wfServerSyncStatus" class="inline-alert hidden" style="margin-top: 8px;"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- TAB 6: LEGACY META BUSINESS SUITE DOM MODE (v1.0.2 PRESERVED) -->
+    <section id="tab-legacy" class="tab-panel">
+      <div class="banner">
+        <div>
+          <strong>🧭 โหมด Inbox เดิม (Meta Business Suite DOM v1.0.2):</strong>
+          ใช้เมื่อยังไม่ได้ต่อ Meta Graph API Token — สแกนรายชื่อจากแถบซ้ายหน้า <code>business.facebook.com</code> และรองรับโหมด Safe Draft วางข้อความรอตรวจเอง
+        </div>
+        <div class="row">
+          <span id="legacyConnectionPill" class="pill warn">กำลังตรวจสอบ...</span>
+          <button id="btnLegacyCheckConn" class="btn btn-sm" type="button">ตรวจสอบแท็บ Inbox</button>
+          <button id="btnLegacyOpenInbox" class="btn btn-primary btn-sm" type="button">เปิด Meta Business Suite</button>
+        </div>
+      </div>
+
+      <section class="card">
+        <div class="status-grid">
+          <div class="status-box">
+            <div class="status-label">แท็บ Meta Business Suite Inbox</div>
+            <div id="legacyStatusTab" class="status-value">ยังไม่พบแท็บ Inbox</div>
+          </div>
+          <div class="status-box">
+            <div class="status-label">เพจที่ตรวจพบในเบราว์เซอร์</div>
+            <div id="legacyStatusPage" class="status-value">-</div>
+          </div>
+          <div class="status-box">
+            <div class="status-label">รายการแชท DOM ที่พร้อมส่ง</div>
+            <div id="legacyStatusContacts" class="status-value">0 คน</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="main-grid">
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">👥 ดึงรายชื่อแชทสดจากแถบซ้าย Inbox</div>
+            <div class="row">
+              <select id="legacyScanDepth" style="width: auto; padding: 6px 10px;">
+                <option value="4">สแกนเร็ว (~40-60 คน)</option>
+                <option value="10" selected>สแกนปกติ (~100-150 คน)</option>
+                <option value="20">สแกนลึก (~200-300 คน)</option>
+              </select>
+              <button id="btnLegacyScanInbox" class="btn btn-success btn-sm" type="button">⚡ ดึงรายชื่อแชทสด</button>
+            </div>
+          </div>
+
+          <div class="row-between" style="margin-bottom: 10px;">
+            <input id="legacyContactSearch" type="text" placeholder="ค้นหาชื่อลูกเพจ..." style="max-width: 240px;" />
+            <div class="row">
+              <label class="chk-inline"><input id="chkLegacySelectAll" type="checkbox" checked /> เลือกทั้งหมด</label>
+              <button id="btnLegacyPushToCdp" class="btn btn-primary btn-sm" type="button">💾 นำรายชื่อนี้เข้า CDP (แท็บ 2)</button>
+              <button id="btnLegacyClearHistory" class="btn btn-sm" type="button">ล้างประวัติ Cooldown</button>
+            </div>
+          </div>
+
+          <div id="legacyContactsList" class="contacts-list">
+            <div style="color: var(--muted); font-size: 13px; padding: 14px; text-align: center;">
+              เปิดแท็บ Meta Business Suite เลือกเพจ One Person Ceo แล้วกด "⚡ ดึงรายชื่อแชทสด"
+            </div>
           </div>
         </section>
 
-        <!-- 4. SEND CONTROL -->
         <section class="card">
           <div class="card-header">
-            <div class="card-title">🚀 4. ตั้งค่าความปลอดภัย &amp; ควบคุมการส่ง</div>
+            <div class="card-title">🚀 ควบคุมการส่งแบบ DOM (ใช้ข้อความจากแท็บ 3)</div>
           </div>
 
           <div class="settings-grid" style="margin-bottom: 14px;">
             <div>
-              <label class="field-label" for="minDelay">หน่วงขั้นต่ำ (วินาที)</label>
-              <input id="minDelay" type="number" min="5" max="120" value="15" />
+              <label class="field-label" for="legacyMinDelay">หน่วงขั้นต่ำ (วินาที)</label>
+              <input id="legacyMinDelay" type="number" min="5" max="120" value="15" />
             </div>
             <div>
-              <label class="field-label" for="maxDelay">หน่วงสูงสุด (วินาที)</label>
-              <input id="maxDelay" type="number" min="10" max="180" value="35" />
+              <label class="field-label" for="legacyMaxDelay">หน่วงสูงสุด (วินาที)</label>
+              <input id="legacyMaxDelay" type="number" min="10" max="180" value="35" />
             </div>
             <div>
-              <label class="field-label" for="cooldownDays">กันส่งซ้ำ (วัน)</label>
-              <input id="cooldownDays" type="number" min="0" max="90" value="10" />
+              <label class="field-label" for="legacyCooldownDays">กันส่งซ้ำ (วัน)</label>
+              <input id="legacyCooldownDays" type="number" min="0" max="90" value="10" />
             </div>
           </div>
 
           <div style="margin-bottom: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border);">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-              <input id="chkAutoSend" type="checkbox" />
-              <span><strong>ส่งข้อความอัตโนมัติ (Auto-Send)</strong> — ค่าเริ่มต้นปิดไว้ (Safe Draft) เพื่อทดสอบว่าเปิดแชทถูกคนก่อน แล้วค่อยติ๊กเปิดเพื่อส่งจริง</span>
+            <label class="chk-inline">
+              <input id="chkLegacyAutoSend" type="checkbox" checked />
+              <span><strong>ส่งอัตโนมัติ (Auto-Send)</strong> — เอาติ๊กออกเพื่อวางข้อความรอตรวจเอง (Safe Draft)</span>
             </label>
           </div>
 
           <div class="row" style="margin-bottom: 14px;">
-            <button id="btnStartSend" class="btn btn-primary" style="flex: 1;">▶ เริ่มบรอดแคสต์ให้กลุ่มที่เลือก</button>
-            <button id="btnPauseSend" class="btn" disabled>⏸ พัก</button>
-            <button id="btnStopSend" class="btn btn-danger" disabled>⏹ หยุด</button>
+            <button id="btnLegacyStartSend" class="btn btn-primary" type="button" style="flex: 1;">▶ เริ่มบรอดแคสต์ DOM</button>
+            <button id="btnLegacyPauseSend" class="btn" type="button" disabled>⏸ พัก</button>
+            <button id="btnLegacyStopSend" class="btn btn-danger" type="button" disabled>⏹ หยุด</button>
           </div>
 
-          <div style="margin-bottom: 8px;">
+          <div style="margin-bottom: 10px;">
             <div class="row-between" style="font-size: 12px; color: var(--muted); margin-bottom: 6px;">
-              <span id="progressLabel">พร้อมทำงาน</span>
-              <span id="progressCount">0 / 0</span>
+              <span id="legacyProgressLabel">พร้อมทำงาน</span>
+              <span id="legacyProgressCount">0 / 0</span>
             </div>
             <div class="progress-wrap">
-              <div id="progressBar" class="progress-bar"></div>
+              <div id="legacyProgressBar" class="progress-bar"></div>
             </div>
           </div>
 
-          <div style="margin-top: 12px;">
-            <label class="field-label">บันทึกการทำงานแบบ Real-time</label>
-            <div id="logBox" class="log-box">
-              <div class="log-info">[ระบบ] พร้อมใช้งาน v1.1.0 (CDP + RFM + Unlimited Sync)</div>
-            </div>
+          <div id="legacyLogBox" class="log-box">
+            <div class="log-info">[โหมด DOM เดิม] พร้อมใช้งาน — ข้อความจะดึงจากช่องแก้ไขในแท็บ 3</div>
           </div>
         </section>
       </div>
-    </div>
+    </section>
   </main>
 
+  <div id="globalToast" class="toast hidden" role="status" aria-live="polite"></div>
+
   <script src="db.js"></script>
+  <script src="cdp-engine.js"></script>
+  <script src="graph-api.js"></script>
+  <script src="turbo-direct.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

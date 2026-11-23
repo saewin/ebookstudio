@@ -1,143 +1,447 @@
-// OnePersonCEO Knowledge Broadcaster — Local CDP IndexedDB (supports 100,000+ contacts)
+// OnePersonCEO Smart Broadcaster v2.0 — IndexedDB CDP Store
+// Compatible with Service Worker (importScripts), Dashboard (<script>), and Node.js (require)
 
-const DB_NAME = 'OnePersonCEO_CDP_DB';
-const DB_VERSION = 1;
-const STORE_CONTACTS = 'contacts';
+(function (global) {
+  'use strict';
 
-function openCdpDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(STORE_CONTACTS)) {
-        const store = db.createObjectStore(STORE_CONTACTS, { keyPath: 'key' });
-        store.createIndex('name', 'name', { unique: false });
-        store.createIndex('segment', 'segment', { unique: false });
-        store.createIndex('updatedAt', 'updatedAt', { unique: false });
+  const DB_NAME = 'OnePersonCEO_CDP_v2';
+  const DB_VERSION = 2;
+  const CHUNK_SIZE = 500;
+
+  let dbPromise = null;
+
+  function openDB() {
+    if (typeof indexedDB === 'undefined') {
+      return Promise.reject(new Error('IndexedDB is unavailable in this environment'));
+    }
+    if (dbPromise) return dbPromise;
+
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+
+      req.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        if (!db.objectStoreNames.contains('contacts')) {
+          const contactsStore = db.createObjectStore('contacts', { keyPath: 'id' });
+          contactsStore.createIndex('by_pageId', 'pageId', { unique: false });
+          contactsStore.createIndex('by_psid', 'psid', { unique: false });
+          contactsStore.createIndex('by_rfm', 'rfmSegment', { unique: false });
+          contactsStore.createIndex('by_rsv', 'rsvStage', { unique: false });
+          contactsStore.createIndex('by_hour', 'preferredHour', { unique: false });
+          contactsStore.createIndex('by_normalizedName', 'normalizedName', { unique: false });
+          contactsStore.createIndex('by_lastInteraction', 'lastInteractionAt', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('campaigns')) {
+          const campaignsStore = db.createObjectStore('campaigns', { keyPath: 'id' });
+          campaignsStore.createIndex('by_createdAt', 'createdAt', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('queue_items')) {
+          const queueStore = db.createObjectStore('queue_items', { keyPath: 'id' });
+          queueStore.createIndex('by_campaign', 'campaignId', { unique: false });
+          queueStore.createIndex('by_campaign_batch', ['campaignId', 'batchIndex'], { unique: false });
+          queueStore.createIndex('by_campaign_status', ['campaignId', 'status'], { unique: false });
+          queueStore.createIndex('by_status_scheduled', ['status', 'scheduledAt'], { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('sync_state')) {
+          db.createObjectStore('sync_state', { keyPath: 'pageId' });
+        }
+
+        if (!db.objectStoreNames.contains('workflows')) {
+          db.createObjectStore('workflows', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('workflow_enrollments')) {
+          const enrStore = db.createObjectStore('workflow_enrollments', { keyPath: 'id' });
+          enrStore.createIndex('by_workflow', 'workflowId', { unique: false });
+          enrStore.createIndex('by_contact', 'contactId', { unique: false });
+          enrStore.createIndex('by_status_nextRun', ['status', 'nextRunAt'], { unique: false });
+        }
+      };
+
+      req.onsuccess = () => {
+        const db = req.result;
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        db.onclose = () => {
+          dbPromise = null;
+        };
+        resolve(db);
+      };
+
+      req.onerror = () => {
+        dbPromise = null;
+        reject(req.error || new Error('Failed to open IndexedDB'));
+      };
+
+      req.onblocked = () => {
+        dbPromise = null;
+        reject(new Error('IndexedDB open blocked by another connection'));
+      };
+    });
+
+    return dbPromise;
+  }
+
+  function reqToPromise(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function txDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Transaction failed'));
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+    });
+  }
+
+  async function bulkPutInChunks(storeName, records) {
+    if (!Array.isArray(records) || records.length === 0) return 0;
+    const db = await openDB();
+    let written = 0;
+
+    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+      const slice = records.slice(i, i + CHUNK_SIZE);
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      for (const item of slice) {
+        store.put(item);
       }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function dbGetAllContacts() {
-  const db = await openCdpDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_CONTACTS, 'readonly');
-    const store = tx.objectStore(STORE_CONTACTS);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function dbUpsertContacts(records) {
-  if (!Array.isArray(records) || records.length === 0) return 0;
-  const db = await openCdpDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_CONTACTS, 'readwrite');
-    const store = tx.objectStore(STORE_CONTACTS);
-    let count = 0;
-
-    for (const rec of records) {
-      if (!rec || !rec.key) continue;
-      store.put(rec);
-      count += 1;
+      await txDone(tx);
+      written += slice.length;
     }
 
-    tx.oncomplete = () => resolve(count);
-    tx.onerror = () => reject(tx.error);
-  });
-}
+    return written;
+  }
 
-async function dbClearAllContacts() {
-  const db = await openCdpDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_CONTACTS, 'readwrite');
-    tx.objectStore(STORE_CONTACTS).clear();
-    tx.oncomplete = () => resolve(true);
-    tx.onerror = () => reject(tx.error);
-  });
-}
+  async function bulkUpsertContacts(records) {
+    return bulkPutInChunks('contacts', records);
+  }
 
-// Parse Thai/English Inbox date text into approximate daysAgo for Recency (R)
-function parseDaysAgo(timeText) {
-  const raw = (timeText || '').trim().toLowerCase();
-  if (!raw) return 999;
-
-  if (/\d{1,2}:\d{2}|วันนี้|today|นาที|ชม\.|min|hr/.test(raw)) return 0;
-  if (/เมื่อวาน|yesterday/.test(raw)) return 1;
-
-  const dayMatch = raw.match(/(\d+)\s*(วัน|d\b)/);
-  if (dayMatch) return Number(dayMatch[1]);
-
-  // Match d/m/yy or d/m/yyyy (e.g. 5/5/25 or 16/5/2025 or 16/5/68)
-  const dateMatch = raw.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (dateMatch) {
-    const day = Number(dateMatch[1]);
-    const month = Number(dateMatch[2]) - 1;
-    let year = Number(dateMatch[3]);
-    if (year < 100) {
-      // Handle Thai Buddhist year (e.g. 68 -> 2568 -> 2025) vs Christian year (25 -> 2025)
-      year = year >= 50 ? 2500 + year - 543 : 2000 + year;
-    } else if (year > 2400) {
-      year -= 543;
+  async function getContacts(pageId = null) {
+    const db = await openDB();
+    const tx = db.transaction('contacts', 'readonly');
+    const store = tx.objectStore('contacts');
+    if (pageId) {
+      return reqToPromise(store.index('by_pageId').getAll(IDBKeyRange.only(pageId)));
     }
-    const dt = new Date(year, month, day);
-    if (!Number.isNaN(dt.getTime())) {
-      const diff = Math.floor((Date.now() - dt.getTime()) / (1000 * 60 * 60 * 24));
-      return Math.max(0, diff);
+    return reqToPromise(store.getAll());
+  }
+
+  async function getContactById(id) {
+    const db = await openDB();
+    const tx = db.transaction('contacts', 'readonly');
+    return reqToPromise(tx.objectStore('contacts').get(id));
+  }
+
+  async function updateContact(id, patch) {
+    const db = await openDB();
+    const tx = db.transaction('contacts', 'readwrite');
+    const store = tx.objectStore('contacts');
+    const existing = await reqToPromise(store.get(id));
+    if (!existing) return null;
+    const updated = { ...existing, ...patch, updatedAt: Date.now() };
+    store.put(updated);
+    await txDone(tx);
+    return updated;
+  }
+
+  async function countContacts(pageId = null) {
+    const db = await openDB();
+    const tx = db.transaction('contacts', 'readonly');
+    const store = tx.objectStore('contacts');
+    if (pageId) {
+      return reqToPromise(store.index('by_pageId').count(IDBKeyRange.only(pageId)));
     }
+    return reqToPromise(store.count());
   }
 
-  return 60;
-}
+  async function clearContacts(pageId = null) {
+    const db = await openDB();
+    if (!pageId) {
+      const tx = db.transaction('contacts', 'readwrite');
+      tx.objectStore('contacts').clear();
+      await txDone(tx);
+      return;
+    }
 
-// Compute RFM / RSV Segment for OnePersonCEO
-function computeRfmSegment(contact) {
-  const daysAgo = typeof contact.daysAgo === 'number' ? contact.daysAgo : parseDaysAgo(contact.timeText);
-  const orders = Number(contact.ordersCount) || 0;
-  const spend = Number(contact.totalSpend) || 0;
-  const labels = Array.isArray(contact.labels) ? contact.labels : [];
-  const labelJoined = labels.join(' ').toLowerCase();
-
-  // Monetary / Frequency tiers first
-  if (orders >= 2 || spend >= 5000 || /vip|inner|repeat/.test(labelJoined)) {
-    return {
-      segment: 'vip',
-      rScore: daysAgo <= 14 ? 5 : daysAgo <= 60 ? 3 : 2,
-      fScore: Math.min(5, Math.max(4, orders)),
-      mScore: spend >= 10000 ? 5 : 4,
-    };
+    const tx = db.transaction('contacts', 'readwrite');
+    const idx = tx.objectStore('contacts').index('by_pageId');
+    await new Promise((resolve, reject) => {
+      const cursorReq = idx.openCursor(IDBKeyRange.only(pageId));
+      cursorReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        cursor.delete();
+        cursor.continue();
+      };
+      cursorReq.onerror = () => reject(cursorReq.error);
+    });
+    await txDone(tx);
   }
 
-  if (orders >= 1 || spend > 0 || /ซื้อแล้ว|โอนแล้ว|ลูกค้า|buyer|paid|student|workshop/.test(labelJoined)) {
-    return {
-      segment: 'buyers',
-      rScore: daysAgo <= 14 ? 5 : daysAgo <= 60 ? 3 : 2,
-      fScore: Math.min(5, Math.max(2, orders || 1)),
-      mScore: spend >= 2000 ? 4 : 3,
-    };
+  async function saveCampaign(campaign) {
+    const db = await openDB();
+    const tx = db.transaction('campaigns', 'readwrite');
+    tx.objectStore('campaigns').put(campaign);
+    await txDone(tx);
+    return campaign;
   }
 
-  // Recency tiers for leads/inquirers
-  if (daysAgo <= 7) {
-    return { segment: 'hot_leads', rScore: 5, fScore: 1, mScore: 1 };
+  async function getCampaign(id) {
+    const db = await openDB();
+    const tx = db.transaction('campaigns', 'readonly');
+    return reqToPromise(tx.objectStore('campaigns').get(id));
   }
-  if (daysAgo <= 30) {
-    return { segment: 'warm_leads', rScore: 3, fScore: 1, mScore: 1 };
-  }
-  if (/ad_id|intake|โฆษณา/.test(labelJoined)) {
-    return { segment: 'ads_inquirers', rScore: 2, fScore: 1, mScore: 1 };
-  }
-  return { segment: 'cold_inquirers', rScore: 1, fScore: 1, mScore: 1 };
-}
 
-window.OnePersonCdpDb = {
-  getAll: dbGetAllContacts,
-  upsert: dbUpsertContacts,
-  clearAll: dbClearAllContacts,
-  parseDaysAgo,
-  computeRfmSegment,
-};
+  async function listCampaigns() {
+    const db = await openDB();
+    const tx = db.transaction('campaigns', 'readonly');
+    const all = await reqToPromise(tx.objectStore('campaigns').getAll());
+    return (all || []).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
+
+  async function deleteCampaign(id) {
+    await deleteQueueItemsByCampaign(id);
+    const db = await openDB();
+    const tx = db.transaction('campaigns', 'readwrite');
+    tx.objectStore('campaigns').delete(id);
+    await txDone(tx);
+  }
+
+  async function bulkPutQueueItems(items) {
+    return bulkPutInChunks('queue_items', items);
+  }
+
+  async function getQueueItemsByCampaign(campaignId) {
+    const db = await openDB();
+    const tx = db.transaction('queue_items', 'readonly');
+    const idx = tx.objectStore('queue_items').index('by_campaign');
+    const rows = await reqToPromise(idx.getAll(IDBKeyRange.only(campaignId)));
+    return (rows || []).sort((a, b) => (a.seqIndex || 0) - (b.seqIndex || 0));
+  }
+
+  async function getQueueItemsByBatch(campaignId, batchIndex) {
+    const db = await openDB();
+    const tx = db.transaction('queue_items', 'readonly');
+    const idx = tx.objectStore('queue_items').index('by_campaign_batch');
+    const rows = await reqToPromise(idx.getAll(IDBKeyRange.only([campaignId, batchIndex])));
+    return (rows || []).sort((a, b) => (a.seqIndex || 0) - (b.seqIndex || 0));
+  }
+
+  async function getDueScheduledItems(nowMs = Date.now(), limit = 30) {
+    const db = await openDB();
+    const tx = db.transaction('queue_items', 'readonly');
+    const idx = tx.objectStore('queue_items').index('by_status_scheduled');
+    const range = IDBKeyRange.bound(['scheduled', 0], ['scheduled', nowMs]);
+    const results = [];
+
+    await new Promise((resolve, reject) => {
+      const req = idx.openCursor(range);
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor || results.length >= limit) {
+          resolve();
+          return;
+        }
+        results.push(cursor.value);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    return results;
+  }
+
+  async function updateQueueItem(id, patch) {
+    const db = await openDB();
+    const tx = db.transaction('queue_items', 'readwrite');
+    const store = tx.objectStore('queue_items');
+    const existing = await reqToPromise(store.get(id));
+    if (!existing) return null;
+    const updated = { ...existing, ...patch };
+    store.put(updated);
+    await txDone(tx);
+    return updated;
+  }
+
+  async function deleteQueueItemsByCampaign(campaignId) {
+    const db = await openDB();
+    const tx = db.transaction('queue_items', 'readwrite');
+    const idx = tx.objectStore('queue_items').index('by_campaign');
+    await new Promise((resolve, reject) => {
+      const req = idx.openCursor(IDBKeyRange.only(campaignId));
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        cursor.delete();
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+    await txDone(tx);
+  }
+
+  async function saveSyncState(state) {
+    const db = await openDB();
+    const tx = db.transaction('sync_state', 'readwrite');
+    tx.objectStore('sync_state').put({ ...state, updatedAt: Date.now() });
+    await txDone(tx);
+    return state;
+  }
+
+  async function getSyncState(pageId) {
+    if (!pageId) return null;
+    const db = await openDB();
+    const tx = db.transaction('sync_state', 'readonly');
+    return reqToPromise(tx.objectStore('sync_state').get(pageId));
+  }
+
+  async function clearSyncState(pageId) {
+    if (!pageId) return;
+    const db = await openDB();
+    const tx = db.transaction('sync_state', 'readwrite');
+    tx.objectStore('sync_state').delete(pageId);
+    await txDone(tx);
+  }
+
+  async function saveWorkflow(wf) {
+    const db = await openDB();
+    const tx = db.transaction('workflows', 'readwrite');
+    tx.objectStore('workflows').put({ ...wf, updatedAt: Date.now() });
+    await txDone(tx);
+    return wf;
+  }
+
+  async function listWorkflows() {
+    const db = await openDB();
+    const tx = db.transaction('workflows', 'readonly');
+    const rows = await reqToPromise(tx.objectStore('workflows').getAll());
+    return (rows || []).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  }
+
+  async function deleteWorkflow(id) {
+    const db = await openDB();
+    const tx = db.transaction('workflows', 'readwrite');
+    tx.objectStore('workflows').delete(id);
+    await txDone(tx);
+  }
+
+  async function saveEnrollment(enr) {
+    const db = await openDB();
+    const tx = db.transaction('workflow_enrollments', 'readwrite');
+    tx.objectStore('workflow_enrollments').put({ ...enr, updatedAt: Date.now() });
+    await txDone(tx);
+    return enr;
+  }
+
+  async function bulkPutEnrollments(items) {
+    return bulkPutInChunks('workflow_enrollments', items);
+  }
+
+  async function listEnrollments(workflowId = null) {
+    const db = await openDB();
+    const tx = db.transaction('workflow_enrollments', 'readonly');
+    const store = tx.objectStore('workflow_enrollments');
+    const rows = workflowId
+      ? await reqToPromise(store.index('by_workflow').getAll(IDBKeyRange.only(workflowId)))
+      : await reqToPromise(store.getAll());
+    return (rows || []).sort((a, b) => (b.updatedAt || b.enrolledAt || 0) - (a.updatedAt || a.enrolledAt || 0));
+  }
+
+  async function getDueWorkflowEnrollments(nowMs = Date.now(), limit = 20) {
+    const db = await openDB();
+    const tx = db.transaction('workflow_enrollments', 'readonly');
+    const idx = tx.objectStore('workflow_enrollments').index('by_status_nextRun');
+    const range = IDBKeyRange.bound(['active', 0], ['active', nowMs]);
+    const results = [];
+
+    await new Promise((resolve, reject) => {
+      const req = idx.openCursor(range);
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor || results.length >= limit) {
+          resolve();
+          return;
+        }
+        results.push(cursor.value);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    return results;
+  }
+
+  async function updateEnrollment(id, patch) {
+    const db = await openDB();
+    const tx = db.transaction('workflow_enrollments', 'readwrite');
+    const store = tx.objectStore('workflow_enrollments');
+    const existing = await reqToPromise(store.get(id));
+    if (!existing) return null;
+    const updated = { ...existing, ...patch, updatedAt: Date.now() };
+    store.put(updated);
+    await txDone(tx);
+    return updated;
+  }
+
+  async function deleteEnrollment(id) {
+    const db = await openDB();
+    const tx = db.transaction('workflow_enrollments', 'readwrite');
+    tx.objectStore('workflow_enrollments').delete(id);
+    await txDone(tx);
+  }
+
+  const api = {
+    DB_NAME,
+    DB_VERSION,
+    openDB,
+    bulkUpsertContacts,
+    getContacts,
+    getContactById,
+    updateContact,
+    countContacts,
+    clearContacts,
+    saveCampaign,
+    getCampaign,
+    listCampaigns,
+    deleteCampaign,
+    bulkPutQueueItems,
+    getQueueItemsByCampaign,
+    getQueueItemsByBatch,
+    getDueScheduledItems,
+    updateQueueItem,
+    deleteQueueItemsByCampaign,
+    saveSyncState,
+    getSyncState,
+    clearSyncState,
+    saveWorkflow,
+    listWorkflows,
+    deleteWorkflow,
+    saveEnrollment,
+    bulkPutEnrollments,
+    listEnrollments,
+    getDueWorkflowEnrollments,
+    updateEnrollment,
+    deleteEnrollment,
+  };
+
+  global.OnePersonDB = api;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : window);
