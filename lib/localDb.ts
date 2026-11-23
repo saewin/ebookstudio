@@ -1,8 +1,10 @@
 import path from 'path';
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
+import QRCode from 'qrcode';
 import { sanitizeBookContent } from './sanitize';
 import { COMPLETE_CEO_AI_BOOK_CHAPTERS } from './chapterIllustrations';
+import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoLinks';
 
 export interface Project {
     id: string;
@@ -53,6 +55,16 @@ const PROJECTS_FILE = path.join(DB_DIR, 'projects.json');
 const CHAPTERS_DIR = path.join(DB_DIR, 'chapters');
 const CHAPTERS_INDEX_FILE = path.join(DB_DIR, 'chapters_index.json');
 const COVERS_FILE = path.join(process.cwd(), 'public', 'uploads', 'project-covers.json');
+const MIGRATIONS_FILE = path.join(DB_DIR, 'migrations_state.json');
+
+const CEO_OS_2026_PROJECT_ID = 'a5ab85d5-3671-4dae-a051-5e9c3b7cb136';
+const CEO_OS_2026_CTA_MIGRATION_KEY = 'ceo_os_2026_funnel_ctas_v1';
+const LEGACY_REAL_NAME_PATTERN =
+    /\u0E2D\u0E14\u0E34\u0E28\u0E23(?:\s+\u0E40\u0E17\u0E1E\u0E27\u0E31\u0E25\u0E22\u0E4C)?(?:\s*\(Director\s*·\s*Ebook Studio\))?/g;
+const PEN_NAME_CREDIT = 'เสวิญ (Saewin · OnePersonCEO)';
+
+let ceoOs2026MigrationPromise: Promise<void> | null = null;
+let ceoOs2026MigrationDoneInMemory = false;
 
 async function ensureDirs(): Promise<void> {
     if (!existsSync(DB_DIR)) {
@@ -187,8 +199,271 @@ async function saveChaptersIndex(index: ChapterIndexItem[]): Promise<void> {
     await writeFile(CHAPTERS_INDEX_FILE, JSON.stringify(index, null, 2), 'utf-8');
 }
 
+async function buildPresetCtaSnippet(presetId: string): Promise<string> {
+    const preset = ONEPERSON_FUNNEL_PRESETS.find((p) => p.id === presetId);
+    if (!preset) {
+        throw new Error(`Unknown OnePersonCEO preset: ${presetId}`);
+    }
+    const qrDataUrl = await QRCode.toDataURL(preset.url, { width: 220, margin: 1 });
+    return buildExecutiveCtaHtml({
+        eyebrow: preset.eyebrow,
+        title: preset.title,
+        description: preset.description,
+        bonusLabel: preset.bonusLabel,
+        buttonLabel: preset.buttonLabel,
+        url: preset.url,
+        qrDataUrl,
+        variant: preset.variant,
+    });
+}
+
+async function readJsonArraySafe<T>(filePath: string): Promise<T[]> {
+    try {
+        if (!existsSync(filePath)) return [];
+        const raw = await readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function appendCtaBoxIfMissing(content: string, urlFragment: string, htmlSnippet: string): { text: string; added: boolean } {
+    if (content.includes(urlFragment)) {
+        return { text: content, added: false };
+    }
+    const trimmedEnd = content.trimEnd();
+    const nextText = trimmedEnd ? `${trimmedEnd}\n\n${htmlSnippet}\n` : `${htmlSnippet}\n`;
+    return { text: nextText, added: true };
+}
+
+/**
+ * Idempotent one-time migration to insert the 4 OnePersonCEO CTA+QR boxes into
+ * "CEO OPERATING SYSTEM 2026" without overwriting subsequent user edits.
+ */
+export async function runCeoOs2026FunnelCtaMigration(
+    baseDbDir: string = DB_DIR
+): Promise<{ applied: boolean; updatedChapterNos: number[] }> {
+    const migrationsFile = path.join(baseDbDir, 'migrations_state.json');
+    const projectsFile = path.join(baseDbDir, 'projects.json');
+    const chaptersDir = path.join(baseDbDir, 'chapters');
+    const chaptersIndexFile = path.join(baseDbDir, 'chapters_index.json');
+
+    let migrationState: Record<string, unknown> = {};
+    try {
+        if (existsSync(migrationsFile)) {
+            const rawState = await readFile(migrationsFile, 'utf-8');
+            const parsedState = JSON.parse(rawState);
+            if (parsedState && typeof parsedState === 'object') {
+                migrationState = parsedState as Record<string, unknown>;
+            }
+        }
+    } catch {
+        migrationState = {};
+    }
+
+    if (migrationState[CEO_OS_2026_CTA_MIGRATION_KEY]) {
+        return { applied: false, updatedChapterNos: [] };
+    }
+
+    const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile);
+    if (index.length === 0) {
+        return { applied: false, updatedChapterNos: [] };
+    }
+
+    let targetProjectId: string | null = index.some((i) => i.projectId === CEO_OS_2026_PROJECT_ID)
+        ? CEO_OS_2026_PROJECT_ID
+        : null;
+
+    if (!targetProjectId) {
+        const projects = await readJsonArraySafe<Project>(projectsFile);
+        const matchedProject = projects.find((p) => /CEO\s*OPERATING\s*SYSTEM\s*2026/i.test(p.title || ''));
+        if (matchedProject && index.some((i) => i.projectId === matchedProject.id)) {
+            targetProjectId = matchedProject.id;
+        }
+    }
+
+    if (!targetProjectId) {
+        return { applied: false, updatedChapterNos: [] };
+    }
+
+    const targetIndexItems = index.filter((i) => i.projectId === targetProjectId);
+    const chapters: Chapter[] = [];
+    for (const item of targetIndexItems) {
+        const filePath = path.join(chaptersDir, `${item.id}.json`);
+        try {
+            if (!existsSync(filePath)) continue;
+            const raw = await readFile(filePath, 'utf-8');
+            const ch = JSON.parse(raw) as Chapter;
+            chapters.push(ch);
+        } catch {
+            // Skip unreadable chapter file safely
+        }
+    }
+
+    if (chapters.length === 0) {
+        return { applied: false, updatedChapterNos: [] };
+    }
+
+    chapters.sort((a, b) => (a.chapterNo || 0) - (b.chapterNo || 0));
+
+    // 1. Identify Assessment Chapter (prefer explicit 10-dimension title/content, fallback to final chapter)
+    const assessmentByTitle = chapters.filter((c) =>
+        /ประเมิน|10\s*มิติ|readiness|assessment/i.test(c.title || '')
+    );
+    const assessmentByContent = chapters.filter((c) =>
+        /แบบประเมินความพร้อมองค์กร\s*10\s*มิติ|ประเมินความพร้อม.*10\s*มิติ/i.test(c.content || '')
+    );
+    const assessmentChapter =
+        assessmentByTitle[assessmentByTitle.length - 1] ||
+        assessmentByContent[assessmentByContent.length - 1] ||
+        chapters[chapters.length - 1];
+
+    // 2. Identify Early Chapter (prefer ch 3 -> ch 2 -> earliest non-assessment chapter)
+    const nonAssessment = chapters.filter((c) => c.id !== assessmentChapter?.id);
+    const earlyChapter =
+        nonAssessment.find((c) => c.chapterNo === 3) ||
+        nonAssessment.find((c) => c.chapterNo === 2) ||
+        nonAssessment[2] ||
+        nonAssessment[1] ||
+        nonAssessment[0] ||
+        null;
+
+    // 3. Identify Mid Chapter (prefer ch 6 -> ch 5 -> remaining mid chapter)
+    const remaining = nonAssessment.filter((c) => c.id !== earlyChapter?.id);
+    const midChapter =
+        remaining.find((c) => c.chapterNo === 6) ||
+        remaining.find((c) => c.chapterNo === 5) ||
+        remaining[Math.min(Math.max(remaining.length - 1, 0), 3)] ||
+        remaining[remaining.length - 1] ||
+        null;
+
+    const [articlesHtml, ebooksHtml, ceo2Html, consultHtml] = await Promise.all([
+        buildPresetCtaSnippet('articles'),
+        buildPresetCtaSnippet('ebooks'),
+        buildPresetCtaSnippet('ceo2'),
+        buildPresetCtaSnippet('consult'),
+    ]);
+
+    const now = new Date().toISOString();
+    const updatedChapterNos: number[] = [];
+    let indexModified = false;
+
+    for (const ch of chapters) {
+        let nextContent = typeof ch.content === 'string' ? ch.content : '';
+        let modified = false;
+
+        const normalizedContent = nextContent.replace(LEGACY_REAL_NAME_PATTERN, PEN_NAME_CREDIT);
+        if (normalizedContent !== nextContent) {
+            nextContent = normalizedContent;
+            modified = true;
+        }
+
+        const nextTakeaways =
+            typeof ch.keyTakeaways === 'string'
+                ? ch.keyTakeaways.replace(LEGACY_REAL_NAME_PATTERN, PEN_NAME_CREDIT)
+                : ch.keyTakeaways;
+        const nextTerminology =
+            typeof ch.keyTerminology === 'string'
+                ? ch.keyTerminology.replace(LEGACY_REAL_NAME_PATTERN, PEN_NAME_CREDIT)
+                : ch.keyTerminology;
+        if (nextTakeaways !== ch.keyTakeaways || nextTerminology !== ch.keyTerminology) {
+            modified = true;
+        }
+
+        if (earlyChapter && ch.id === earlyChapter.id) {
+            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/articles', articlesHtml);
+            if (res.added) {
+                nextContent = res.text;
+                modified = true;
+            }
+        }
+
+        if (midChapter && ch.id === midChapter.id) {
+            const res = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/ebooks', ebooksHtml);
+            if (res.added) {
+                nextContent = res.text;
+                modified = true;
+            }
+        }
+
+        if (assessmentChapter && ch.id === assessmentChapter.id) {
+            const resCeo2 = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/ceo2', ceo2Html);
+            if (resCeo2.added) {
+                nextContent = resCeo2.text;
+                modified = true;
+            }
+            const resConsult = appendCtaBoxIfMissing(nextContent, 'onepersonceo.com/go/consult', consultHtml);
+            if (resConsult.added) {
+                nextContent = resConsult.text;
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            const cleaned = sanitizeBookContent(nextContent);
+            const updatedChapter: Chapter = {
+                ...ch,
+                content: cleaned,
+                keyTakeaways: nextTakeaways,
+                keyTerminology: nextTerminology,
+                hasContent: Boolean(cleaned.trim()),
+                updatedAt: now,
+            };
+            await writeFile(path.join(chaptersDir, `${ch.id}.json`), JSON.stringify(updatedChapter, null, 2), 'utf-8');
+            updatedChapterNos.push(ch.chapterNo);
+
+            const idxEntry = index.find((i) => i.id === ch.id);
+            if (idxEntry) {
+                idxEntry.hasContent = updatedChapter.hasContent;
+                idxEntry.updatedAt = now;
+                indexModified = true;
+            }
+        }
+    }
+
+    if (indexModified) {
+        await writeFile(chaptersIndexFile, JSON.stringify(index, null, 2), 'utf-8');
+    }
+
+    migrationState[CEO_OS_2026_CTA_MIGRATION_KEY] = {
+        appliedAt: now,
+        projectId: targetProjectId,
+        updatedChapterNos,
+    };
+    await writeFile(migrationsFile, JSON.stringify(migrationState, null, 2), 'utf-8');
+
+    return { applied: true, updatedChapterNos };
+}
+
+async function ensureCeoOs2026FunnelCtas(): Promise<void> {
+    if (ceoOs2026MigrationDoneInMemory) return;
+    if (!ceoOs2026MigrationPromise) {
+        ceoOs2026MigrationPromise = (async () => {
+            try {
+                await runCeoOs2026FunnelCtaMigration(DB_DIR);
+                if (existsSync(MIGRATIONS_FILE)) {
+                    const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
+                    const parsed = JSON.parse(raw || '{}');
+                    if (parsed && parsed[CEO_OS_2026_CTA_MIGRATION_KEY]) {
+                        ceoOs2026MigrationDoneInMemory = true;
+                    }
+                }
+            } catch (err) {
+                console.error('[CEO OS 2026 CTA Migration] Error:', err);
+            } finally {
+                ceoOs2026MigrationPromise = null;
+            }
+        })();
+    }
+    await ceoOs2026MigrationPromise;
+}
+
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
     await ensureDirs();
+    if (!ceoOs2026MigrationDoneInMemory) {
+        await ensureCeoOs2026FunnelCtas();
+    }
     const index = await getChaptersIndex();
     const filteredIndex = projectId ? index.filter(i => i.projectId === projectId) : index;
 
