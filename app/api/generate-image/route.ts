@@ -102,6 +102,92 @@ async function generateWithGeminiImageApi(
     throw new Error(`Google Imagen/Gemini Image generation failed: ${errors.join(' | ')}`);
 }
 
+async function generateWithFalFallback(
+    falApiKey: string,
+    fullPrompt: string,
+    aspectRatio: string
+): Promise<{ buffer: Buffer; mimeType: string; modelUsed: string } | null> {
+    if (!falApiKey) return null;
+    try {
+        const imageSize = aspectRatio === '1:1' ? 'square_hd' : aspectRatio === '3:4' ? 'portrait_4_3' : 'landscape_16_9';
+        const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
+            method: 'POST',
+            headers: {
+                Authorization: `Key ${falApiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prompt: fullPrompt.slice(0, 950),
+                image_size: imageSize,
+                num_images: 1,
+                enable_safety_checker: true,
+            }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const url = data?.images?.[0]?.url;
+        if (typeof url === 'string' && url.startsWith('http')) {
+            const imgRes = await fetch(url);
+            if (imgRes.ok) {
+                const ct = imgRes.headers.get('content-type') || 'image/jpeg';
+                return { buffer: Buffer.from(await imgRes.arrayBuffer()), mimeType: ct, modelUsed: 'fal-ai/flux/schnell' };
+            }
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function generateWithOpenRouterFallback(
+    openRouterKey: string,
+    fullPrompt: string
+): Promise<{ buffer: Buffer; mimeType: string; modelUsed: string } | null> {
+    if (!openRouterKey) return null;
+    const models = ['google/gemini-2.5-flash-image-preview', 'google/gemini-2.5-flash-image', 'black-forest-labs/flux.2-klein-4b'];
+    for (const model of models) {
+        try {
+            const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${openRouterKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://ebookstudio.aimar.cloud',
+                    'X-Title': 'ebookStudio Image Generator',
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: fullPrompt }],
+                    modalities: ['image', 'text'],
+                }),
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            const msg = data?.choices?.[0]?.message;
+            const imgEntry = msg?.images?.[0]?.image_url?.url || msg?.images?.[0]?.url;
+            if (typeof imgEntry === 'string' && imgEntry.startsWith('data:image/')) {
+                const match = imgEntry.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+                if (match) {
+                    return { buffer: Buffer.from(match[2], 'base64'), mimeType: match[1], modelUsed: `openrouter:${model}` };
+                }
+            }
+            if (typeof imgEntry === 'string' && imgEntry.startsWith('http')) {
+                const imgRes = await fetch(imgEntry);
+                if (imgRes.ok) {
+                    return {
+                        buffer: Buffer.from(await imgRes.arrayBuffer()),
+                        mimeType: imgRes.headers.get('content-type') || 'image/png',
+                        modelUsed: `openrouter:${model}`,
+                    };
+                }
+            }
+        } catch {
+            // try next model
+        }
+    }
+    return null;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -116,12 +202,15 @@ export async function POST(req: NextRequest) {
             style = 'executive',
         } = body;
 
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
+        const apiKey = process.env.GEMINI_API_KEY?.trim() || '';
+        const falApiKey = process.env.FAL_API_KEY?.trim() || '';
+        const openRouterKey = process.env.OPENROUTER_API_KEY?.trim() || '';
+
+        if (!apiKey && !falApiKey && !openRouterKey) {
             return NextResponse.json(
                 {
                     success: false,
-                    error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY ในระบบ (.env) กรุณาเพิ่ม GEMINI_API_KEY เพื่อเปิดใช้งานการสร้างภาพด้วย Google Gemini/Imagen AI',
+                    error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY, FAL_API_KEY หรือ OPENROUTER_API_KEY ในระบบ',
                 },
                 { status: 400 }
             );
@@ -133,7 +222,31 @@ export async function POST(req: NextRequest) {
         const styleDirective = STYLE_DIRECTIVES[(style as StylePreset)] || STYLE_DIRECTIVES.executive;
         const fullPrompt = `${rawSubject}. Art style: ${styleDirective} Strictly NO overlaid words, NO letters, NO garbled text, NO typography inside the artwork.`;
 
-        const { buffer, mimeType, modelUsed } = await generateWithGeminiImageApi(apiKey, fullPrompt, aspectRatio);
+        let generated: { buffer: Buffer; mimeType: string; modelUsed: string } | null = null;
+        let geminiErrMsg = '';
+
+        if (apiKey) {
+            try {
+                generated = await generateWithGeminiImageApi(apiKey, fullPrompt, aspectRatio);
+            } catch (err: any) {
+                geminiErrMsg = err?.message || String(err);
+                console.warn('[ebookStudio][generate-image] Gemini failed, trying fallbacks:', geminiErrMsg.slice(0, 200));
+            }
+        }
+
+        if (!generated && falApiKey) {
+            generated = await generateWithFalFallback(falApiKey, fullPrompt, aspectRatio);
+        }
+
+        if (!generated && openRouterKey) {
+            generated = await generateWithOpenRouterFallback(openRouterKey, fullPrompt);
+        }
+
+        if (!generated) {
+            throw new Error(geminiErrMsg || 'Image generation failed across Gemini, FAL, and OpenRouter');
+        }
+
+        const { buffer, mimeType, modelUsed } = generated;
 
         const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : mimeType.includes('webp') ? 'webp' : 'png';
         const prefix = chapterNo !== undefined ? `ch${chapterNo}` : (targetType === 'cover_front' ? 'cover_front' : 'ai_art');
