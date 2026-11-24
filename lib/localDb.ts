@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { sanitizeBookContent } from './sanitize';
 import { COMPLETE_CEO_AI_BOOK_CHAPTERS } from './chapterIllustrations';
 import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoLinks';
+import { BOOK3_CH3_MIGRATION_KEY, runBook3Ch3UpgradeMigration } from './book3Ch3Migration';
 
 export interface Project {
     id: string;
@@ -66,6 +67,8 @@ const PEN_NAME_CREDIT = 'เสวิญ (Saewin · OnePersonCEO)';
 
 let ceoOs2026MigrationPromise: Promise<void> | null = null;
 let ceoOs2026MigrationDoneInMemory = false;
+let book3Ch3MigrationPromise: Promise<void> | null = null;
+let book3Ch3MigrationDoneInMemory = false;
 
 async function ensureDirs(): Promise<void> {
     if (!existsSync(DB_DIR)) {
@@ -490,10 +493,36 @@ async function ensureCeoOs2026FunnelCtas(): Promise<void> {
     await ceoOs2026MigrationPromise;
 }
 
+async function ensureBook3Ch3Upgrade(): Promise<void> {
+    if (book3Ch3MigrationDoneInMemory) return;
+    if (!book3Ch3MigrationPromise) {
+        book3Ch3MigrationPromise = (async () => {
+            try {
+                await runBook3Ch3UpgradeMigration(DB_DIR);
+                if (existsSync(MIGRATIONS_FILE)) {
+                    const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
+                    const parsed = JSON.parse(raw || '{}');
+                    if (parsed && parsed[BOOK3_CH3_MIGRATION_KEY]) {
+                        book3Ch3MigrationDoneInMemory = true;
+                    }
+                }
+            } catch (err) {
+                console.error('[Book 3 Ch 3 Migration] Error:', err);
+            } finally {
+                book3Ch3MigrationPromise = null;
+            }
+        })();
+    }
+    await book3Ch3MigrationPromise;
+}
+
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
     await ensureDirs();
     if (!ceoOs2026MigrationDoneInMemory) {
         await ensureCeoOs2026FunnelCtas();
+    }
+    if (!book3Ch3MigrationDoneInMemory) {
+        await ensureBook3Ch3Upgrade();
     }
     const index = await getChaptersIndex();
     const filteredIndex = projectId ? index.filter(i => i.projectId === projectId) : index;
@@ -513,6 +542,9 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
 export async function getChapter(chapterId: string): Promise<Chapter | null> {
     if (!chapterId) return null;
     await ensureDirs();
+    if (!book3Ch3MigrationDoneInMemory) {
+        await ensureBook3Ch3Upgrade();
+    }
     const filePath = path.join(CHAPTERS_DIR, `${chapterId}.json`);
     try {
         if (!existsSync(filePath)) return null;
