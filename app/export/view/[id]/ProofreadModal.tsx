@@ -28,7 +28,7 @@ export default function ProofreadModal({
     const [selectedIssueIds, setSelectedIssueIds] = useState<string[]>([])
     const [isApplyingFixes, setIsApplyingFixes] = useState(false)
     const [activeTab, setActiveTab] = useState<'issues' | 'overview'>('issues')
-    const [categoryFilter, setCategoryFilter] = useState<'all' | 'spelling' | 'transliteration' | 'grammar'>('all')
+    const [categoryFilter, setCategoryFilter] = useState<'all' | 'spelling' | 'transliteration' | 'grammar' | 'style'>('all')
 
     if (!isOpen) return null
 
@@ -113,7 +113,7 @@ export default function ProofreadModal({
         spelling: { label: 'คำสะกดผิด', color: 'bg-rose-100 text-rose-800 border-rose-200' },
         transliteration: { label: 'คำทับศัพท์', color: 'bg-amber-100 text-amber-800 border-amber-200' },
         grammar: { label: 'ไวยากรณ์ & วรรคตอน', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-        style: { label: 'สำนวนภาษา', color: 'bg-purple-100 text-purple-800 border-purple-200' }
+        style: { label: 'สำนวน & โครงสร้าง (Editorial)', color: 'bg-purple-100 text-purple-800 border-purple-200' }
     }
 
     return (
@@ -127,7 +127,7 @@ export default function ProofreadModal({
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 text-base">ระบบบรรณาธิการ AI ตรวจทานต้นฉบับทั้งเล่ม</h3>
-                            <p className="text-xs text-slate-500">ตรวจสอบคำสะกดผิด คำทับศัพท์ภาษาอังกฤษ และประเมินมาตรฐานสิ่งพิมพ์</p>
+                            <p className="text-xs text-slate-500">ตรวจสอบคำสะกด คำทับศัพท์ โครงสร้างชื่อบท จังหวะสำนวน (กันกลิ่น AI) และมาตรฐานสิ่งพิมพ์</p>
                         </div>
                     </div>
                     <button
@@ -148,7 +148,7 @@ export default function ProofreadModal({
                             <div>
                                 <h4 className="font-semibold text-slate-800 text-base">พร้อมตรวจทานต้นฉบับ &quot;{projectTitle}&quot;</h4>
                                 <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
-                                    AI จะสแกนเนื้อหาทุกบทอย่างละเอียด เพื่อตรวจหาคำสะกดผิด คำทับศัพท์ที่ขัดแย้งกัน และประเมินความสมบูรณ์ของเล่ม
+                                    AI จะสแกนเนื้อหาทุกบทอย่างละเอียด ทั้งคำสะกดผิด คำทับศัพท์ ความกลมกลืนกับชื่อบท และจังหวะสำนวนไร้กลิ่น AI เพื่อประเมินความพร้อมก่อนตีพิมพ์
                                 </p>
                             </div>
                             <button
@@ -238,6 +238,7 @@ export default function ProofreadModal({
                                             <option value="spelling">คำสะกดผิด</option>
                                             <option value="transliteration">คำทับศัพท์</option>
                                             <option value="grammar">ไวยากรณ์</option>
+                                            <option value="style">สำนวน &amp; โครงสร้าง (Editorial)</option>
                                         </select>
                                         <button
                                             onClick={toggleSelectAll}
