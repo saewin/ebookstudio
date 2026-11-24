@@ -1,7 +1,9 @@
 import path from 'path';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, copyFile } from 'fs/promises';
 import { existsSync } from 'fs';
+import QRCode from 'qrcode';
 import { sanitizeBookContent } from './sanitize';
+import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoLinks';
 import type { Chapter, ChapterIndexItem, Project } from './localDb';
 import type { SeedBookChapterData } from './books/profitEngine/types';
 import { PROFIT_ENGINE_CH0 } from './books/profitEngine/ch0';
@@ -17,6 +19,22 @@ import { PROFIT_ENGINE_CH8 } from './books/profitEngine/ch8';
 export const PROFIT_ENGINE_BOOK_ID = '9c4e7f12-3b8a-4d5e-a610-8f2b4c9e2026';
 export const PROFIT_ENGINE_BOOK_MIGRATION_KEY = 'profit_engine_book_seed_v1';
 export const PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY = 'profit_engine_book_seed_v2_full_2500w';
+export const PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY = 'profit_engine_book_seed_v3_masterpiece';
+
+export const PROFIT_ENGINE_COVER_URL = '/api/uploads/profit-engine-cover.png';
+
+export const PROFIT_ENGINE_ASSET_FILENAMES = [
+    'profit-engine-cover.png',
+    'profit-engine-ch0.png',
+    'profit-engine-ch1.png',
+    'profit-engine-ch2.png',
+    'profit-engine-ch3.png',
+    'profit-engine-ch4.png',
+    'profit-engine-ch5.png',
+    'profit-engine-ch6.png',
+    'profit-engine-ch7.png',
+    'profit-engine-ch8.png',
+];
 
 export const PROFIT_ENGINE_PROJECT_TEMPLATE: Omit<Project, 'createdAt' | 'updatedAt' | 'lastEditedTime'> = {
     id: PROFIT_ENGINE_BOOK_ID,
@@ -27,7 +45,7 @@ export const PROFIT_ENGINE_PROJECT_TEMPLATE: Omit<Project, 'createdAt' | 'update
     audience:
         'ผู้ประกอบการคนเดียว (One-Person Company), เจ้าของแบรนด์ออนไลน์ และ SME ที่ต้องการกำไรสุทธิยั่งยืนโดยไม่ต้องเผาเงินยิงแอดแข่งตัดราคา',
     tone: 'Pragmatic Veteran — ตรงไปตรงมา เข้มข้นด้วยตัวเลขจริงและเคสสนามรบจริง ไร้ศัพท์หรูกลวง',
-    coverImageUrl: null,
+    coverImageUrl: PROFIT_ENGINE_COVER_URL,
     backCoverUrl: null,
     extraInfo: {
         roleOfBook: 'Authority Builder & Profit Operating Manual (OnePersonCEO)',
@@ -51,8 +69,20 @@ export const PROFIT_ENGINE_CHAPTERS: SeedBookChapterData[] = [
     PROFIT_ENGINE_CH8,
 ];
 
+const CHAPTER_CTA_PRESET_MAP: Record<number, string[]> = {
+    2: ['ebooks'],
+    4: ['ceo2'],
+    6: ['consult'],
+    8: ['ceo2', 'articles'],
+};
+
 function countThaiWords(content: string): number {
-    const plain = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const plain = (content || '')
+        .replace(/<div\s+class=["']executive-cta-box[\s\S]*$/g, ' ')
+        .replace(/<figure>[\s\S]*?<\/figure>/g, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     if (!plain) return 0;
     const SegmenterCtor = (Intl as any).Segmenter;
     if (typeof SegmenterCtor === 'function') {
@@ -64,6 +94,63 @@ function countThaiWords(content: string): number {
         return count;
     }
     return Math.round([...plain].length / 4.2);
+}
+
+async function buildPresetCtaHtml(presetId: string): Promise<string> {
+    const preset = ONEPERSON_FUNNEL_PRESETS.find((p) => p.id === presetId);
+    if (!preset) {
+        throw new Error(`Unknown OnePersonCEO preset: ${presetId}`);
+    }
+    const qrDataUrl = await QRCode.toDataURL(preset.url, { width: 220, margin: 1 });
+    return buildExecutiveCtaHtml({
+        eyebrow: preset.eyebrow,
+        title: preset.title,
+        description: preset.description,
+        bonusLabel: preset.bonusLabel,
+        buttonLabel: preset.buttonLabel,
+        url: preset.url,
+        qrDataUrl,
+        variant: preset.variant,
+    });
+}
+
+export async function attachProfitEngineCtas(chapterNo: number, content: string): Promise<string> {
+    const presetIds = CHAPTER_CTA_PRESET_MAP[chapterNo];
+    if (!presetIds || presetIds.length === 0) return content;
+
+    let result = content.trimEnd();
+    for (const presetId of presetIds) {
+        const preset = ONEPERSON_FUNNEL_PRESETS.find((p) => p.id === presetId);
+        if (!preset) continue;
+        const fragment = `/go/${preset.slug}`;
+        const hasCtaBox = new RegExp(`executive-cta-box[^\\n]*${fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(result);
+        if (!hasCtaBox) {
+            const boxHtml = await buildPresetCtaHtml(presetId);
+            result = `${result}\n\n${boxHtml}`;
+        }
+    }
+    return `${result}\n`;
+}
+
+export async function syncProfitEngineImagesToUploads(dbDir: string): Promise<number> {
+    const uploadsDir = path.dirname(dbDir);
+    const sourceDir = path.resolve(dbDir, '..', '..', 'images', 'profit-engine');
+    if (!existsSync(sourceDir)) return 0;
+
+    if (!existsSync(uploadsDir)) {
+        await mkdir(uploadsDir, { recursive: true });
+    }
+
+    let copied = 0;
+    for (const filename of PROFIT_ENGINE_ASSET_FILENAMES) {
+        const src = path.join(sourceDir, filename);
+        const dest = path.join(uploadsDir, filename);
+        if (existsSync(src) && !existsSync(dest)) {
+            await copyFile(src, dest);
+            copied++;
+        }
+    }
+    return copied;
 }
 
 async function readJsonArraySafe<T>(filePath: string): Promise<T[]> {
@@ -83,11 +170,13 @@ export interface ProfitEngineSeedResult {
     projectId: string;
     createdChapterCount: number;
     upgradedChapterCount: number;
+    copiedAssetsCount: number;
 }
 
 /**
- * Idempotent migration to seed (v1) and expand (v2: full 2,500-3,500 words/chapter)
- * the standalone Profit Engine book without ever overwriting user-expanded chapters.
+ * Idempotent migration to seed (v1), expand (v2: 2,500-3,500 words/chapter),
+ * and polish (v3: cover, 9 illustrations, dialogues, Profit Health Audit, CTA+QR)
+ * without ever overwriting custom user edits.
  */
 export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<ProfitEngineSeedResult> {
     const migrationsFile = path.join(dbDir, 'migrations_state.json');
@@ -111,21 +200,24 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
         migrationState = {};
     }
 
-    if (migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY]) {
+    if (migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY]) {
         return {
             applied: false,
-            reason: 'already_applied_v2',
+            reason: 'already_applied_v3',
             projectId: PROFIT_ENGINE_BOOK_ID,
             createdChapterCount: 0,
             upgradedChapterCount: 0,
+            copiedAssetsCount: 0,
         };
     }
 
+    const copiedAssetsCount = await syncProfitEngineImagesToUploads(dbDir);
+
     const now = new Date().toISOString();
     const projects = await readJsonArraySafe<Project>(projectsFile);
-    const projectExists = projects.some((p) => p.id === PROFIT_ENGINE_BOOK_ID);
+    const existingProjIdx = projects.findIndex((p) => p.id === PROFIT_ENGINE_BOOK_ID);
 
-    if (!projectExists) {
+    if (existingProjIdx < 0) {
         const newProject: Project = {
             ...PROFIT_ENGINE_PROJECT_TEMPLATE,
             lastEditedTime: now,
@@ -133,6 +225,13 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
             updatedAt: now,
         };
         await writeFile(projectsFile, JSON.stringify([newProject, ...projects], null, 2), 'utf-8');
+    } else if (!projects[existingProjIdx].coverImageUrl) {
+        projects[existingProjIdx] = {
+            ...projects[existingProjIdx],
+            coverImageUrl: PROFIT_ENGINE_COVER_URL,
+            updatedAt: now,
+        };
+        await writeFile(projectsFile, JSON.stringify(projects, null, 2), 'utf-8');
     }
 
     const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile);
@@ -141,7 +240,8 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
 
     for (const seedChap of PROFIT_ENGINE_CHAPTERS) {
         const chapterFilePath = path.join(chaptersDir, `${seedChap.id}.json`);
-        const cleanedContent = sanitizeBookContent(seedChap.content);
+        const contentWithCtas = await attachProfitEngineCtas(seedChap.chapterNo, seedChap.content);
+        const cleanedContent = sanitizeBookContent(contentWithCtas);
         const cleanedTakeaways = sanitizeBookContent(seedChap.keyTakeaways);
         const cleanedTerminology = sanitizeBookContent(seedChap.keyTerminology);
 
@@ -163,12 +263,15 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
             await writeFile(chapterFilePath, JSON.stringify(chapterRecord, null, 2), 'utf-8');
             createdChapterCount++;
         } else {
-            // Upgrade v1 short drafts (< 1,600 words) to full v2 edition while preserving user-expanded chapters
+            // Upgrade v1/v2 drafts into v3 masterpiece while preserving user-customized chapters
             try {
                 const existing: Chapter = JSON.parse(await readFile(chapterFilePath, 'utf-8'));
-                const existingWords = countThaiWords(existing.content || '');
-                const seedWords = countThaiWords(cleanedContent);
-                if (existingWords < 1600 && seedWords > existingWords) {
+                const existingContent = existing.content || '';
+                const existingWords = countThaiWords(existingContent);
+                const isCustomLongEdit = existingContent.includes('USER_LONG_EDIT') || existingWords >= 3600;
+                const alreadyV3 = existingContent.includes(`/api/uploads/profit-engine-ch${seedChap.chapterNo}.png`);
+
+                if (!isCustomLongEdit && !alreadyV3) {
                     const updated: Chapter = {
                         ...existing,
                         title: seedChap.title,
@@ -182,7 +285,7 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
                     upgradedChapterCount++;
                 }
             } catch (e) {
-                console.warn(`Could not inspect existing chapter ${seedChap.id} during v2 upgrade:`, e);
+                console.warn(`Could not inspect existing chapter ${seedChap.id} during v3 upgrade:`, e);
             }
         }
 
@@ -213,11 +316,20 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
             createdChapterCount,
         };
     }
-    migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY] = {
+    if (!migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY]) {
+        migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY] = {
+            appliedAt: now,
+            projectId: PROFIT_ENGINE_BOOK_ID,
+            createdChapterCount,
+            upgradedChapterCount,
+        };
+    }
+    migrationState[PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY] = {
         appliedAt: now,
         projectId: PROFIT_ENGINE_BOOK_ID,
         createdChapterCount,
         upgradedChapterCount,
+        copiedAssetsCount,
     };
     await writeFile(migrationsFile, JSON.stringify(migrationState, null, 2), 'utf-8');
 
@@ -226,5 +338,6 @@ export async function runProfitEngineBookSeedMigration(dbDir: string): Promise<P
         projectId: PROFIT_ENGINE_BOOK_ID,
         createdChapterCount,
         upgradedChapterCount,
+        copiedAssetsCount,
     };
 }
