@@ -6,6 +6,7 @@ import { sanitizeBookContent } from './sanitize';
 import { COMPLETE_CEO_AI_BOOK_CHAPTERS } from './chapterIllustrations';
 import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoLinks';
 import { BOOK3_CH3_MIGRATION_KEY, runBook3Ch3UpgradeMigration } from './book3Ch3Migration';
+import { PROFIT_ENGINE_BOOK_MIGRATION_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
 
 export interface Project {
     id: string;
@@ -69,6 +70,8 @@ let ceoOs2026MigrationPromise: Promise<void> | null = null;
 let ceoOs2026MigrationDoneInMemory = false;
 let book3Ch3MigrationPromise: Promise<void> | null = null;
 let book3Ch3MigrationDoneInMemory = false;
+let profitEngineMigrationPromise: Promise<void> | null = null;
+let profitEngineMigrationDoneInMemory = false;
 
 async function ensureDirs(): Promise<void> {
     if (!existsSync(DB_DIR)) {
@@ -96,6 +99,9 @@ async function getCoversMap(): Promise<Record<string, { frontCoverUrl?: string |
 
 export async function getProjects(): Promise<Project[]> {
     await ensureDirs();
+    if (!profitEngineMigrationDoneInMemory) {
+        await ensureProfitEngineBookSeed();
+    }
     try {
         if (!existsSync(PROJECTS_FILE)) return [];
         const raw = await readFile(PROJECTS_FILE, 'utf-8');
@@ -516,6 +522,29 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
     await book3Ch3MigrationPromise;
 }
 
+async function ensureProfitEngineBookSeed(): Promise<void> {
+    if (profitEngineMigrationDoneInMemory) return;
+    if (!profitEngineMigrationPromise) {
+        profitEngineMigrationPromise = (async () => {
+            try {
+                await runProfitEngineBookSeedMigration(DB_DIR);
+                if (existsSync(MIGRATIONS_FILE)) {
+                    const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
+                    const parsed = JSON.parse(raw || '{}');
+                    if (parsed && parsed[PROFIT_ENGINE_BOOK_MIGRATION_KEY]) {
+                        profitEngineMigrationDoneInMemory = true;
+                    }
+                }
+            } catch (err) {
+                console.error('[Profit Engine Book Seed Migration] Error:', err);
+            } finally {
+                profitEngineMigrationPromise = null;
+            }
+        })();
+    }
+    await profitEngineMigrationPromise;
+}
+
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
     await ensureDirs();
     if (!ceoOs2026MigrationDoneInMemory) {
@@ -523,6 +552,9 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
     }
     if (!book3Ch3MigrationDoneInMemory) {
         await ensureBook3Ch3Upgrade();
+    }
+    if (!profitEngineMigrationDoneInMemory) {
+        await ensureProfitEngineBookSeed();
     }
     const index = await getChaptersIndex();
     const filteredIndex = projectId ? index.filter(i => i.projectId === projectId) : index;
@@ -544,6 +576,9 @@ export async function getChapter(chapterId: string): Promise<Chapter | null> {
     await ensureDirs();
     if (!book3Ch3MigrationDoneInMemory) {
         await ensureBook3Ch3Upgrade();
+    }
+    if (!profitEngineMigrationDoneInMemory) {
+        await ensureProfitEngineBookSeed();
     }
     const filePath = path.join(CHAPTERS_DIR, `${chapterId}.json`);
     try {
