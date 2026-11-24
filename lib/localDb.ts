@@ -6,7 +6,7 @@ import { sanitizeBookContent } from './sanitize';
 import { COMPLETE_CEO_AI_BOOK_CHAPTERS } from './chapterIllustrations';
 import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoLinks';
 import { BOOK3_CH3_MIGRATION_KEY, runBook3Ch3UpgradeMigration } from './book3Ch3Migration';
-import { PROFIT_ENGINE_BOOK_MIGRATION_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
+import { PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
 
 export interface Project {
     id: string;
@@ -531,7 +531,7 @@ async function ensureProfitEngineBookSeed(): Promise<void> {
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
-                    if (parsed && parsed[PROFIT_ENGINE_BOOK_MIGRATION_KEY]) {
+                    if (parsed && parsed[PROFIT_ENGINE_BOOK_MIGRATION_V2_KEY]) {
                         profitEngineMigrationDoneInMemory = true;
                     }
                 }
