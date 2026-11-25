@@ -5,7 +5,25 @@ import { sanitizeBookContent } from './sanitize';
 import type { Chapter, ChapterIndexItem, Project } from './localDb';
 
 export const BOOK3_CH3_MIGRATION_KEY = 'book3_ch3_profit_engine_v1';
+export const BOOK3_CH3_INTRO_V2_KEY = 'book3_ch3_intro_bridge_v2';
 export const BOOK3_CH3_NEW_TITLE_CORE = 'สมการกำไรและโครงสร้างธุรกิจในสมอง CEO';
+
+const CH3_INTRO_V2_MARKER = 'เฟืองเจ็ดตัวในเครื่องยนต์เดียว';
+
+const CH3_INTRO_BRIDGE_PARAGRAPHS_HTML = [
+    '<p>คำเตือนนี้คือเหตุผลที่ <strong>“สมอง CEO”</strong> ต้องถูกป้อน <strong>สมการกำไรและโครงสร้างธุรกิจ</strong> ให้ชัดก่อนที่คุณจะเปิดใช้งาน AI Agent ตัวแรก เพราะ AI ไม่ได้เกิดมาเพื่อเดาใจตลาดแทนเจ้าของกิจการ แต่เกิดมาเพื่อรันกติกาที่คุณวางไว้ให้แม่นยำขึ้นหลายเท่าตัว หากโครงสร้างธุรกิจตั้งต้นของคุณยังมีรอยรั่ว—ไม่ว่าจะเป็นการเลือกสินค้าที่ลูกค้าไม่จำเป็นต้องซื้อ ราคาที่แพ้ค่าแอดตั้งแต่บิลแรก หรือกระแสเงินสดที่ช็อตทั้งที่ยอดขายโต—AI ก็จะขยายรอยรั่วนั้นให้กลายเป็นวิกฤตเร็วขึ้นเป็นเงาตามตัว</p>',
+    '<p>เพื่อปิดรอยรั่วทั้งหมดก่อนเร่งเครื่อง เราจะประกอบชิ้นส่วน <strong>7 เสาหลักของสมการกำไร</strong> เข้าเป็นโครงสร้างเดียวในสมอง CEO ไล่ตั้งแต่การวางรากฐานแบรนด์ที่เจาะบาดแผลลูกค้าพร้อมสะสมฐานข้อมูลในมือเองผ่าน <strong>Brandformance และกลยุทธ์ยึดหัวหาด</strong> (1) แล้วล็อกตัวเลขกำไรสุทธิขั้นต่ำและเพดานค่าแอดด้วย <strong>สมการความอยู่รอด MVPr และ Max CPA</strong> (2) ก่อนจะแตกสินค้าเดี่ยวให้กลายเป็นเครื่องจักรทำเงินหลายชั้นด้วย <strong>สูตรผสมสินค้า 4 รูปแบบ</strong> (3) จากนั้นจึงกำหนดเกณฑ์ตัดสินใจให้ AI คุมงบโฆษณาเป็นสามระยะด้วย <strong>เกณฑ์ ROAS</strong> (4) และทดสอบสมการทั้งหมดผ่าน <strong>เวิร์กช็อปผ่าตัวเลขจริงของ 3 โมเดลธุรกิจไทย</strong> (5) เมื่อเครื่องยนต์เริ่มทำยอดขายได้แล้ว เรายังต้องอุดรูรั่วที่ฆ่าธุรกิจโตไวมากที่สุดอย่าง <strong>กับดักกระแสเงินสด</strong> (6) และปิดท้ายด้วยการดันกำไรต่อบิลให้ชนะค่าแอดขาดลอยผ่าน <strong>จิตวิทยาการจัดชุดสินค้า 3 ระดับ</strong> (7) เพื่อให้ AI Agent หยิบไปปิดการขายในแชทได้ทันที</p>',
+    '<p>ทุกชิ้นส่วนที่ว่ามานี้ทำงานต่อเนื่องกันเหมือนเฟืองเจ็ดตัวในเครื่องยนต์เดียว—ถ้าเฟืองตัวแรกหมุนผิดทิศ เฟืองอีกหกตัวที่เหลือก็ไร้ความหมาย และเฟืองตัวแรกที่เราต้องวางให้แม่นที่สุดก็คือการเลือก “บาดแผลของลูกค้า” ให้ถูกจุดก่อนเริ่มยิงแอดแม้แต่บาทเดียวครับ</p>',
+].join('\n\n');
+
+const CH3_INTRO_BRIDGE_PARAGRAPHS_MD = [
+    'คำเตือนนี้คือเหตุผลที่ **“สมอง CEO”** ต้องถูกป้อน **สมการกำไรและโครงสร้างธุรกิจ** ให้ชัดก่อนที่คุณจะเปิดใช้งาน AI Agent ตัวแรก เพราะ AI ไม่ได้เกิดมาเพื่อเดาใจตลาดแทนเจ้าของกิจการ แต่เกิดมาเพื่อรันกติกาที่คุณวางไว้ให้แม่นยำขึ้นหลายเท่าตัว หากโครงสร้างธุรกิจตั้งต้นของคุณยังมีรอยรั่ว—ไม่ว่าจะเป็นการเลือกสินค้าที่ลูกค้าไม่จำเป็นต้องซื้อ ราคาที่แพ้ค่าแอดตั้งแต่บิลแรก หรือกระแสเงินสดที่ช็อตทั้งที่ยอดขายโต—AI ก็จะขยายรอยรั่วนั้นให้กลายเป็นวิกฤตเร็วขึ้นเป็นเงาตามตัว',
+    'เพื่อปิดรอยรั่วทั้งหมดก่อนเร่งเครื่อง เราจะประกอบชิ้นส่วน **7 เสาหลักของสมการกำไร** เข้าเป็นโครงสร้างเดียวในสมอง CEO ไล่ตั้งแต่การวางรากฐานแบรนด์ที่เจาะบาดแผลลูกค้าพร้อมสะสมฐานข้อมูลในมือเองผ่าน **Brandformance และกลยุทธ์ยึดหัวหาด** (1) แล้วล็อกตัวเลขกำไรสุทธิขั้นต่ำและเพดานค่าแอดด้วย **สมการความอยู่รอด MVPr และ Max CPA** (2) ก่อนจะแตกสินค้าเดี่ยวให้กลายเป็นเครื่องจักรทำเงินหลายชั้นด้วย **สูตรผสมสินค้า 4 รูปแบบ** (3) จากนั้นจึงกำหนดเกณฑ์ตัดสินใจให้ AI คุมงบโฆษณาเป็นสามระยะด้วย **เกณฑ์ ROAS** (4) และทดสอบสมการทั้งหมดผ่าน **เวิร์กช็อปผ่าตัวเลขจริงของ 3 โมเดลธุรกิจไทย** (5) เมื่อเครื่องยนต์เริ่มทำยอดขายได้แล้ว เรายังต้องอุดรูรั่วที่ฆ่าธุรกิจโตไวมากที่สุดอย่าง **กับดักกระแสเงินสด** (6) และปิดท้ายด้วยการดันกำไรต่อบิลให้ชนะค่าแอดขาดลอยผ่าน **จิตวิทยาการจัดชุดสินค้า 3 ระดับ** (7) เพื่อให้ AI Agent หยิบไปปิดการขายในแชทได้ทันที',
+    'ทุกชิ้นส่วนที่ว่ามานี้ทำงานต่อเนื่องกันเหมือนเฟืองเจ็ดตัวในเครื่องยนต์เดียว—ถ้าเฟืองตัวแรกหมุนผิดทิศ เฟืองอีกหกตัวที่เหลือก็ไร้ความหมาย และเฟืองตัวแรกที่เราต้องวางให้แม่นที่สุดก็คือการเลือก “บาดแผลของลูกค้า” ให้ถูกจุดก่อนเริ่มยิงแอดแม้แต่บาทเดียวครับ',
+].join('\n\n');
+
+const CH3_SEC1_HEADING_HTML = '<h3>1. Brandformance และกลยุทธ์ยึดหัวหาด: เจาะ “บาดแผล” แทนการขายไอเดีย</h3>';
+const CH3_SEC1_HEADING_MD = '### 1. Brandformance และกลยุทธ์ยึดหัวหาด: เจาะ “บาดแผล” แทนการขายไอเดีย';
 
 const LEGACY_REAL_NAME_PATTERN =
     /\u0E2D\u0E14\u0E34\u0E28\u0E23(?:\s+\u0E40\u0E17\u0E1E\u0E27\u0E31\u0E25\u0E22\u0E4C)?(?:\s*\(Director\s*·\s*Ebook Studio\))?/g;
@@ -495,3 +513,160 @@ export async function runBook3Ch3UpgradeMigration(
         insertedExampleCount,
     };
 }
+
+/**
+ * Pure helper that inserts the 3-Beat Chapter Opening bridge (Nut Graf + 7-Pillar Narrative Roadmap + Transition)
+ * right after the opening 10x warning hook and right before Section 1 ("ในบทความเจาะลึกเรื่องการสร้าง...").
+ * Also inserts a clean Section 1 heading if none exists between the hook and Section 1.
+ */
+export function injectBook3Ch3IntroBridge(content: string): { text: string; changed: boolean } {
+    if (!content || content.includes(CH3_INTRO_V2_MARKER)) {
+        return { text: content, changed: false };
+    }
+
+    // Detect whether the chapter uses HTML paragraphs or Markdown paragraphs around the opening
+    const usesHtmlParagraphs = /<p[\s>]/i.test(content.slice(0, 1200));
+    const bridgeBlock = usesHtmlParagraphs ? CH3_INTRO_BRIDGE_PARAGRAPHS_HTML : CH3_INTRO_BRIDGE_PARAGRAPHS_MD;
+    const sec1Heading = usesHtmlParagraphs ? CH3_SEC1_HEADING_HTML : CH3_SEC1_HEADING_MD;
+
+    // Locate the start of Section 1 ("ในบทความเจาะลึกเรื่องการสร้าง")
+    const sec1Re = /(?:<p[^>]*>\s*)?ในบทความเจาะลึกเรื่องการสร้าง/;
+    const sec1Match = sec1Re.exec(content);
+    if (!sec1Match) {
+        return { text: content, changed: false };
+    }
+
+    const sec1Idx = sec1Match.index;
+    const beforeSec1 = content.slice(0, sec1Idx);
+    const fromSec1 = content.slice(sec1Idx);
+
+    // Check if there's already a Section 1 heading right before "ในบทความเจาะลึกเรื่องการสร้าง"
+    const existingSec1HeadingRe = /(?:<h[1-6][^>]*>[^<]*1\.[^<]*<\/h[1-6]>|#{1,6}\s+1\.\s+[^\n]+)\s*$/i;
+    const existingHeadingMatch = existingSec1HeadingRe.exec(beforeSec1.trimEnd());
+
+    if (existingHeadingMatch) {
+        // Insert bridge BEFORE the existing Section 1 heading
+        const headingStartIdx = beforeSec1.trimEnd().length - existingHeadingMatch[0].length;
+        const head = beforeSec1.slice(0, headingStartIdx).trimEnd();
+        const headingAndRest = content.slice(headingStartIdx).trimStart();
+        const nextText = head ? `${head}\n\n${bridgeBlock}\n\n${headingAndRest}` : `${bridgeBlock}\n\n${headingAndRest}`;
+        return { text: nextText, changed: true };
+    }
+
+    // No Section 1 heading yet: insert bridge + Section 1 heading right before "ในบทความเจาะลึกเรื่องการสร้าง"
+    const head = beforeSec1.trimEnd();
+    const tail = fromSec1.trimStart();
+    const nextText = head
+        ? `${head}\n\n${bridgeBlock}\n\n${sec1Heading}\n\n${tail}`
+        : `${bridgeBlock}\n\n${sec1Heading}\n\n${tail}`;
+    return { text: nextText, changed: true };
+}
+
+/**
+ * Idempotent one-time v2 migration for Book 3 Chapter 3:
+ * Upgrades the chapter opening to follow the 3-Beat Chapter Opening standard
+ * (Hook -> Nut Graf tying to chapter title -> 7-Pillar Narrative Roadmap -> Transition into Section 1)
+ * without overwriting any user edits in the rest of the chapter.
+ */
+export async function runBook3Ch3IntroV2Migration(
+    baseDbDir: string
+): Promise<{ applied: boolean; chapterId: string | null }> {
+    const migrationsFile = path.join(baseDbDir, 'migrations_state.json');
+    const projectsFile = path.join(baseDbDir, 'projects.json');
+    const chaptersDir = path.join(baseDbDir, 'chapters');
+    const chaptersIndexFile = path.join(baseDbDir, 'chapters_index.json');
+
+    let migrationState: Record<string, unknown> = {};
+    try {
+        if (existsSync(migrationsFile)) {
+            const rawState = await readFile(migrationsFile, 'utf-8');
+            const parsedState = JSON.parse(rawState);
+            if (parsedState && typeof parsedState === 'object') {
+                migrationState = parsedState as Record<string, unknown>;
+            }
+        }
+    } catch {
+        migrationState = {};
+    }
+
+    if (migrationState[BOOK3_CH3_INTRO_V2_KEY]) {
+        return { applied: false, chapterId: null };
+    }
+
+    const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile);
+    if (index.length === 0) {
+        return { applied: false, chapterId: null };
+    }
+
+    const projects = await readJsonArraySafe<Project>(projectsFile);
+    let targetProjectId: string | null = null;
+
+    const matchedProject = projects.find(
+        (p) =>
+            (/ฉันนี่แหละประธานบริษัท\s*ยุค\s*AI/i.test(p.title || '') ||
+                /พลิกเกมการตลาดด้วย\s*AI\s*Agent/i.test(p.title || '')) &&
+            index.some((i) => i.projectId === p.id)
+    );
+    if (matchedProject) {
+        targetProjectId = matchedProject.id;
+    }
+
+    if (!targetProjectId) {
+        for (const item of index.filter((i) => i.chapterNo === 3)) {
+            const filePath = path.join(chaptersDir, `${item.id}.json`);
+            try {
+                if (!existsSync(filePath)) continue;
+                const ch = JSON.parse(await readFile(filePath, 'utf-8')) as Chapter;
+                const body = ch.content || '';
+                if (/ในบทความเจาะลึกเรื่องการสร้าง/.test(body) && /MVPr/i.test(body)) {
+                    targetProjectId = ch.projectId || item.projectId;
+                    break;
+                }
+            } catch {
+                // Ignore unreadable chapter file
+            }
+        }
+    }
+
+    if (!targetProjectId) {
+        return { applied: false, chapterId: null };
+    }
+
+    const ch3IndexItem = index.find((i) => i.projectId === targetProjectId && i.chapterNo === 3);
+    if (!ch3IndexItem) {
+        return { applied: false, chapterId: null };
+    }
+
+    const ch3FilePath = path.join(chaptersDir, `${ch3IndexItem.id}.json`);
+    if (!existsSync(ch3FilePath)) {
+        return { applied: false, chapterId: null };
+    }
+
+    const ch3 = JSON.parse(await readFile(ch3FilePath, 'utf-8')) as Chapter;
+    const result = injectBook3Ch3IntroBridge(ch3.content || '');
+    const now = new Date().toISOString();
+
+    if (result.changed) {
+        const cleaned = sanitizeBookContent(result.text);
+        const updatedChapter: Chapter = {
+            ...ch3,
+            content: cleaned,
+            hasContent: Boolean(cleaned.trim()),
+            updatedAt: now,
+        };
+        await writeFile(ch3FilePath, JSON.stringify(updatedChapter, null, 2), 'utf-8');
+        ch3IndexItem.updatedAt = now;
+        await writeFile(chaptersIndexFile, JSON.stringify(index, null, 2), 'utf-8');
+    }
+
+    migrationState[BOOK3_CH3_INTRO_V2_KEY] = {
+        appliedAt: now,
+        projectId: targetProjectId,
+        chapterId: ch3.id,
+        changed: result.changed,
+    };
+    await writeFile(migrationsFile, JSON.stringify(migrationState, null, 2), 'utf-8');
+
+    return { applied: result.changed, chapterId: ch3.id };
+}
+
