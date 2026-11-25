@@ -6,6 +6,7 @@ import type { Chapter, ChapterIndexItem, Project } from './localDb';
 
 export const BOOK3_CH3_MIGRATION_KEY = 'book3_ch3_profit_engine_v1';
 export const BOOK3_CH3_INTRO_V2_KEY = 'book3_ch3_intro_bridge_v2';
+export const BOOK3_CH3_GOLDEN_THREAD_V3_KEY = 'book3_ch3_golden_thread_v3';
 export const BOOK3_CH3_NEW_TITLE_CORE = 'สมการกำไรและโครงสร้างธุรกิจในสมอง CEO';
 
 const CH3_INTRO_V2_MARKER = 'เฟืองเจ็ดตัวในเครื่องยนต์เดียว';
@@ -669,4 +670,189 @@ export async function runBook3Ch3IntroV2Migration(
 
     return { applied: result.changed, chapterId: ch3.id };
 }
+
+interface SectionBridgeSpec {
+    anchors: string[];
+    marker: string;
+    html: string;
+    md: string;
+}
+
+const CH3_GOLDEN_THREAD_BRIDGES: SectionBridgeSpec[] = [
+    {
+        anchors: ['2\\.\\s*สมการความอยู่รอด', 'สมการที่\\s*1\\s*[:：]'],
+        marker: 'สมอง CEO ก็ยังไม่รู้ว่าควรอนุมัติงบยิงแอดได้เท่าไหร่ถึงจะไม่ขาดทุน',
+        html: '<p>เมื่อเฟืองตัวที่หนึ่งอย่าง <strong>Brandformance และฐานข้อมูลในมือ</strong> ช่วยให้สมอง CEO รู้ชัดแล้วว่าเรากำลังแก้บาดแผลให้ใครโดยไม่ต้องแข่งตัดราคา โจทย์ถัดมาในสมการกำไรคือ <strong>“ตัวเลขความอยู่รอด”</strong> — เพราะต่อให้แบรนด์ดีแค่ไหน ถ้าเราไม่ล็อกเป้ากำไรสุทธิและเพดานค่าแอดให้ชัดตั้งแต่บิลแรก สมอง CEO ก็ยังไม่รู้ว่าควรอนุมัติงบยิงแอดได้เท่าไหร่ถึงจะไม่ขาดทุนครับ</p>',
+        md: 'เมื่อเฟืองตัวที่หนึ่งอย่าง **Brandformance และฐานข้อมูลในมือ** ช่วยให้สมอง CEO รู้ชัดแล้วว่าเรากำลังแก้บาดแผลให้ใครโดยไม่ต้องแข่งตัดราคา โจทย์ถัดมาในสมการกำไรคือ **“ตัวเลขความอยู่รอด”** — เพราะต่อให้แบรนด์ดีแค่ไหน ถ้าเราไม่ล็อกเป้ากำไรสุทธิและเพดานค่าแอดให้ชัดตั้งแต่บิลแรก สมอง CEO ก็ยังไม่รู้ว่าควรอนุมัติงบยิงแอดได้เท่าไหร่ถึงจะไม่ขาดทุนครับ',
+    },
+    {
+        anchors: ['3\\.\\s*สูตรผสมสินค้า'],
+        marker: 'วางโครงสร้างสินค้าให้ทำงานเป็นพอร์ตหลายชั้นในเฟืองตัวที่สาม',
+        html: '<p>การล็อกสมการ <strong>MVPr และ Max CPA</strong> ช่วยให้สมอง CEO มีไม้บรรทัดวัดกำไรต่อออเดอร์ที่แม่นยำแล้ว แต่ถ้าทั้งธุรกิจฝากความหวังไว้กับสินค้าชิ้นเดียว ตัวเลขกำไรขั้นต้นก็ยังชนเพดานได้ง่าย วิธีขยายสมการกำไรให้โตข้ามเพดานโดยไม่ต้องหาลูกค้าใหม่ตลอดเวลา คือการวางโครงสร้างสินค้าให้ทำงานเป็นพอร์ตหลายชั้นในเฟืองตัวที่สามครับ</p>',
+        md: 'การล็อกสมการ **MVPr และ Max CPA** ช่วยให้สมอง CEO มีไม้บรรทัดวัดกำไรต่อออเดอร์ที่แม่นยำแล้ว แต่ถ้าทั้งธุรกิจฝากความหวังไว้กับสินค้าชิ้นเดียว ตัวเลขกำไรขั้นต้นก็ยังชนเพดานได้ง่าย วิธีขยายสมการกำไรให้โตข้ามเพดานโดยไม่ต้องหาลูกค้าใหม่ตลอดเวลา คือการวางโครงสร้างสินค้าให้ทำงานเป็นพอร์ตหลายชั้นในเฟืองตัวที่สามครับ',
+    },
+    {
+        anchors: ['4\\.\\s*การตั้งเกณฑ์\\s*ROAS'],
+        marker: 'แปลงตัวเลขกำไรทั้งหมดให้กลายเป็น',
+        html: '<p>เมื่อโครงสร้างสินค้าทั้ง 4 รูปแบบถูกจัดวางเป็นบันไดคุณค่าในสมอง CEO เรียบร้อยแล้ว กำไรต่อหัวของลูกค้า (LTV) จะสูงกว่าคู่แข่งที่ขายสินค้าเดี่ยวหลายเท่า ถึงตรงนี้สมอง CEO จึงพร้อมแปลงตัวเลขกำไรทั้งหมดให้กลายเป็น <strong>“กติกาคุมงบโฆษณา”</strong> ที่ AI Agent นำไปตัดสินใจเปิด-ปิดและขยายแอดแทนเราได้ตลอด 24 ชั่วโมงครับ</p>',
+        md: 'เมื่อโครงสร้างสินค้าทั้ง 4 รูปแบบถูกจัดวางเป็นบันไดคุณค่าในสมอง CEO เรียบร้อยแล้ว กำไรต่อหัวของลูกค้า (LTV) จะสูงกว่าคู่แข่งที่ขายสินค้าเดี่ยวหลายเท่า ถึงตรงนี้สมอง CEO จึงพร้อมแปลงตัวเลขกำไรทั้งหมดให้กลายเป็น **“กติกาคุมงบโฆษณา”** ที่ AI Agent นำไปตัดสินใจเปิด-ปิดและขยายแอดแทนเราได้ตลอด 24 ชั่วโมงครับ',
+    },
+    {
+        anchors: ['5\\.\\s*เวิร์กช็อปผ่าตัวเลขจริง'],
+        marker: 'เอาทั้งสี่เฟืองแรกมาทดสอบผ่านเวิร์กช็อปผ่าตัวเลขของสามโมเดลธุรกิจ',
+        html: '<p>เกณฑ์ <strong>ROAS ทั้งสามระยะ</strong> ทำให้ AI Agent รู้จังหวะเร่งและเบรกงบโฆษณาโดยไม่อิงความรู้สึก แต่สมการกำไรของแต่ละธุรกิจไม่ได้ใช้ตัวเลขชุดเดียวกัน เพื่อให้คุณเห็นภาพชัดว่าโครงสร้างในสมอง CEO ปรับใช้กับธุรกิจจริงในไทยอย่างไร เราจะเอาทั้งสี่เฟืองแรกมาทดสอบผ่านเวิร์กช็อปผ่าตัวเลขของสามโมเดลธุรกิจกันครับ</p>',
+        md: 'เกณฑ์ **ROAS ทั้งสามระยะ** ทำให้ AI Agent รู้จังหวะเร่งและเบรกงบโฆษณาโดยไม่อิงความรู้สึก แต่สมการกำไรของแต่ละธุรกิจไม่ได้ใช้ตัวเลขชุดเดียวกัน เพื่อให้คุณเห็นภาพชัดว่าโครงสร้างในสมอง CEO ปรับใช้กับธุรกิจจริงในไทยอย่างไร เราจะเอาทั้งสี่เฟืองแรกมาทดสอบผ่านเวิร์กช็อปผ่าตัวเลขของสามโมเดลธุรกิจกันครับ',
+    },
+    {
+        anchors: ['6\\.\\s*กับดัก'],
+        marker: 'แยกให้ออกระหว่าง “กำไรทางบัญชี” กับ “เงินสดจริงในธนาคาร”',
+        html: '<p>ตัวเลขจากทั้งสามโมเดลยืนยันตรงกันว่า เมื่อโครงสร้างกำไรบนกระดาษเป็นบวก AI ก็พร้อมช่วยขยายยอดขายได้ทันที แต่ในสนามรบจริงยังมีจุดตายที่ทำให้ธุรกิจที่ “กำไรดีบนกระดาษ” ต้องสะดุดกลางทาง นั่นคือโครงสร้าง <strong>กระแสเงินสด</strong> ที่สมอง CEO ต้องแยกให้ออกระหว่าง “กำไรทางบัญชี” กับ “เงินสดจริงในธนาคาร” ครับ</p>',
+        md: 'ตัวเลขจากทั้งสามโมเดลยืนยันตรงกันว่า เมื่อโครงสร้างกำไรบนกระดาษเป็นบวก AI ก็พร้อมช่วยขยายยอดขายได้ทันที แต่ในสนามรบจริงยังมีจุดตายที่ทำให้ธุรกิจที่ “กำไรดีบนกระดาษ” ต้องสะดุดกลางทาง นั่นคือโครงสร้าง **กระแสเงินสด** ที่สมอง CEO ต้องแยกให้ออกระหว่าง “กำไรทางบัญชี” กับ “เงินสดจริงในธนาคาร” ครับ',
+    },
+    {
+        anchors: ['7\\.\\s*จิตวิทยาการจัดชุดสินค้า'],
+        marker: 'การจัดชุดข้อเสนอ 3 ระดับในเฟืองตัวสุดท้ายนี้',
+        html: '<p>เมื่อสมอง CEO อุดรอยรั่วกระแสเงินสดและกันเงินสำรองไว้พร้อมแล้ว โจทย์สุดท้ายของโครงสร้างกำไรคือการ <strong>“ดันมูลค่าต่อบิล (AOV)”</strong> ให้สูงพอชนะค่าแอดตั้งแต่การซื้อครั้งแรก โดยไม่ต้องง้อการลดราคา—และเครื่องมือที่ AI Agent หยิบไปใช้ปิดการขายในแชทได้ทรงพลังที่สุดก็คือการจัดชุดข้อเสนอ 3 ระดับในเฟืองตัวสุดท้ายนี้ครับ</p>',
+        md: 'เมื่อสมอง CEO อุดรอยรั่วกระแสเงินสดและกันเงินสำรองไว้พร้อมแล้ว โจทย์สุดท้ายของโครงสร้างกำไรคือการ **“ดันมูลค่าต่อบิล (AOV)”** ให้สูงพอชนะค่าแอดตั้งแต่การซื้อครั้งแรก โดยไม่ต้องง้อการลดราคา—และเครื่องมือที่ AI Agent หยิบไปใช้ปิดการขายในแชทได้ทรงพลังที่สุดก็คือการจัดชุดข้อเสนอ 3 ระดับในเฟืองตัวสุดท้ายนี้ครับ',
+    },
+    {
+        anchors: ['เห็นพลังของการออกแบบข้อเสนอหรือยังครับ', 'ในการวิเคราะห์ข้อมูลจริง'],
+        marker: 'ทั้ง 7 หัวข้อในบทนี้ไม่ใช่เรื่องแยกส่วนกัน',
+        html: '<p>มองย้อนกลับไปที่คำเตือนตอนต้นบทเรื่องการเหยียบคันเร่งรถพุ่งลงเหว 10 เท่า ตอนนี้คุณจะเห็นภาพครบแล้วว่า <strong>ทั้ง 7 หัวข้อในบทนี้ไม่ใช่เรื่องแยกส่วนกัน แต่คือโครงสร้างสมการกำไรหนึ่งเดียวที่ต้องป้อนลงในสมอง CEO</strong> — ตั้งแต่เจาะบาดแผลด้วย Brandformance (1), ล็อกกำไรขั้นต่ำ MVPr และเพดานค่าแอด (2), แตกพอร์ตสินค้า 4 รูปแบบ (3), ตั้งเกณฑ์ ROAS ให้ AI คุมงบ (4), เทียบโครงสร้างตัวเลขตามโมเดลธุรกิจ (5), ปิดจุดตายกระแสเงินสด (6), ไปจนถึงจัดชุดข้อเสนอ 3 ระดับดันกำไรต่อบิล (7) เมื่อเฟืองทั้งเจ็ดตัวนี้ล็อกเข้าหากันเป็นบวกแล้ว การเปิดเครื่องกองทัพ AI Agent ในบทถัดไปจึงจะกลายเป็นการเร่งสปีดสู่กำไร ไม่ใช่เร่งสปีดสู่ความเสี่ยงครับ</p>',
+        md: 'มองย้อนกลับไปที่คำเตือนตอนต้นบทเรื่องการเหยียบคันเร่งรถพุ่งลงเหว 10 เท่า ตอนนี้คุณจะเห็นภาพครบแล้วว่า **ทั้ง 7 หัวข้อในบทนี้ไม่ใช่เรื่องแยกส่วนกัน แต่คือโครงสร้างสมการกำไรหนึ่งเดียวที่ต้องป้อนลงในสมอง CEO** — ตั้งแต่เจาะบาดแผลด้วย Brandformance (1), ล็อกกำไรขั้นต่ำ MVPr และเพดานค่าแอด (2), แตกพอร์ตสินค้า 4 รูปแบบ (3), ตั้งเกณฑ์ ROAS ให้ AI คุมงบ (4), เทียบโครงสร้างตัวเลขตามโมเดลธุรกิจ (5), ปิดจุดตายกระแสเงินสด (6), ไปจนถึงจัดชุดข้อเสนอ 3 ระดับดันกำไรต่อบิล (7) เมื่อเฟืองทั้งเจ็ดตัวนี้ล็อกเข้าหากันเป็นบวกแล้ว การเปิดเครื่องกองทัพ AI Agent ในบทถัดไปจึงจะกลายเป็นการเร่งสปีดสู่กำไร ไม่ใช่เร่งสปีดสู่ความเสี่ยงครับ',
+    },
+];
+
+/**
+ * Pure helper that weaves Golden Thread section bridges between all 7 subsections of Book 3 Chapter 3
+ * plus a closing synthesis callback tying all 7 gears back to the opening 10x warning and the chapter title.
+ */
+export function injectBook3Ch3SectionBridges(content: string): { text: string; insertedCount: number } {
+    if (!content) {
+        return { text: content, insertedCount: 0 };
+    }
+
+    const usesHtmlParagraphs = /<p[\s>]/i.test(content.slice(0, 1500));
+    let next = content;
+    let insertedCount = 0;
+
+    for (const bridge of CH3_GOLDEN_THREAD_BRIDGES) {
+        const block = usesHtmlParagraphs ? bridge.html : bridge.md;
+        const res = insertBeforeAnchor(next, bridge.anchors, bridge.marker, block);
+        if (res.inserted) {
+            next = res.text;
+            insertedCount += 1;
+        }
+    }
+
+    return { text: next, insertedCount };
+}
+
+/**
+ * Idempotent one-time v3 migration for Book 3 Chapter 3:
+ * Inserts 7 Golden Thread section bridges so all 7 subsections read as ONE unified chapter
+ * under "สมการกำไรและโครงสร้างธุรกิจในสมอง CEO" instead of 7 disconnected articles.
+ */
+export async function runBook3Ch3GoldenThreadV3Migration(
+    baseDbDir: string
+): Promise<{ applied: boolean; chapterId: string | null; insertedCount: number }> {
+    const migrationsFile = path.join(baseDbDir, 'migrations_state.json');
+    const projectsFile = path.join(baseDbDir, 'projects.json');
+    const chaptersDir = path.join(baseDbDir, 'chapters');
+    const chaptersIndexFile = path.join(baseDbDir, 'chapters_index.json');
+
+    let migrationState: Record<string, unknown> = {};
+    try {
+        if (existsSync(migrationsFile)) {
+            const rawState = await readFile(migrationsFile, 'utf-8');
+            const parsedState = JSON.parse(rawState);
+            if (parsedState && typeof parsedState === 'object') {
+                migrationState = parsedState as Record<string, unknown>;
+            }
+        }
+    } catch {
+        migrationState = {};
+    }
+
+    if (migrationState[BOOK3_CH3_GOLDEN_THREAD_V3_KEY]) {
+        return { applied: false, chapterId: null, insertedCount: 0 };
+    }
+
+    const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile);
+    if (index.length === 0) {
+        return { applied: false, chapterId: null, insertedCount: 0 };
+    }
+
+    const projects = await readJsonArraySafe<Project>(projectsFile);
+    let targetProjectId: string | null = null;
+
+    const matchedProject = projects.find(
+        (p) =>
+            (/ฉันนี่แหละประธานบริษัท\s*ยุค\s*AI/i.test(p.title || '') ||
+                /พลิกเกมการตลาดด้วย\s*AI\s*Agent/i.test(p.title || '')) &&
+            index.some((i) => i.projectId === p.id)
+    );
+    if (matchedProject) {
+        targetProjectId = matchedProject.id;
+    }
+
+    if (!targetProjectId) {
+        for (const item of index.filter((i) => i.chapterNo === 3)) {
+            const filePath = path.join(chaptersDir, `${item.id}.json`);
+            try {
+                if (!existsSync(filePath)) continue;
+                const ch = JSON.parse(await readFile(filePath, 'utf-8')) as Chapter;
+                const body = ch.content || '';
+                if (/ในบทความเจาะลึกเรื่องการสร้าง/.test(body) && /MVPr/i.test(body)) {
+                    targetProjectId = ch.projectId || item.projectId;
+                    break;
+                }
+            } catch {
+                // Ignore unreadable chapter file
+            }
+        }
+    }
+
+    if (!targetProjectId) {
+        return { applied: false, chapterId: null, insertedCount: 0 };
+    }
+
+    const ch3IndexItem = index.find((i) => i.projectId === targetProjectId && i.chapterNo === 3);
+    if (!ch3IndexItem) {
+        return { applied: false, chapterId: null, insertedCount: 0 };
+    }
+
+    const ch3FilePath = path.join(chaptersDir, `${ch3IndexItem.id}.json`);
+    if (!existsSync(ch3FilePath)) {
+        return { applied: false, chapterId: null, insertedCount: 0 };
+    }
+
+    const ch3 = JSON.parse(await readFile(ch3FilePath, 'utf-8')) as Chapter;
+    const result = injectBook3Ch3SectionBridges(ch3.content || '');
+    const now = new Date().toISOString();
+
+    if (result.insertedCount > 0) {
+        const cleaned = sanitizeBookContent(result.text);
+        const updatedChapter: Chapter = {
+            ...ch3,
+            content: cleaned,
+            hasContent: Boolean(cleaned.trim()),
+            updatedAt: now,
+        };
+        await writeFile(ch3FilePath, JSON.stringify(updatedChapter, null, 2), 'utf-8');
+        ch3IndexItem.updatedAt = now;
+        await writeFile(chaptersIndexFile, JSON.stringify(index, null, 2), 'utf-8');
+    }
+
+    migrationState[BOOK3_CH3_GOLDEN_THREAD_V3_KEY] = {
+        appliedAt: now,
+        projectId: targetProjectId,
+        chapterId: ch3.id,
+        insertedCount: result.insertedCount,
+    };
+    await writeFile(migrationsFile, JSON.stringify(migrationState, null, 2), 'utf-8');
+
+    return { applied: result.insertedCount > 0, chapterId: ch3.id, insertedCount: result.insertedCount };
+}
+
 

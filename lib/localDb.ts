@@ -8,8 +8,10 @@ import { ONEPERSON_FUNNEL_PRESETS, buildExecutiveCtaHtml } from './onepersonCeoL
 import {
     BOOK3_CH3_MIGRATION_KEY,
     BOOK3_CH3_INTRO_V2_KEY,
+    BOOK3_CH3_GOLDEN_THREAD_V3_KEY,
     runBook3Ch3UpgradeMigration,
     runBook3Ch3IntroV2Migration,
+    runBook3Ch3GoldenThreadV3Migration,
 } from './book3Ch3Migration';
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
 
@@ -511,10 +513,16 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
             try {
                 await runBook3Ch3UpgradeMigration(DB_DIR);
                 await runBook3Ch3IntroV2Migration(DB_DIR);
+                await runBook3Ch3GoldenThreadV3Migration(DB_DIR);
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
-                    if (parsed && parsed[BOOK3_CH3_MIGRATION_KEY] && parsed[BOOK3_CH3_INTRO_V2_KEY]) {
+                    if (
+                        parsed &&
+                        parsed[BOOK3_CH3_MIGRATION_KEY] &&
+                        parsed[BOOK3_CH3_INTRO_V2_KEY] &&
+                        parsed[BOOK3_CH3_GOLDEN_THREAD_V3_KEY]
+                    ) {
                         book3Ch3MigrationDoneInMemory = true;
                     }
                 }
