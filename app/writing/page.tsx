@@ -5,8 +5,9 @@ import {
     Shield, CheckCircle2, BookOpen, Layers, Lightbulb, 
     FileText, ArrowRight, ArrowLeft, Wand2, Zap,
     Image as ImageIcon, Upload, Link as LinkIcon,
-    Eye, Edit3, Copy, Plus, Maximize2, Minimize2, QrCode
+    Eye, Edit3, Copy, Plus, Maximize2, Minimize2, QrCode, Network
 } from 'lucide-react'
+import DiagramStudioWorkbench from '@/app/diagram-studio/DiagramStudioWorkbench'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, useRef, Suspense } from 'react'
@@ -239,6 +240,33 @@ function WritingContent() {
             }
         } finally {
             setInsertingCta(false)
+        }
+    }
+
+    // Diagram Studio Modal state
+    const [showDiagramModal, setShowDiagramModal] = useState(false)
+
+    async function handleInsertDiagram(payload: { imageUrl: string; caption: string; alt: string }) {
+        const snippet = `\n\n<figure class="my-6 text-center break-inside-avoid">\n<img src="${payload.imageUrl}" alt="${payload.alt}" class="w-full h-auto object-contain max-h-[520px] chapter-hero-img mx-auto rounded-xl border border-slate-200 shadow-sm bg-white p-1.5" />\n<figcaption class="mt-2 text-xs text-slate-500 font-medium italic">${payload.caption}</figcaption>\n</figure>\n\n`
+        const currentContent = data?.content || ''
+        const insertAt =
+            cursorPos !== null && cursorPos !== undefined && cursorPos >= 0 && cursorPos <= currentContent.length
+                ? cursorPos
+                : currentContent.length
+
+        const newContent = `${currentContent.slice(0, insertAt)}${snippet}${currentContent.slice(insertAt)}`
+        setData((prev) => (prev ? { ...prev, content: newContent } : null))
+        setShowDiagramModal(false)
+
+        if (chapterId) {
+            setSaving(true)
+            const res = await updateChapterContent(chapterId, newContent)
+            setSaving(false)
+            if (res.success) {
+                alert('✨ สร้าง Diagram และแทรกลงบทเรียบร้อยแล้ว!')
+            } else {
+                alert('แทรกลงหน้าเขียนแล้ว แต่บันทึกไม่สำเร็จ: ' + res.error)
+            }
         }
     }
 
@@ -655,6 +683,15 @@ function WritingContent() {
                         </button>
 
                         <button
+                            onClick={() => setShowDiagramModal(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 font-medium rounded-lg text-xs md:text-sm transition-colors cursor-pointer"
+                            title="สร้างแผนภาพ (Diagram) ภาษาไทยด้วย AI และแทรกลงในเนื้อหา"
+                        >
+                            <Network size={15} className="text-sky-600" />
+                            <span>สร้าง Diagram</span>
+                        </button>
+
+                        <button
                             onClick={openCtaModal}
                             className="inline-flex items-center gap-1.5 px-3 py-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-medium rounded-lg text-xs md:text-sm transition-colors cursor-pointer"
                             title="แทรกลิงก์เชื่อมเว็บ onepersonceo.com / Messenger / คอร์ส พร้อม QR Code อัตโนมัติ"
@@ -825,6 +862,14 @@ function WritingContent() {
                                     >
                                         <ImageIcon size={13} className="text-blue-600" />
                                         <span>แทรกรูปภาพ</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDiagramModal(true)}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-50 border border-sky-200 hover:bg-sky-100 text-sky-800 font-medium rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
+                                    >
+                                        <Network size={13} className="text-sky-600" />
+                                        <span>สร้าง Diagram</span>
                                     </button>
                                     <button
                                         type="button"
@@ -1457,6 +1502,43 @@ function WritingContent() {
                                 {savingImage ? <Loader2 size={13} className="animate-spin text-blue-600" /> : null}
                                 <span>⭐ ตั้งเป็นภาพหน้าปกประจำบท (Featured Chapter Image)</span>
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Diagram Studio Modal */}
+            {showDiagramModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-6xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/70">
+                            <div className="flex items-center gap-2">
+                                <Network size={18} className="text-sky-600" />
+                                <h3 className="font-bold text-slate-900 text-sm md:text-base">
+                                    Diagram Studio — สร้างแผนภาพประกอบบท
+                                </h3>
+                                {data?.title && (
+                                    <span className="hidden sm:inline-block text-xs text-slate-500 truncate max-w-xs">
+                                        ({data.title})
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDiagramModal(false)}
+                                className="px-2.5 py-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 text-sm font-bold cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-4 md:p-5 overflow-y-auto">
+                            <DiagramStudioWorkbench
+                                compact
+                                chapterId={chapterId || undefined}
+                                chapterTitle={data?.title}
+                                chapterContent={data?.content}
+                                onInsertIntoChapter={handleInsertDiagram}
+                            />
                         </div>
                     </div>
                 </div>

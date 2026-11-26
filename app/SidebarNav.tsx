@@ -15,6 +15,7 @@ import {
   Presentation,
   Brain,
   BookMarked,
+  Network,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -25,6 +26,7 @@ const productionLinks: { href: string; icon: LucideIcon; label: string; badge?: 
   { href: '/briefing', icon: FileText, label: 'ห้องบรีฟงาน' },
   { href: '/structure', icon: ListOrdered, label: 'กระดานโครงสร้าง' },
   { href: '/writing', icon: PenTool, label: 'โต๊ะเขียนงาน' },
+  { href: '/diagram-studio', icon: Network, label: 'สร้าง Diagram', badge: 'NEW' },
   { href: '/gallery', icon: ImageIcon, label: 'แกลเลอรี่ภาพ' },
   { href: '/export', icon: BookUp, label: 'โรงงานประกอบเล่ม' },
   { href: '/course-studio', icon: Presentation, label: 'สร้างคอร์ส', badge: 'PRO' },

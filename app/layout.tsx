@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Sarabun } from 'next/font/google'
+import { Inter, Prompt, Sarabun } from 'next/font/google'
 import './globals.css'
 import AppShell from './components/AppShell'
 
@@ -8,6 +8,12 @@ const sarabun = Sarabun({
   weight: ['400', '500', '700'],
   subsets: ['thai', 'latin'],
   variable: '--font-sarabun',
+  display: 'swap',
+})
+const prompt = Prompt({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['thai', 'latin'],
+  variable: '--font-prompt',
   display: 'swap',
 })
 
@@ -38,7 +44,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body className={`${inter.variable} ${sarabun.variable} font-sans flex h-screen overflow-hidden bg-background text-foreground antialiased print:block print:h-auto print:overflow-visible`}>
+      <body className={`${inter.variable} ${sarabun.variable} ${prompt.variable} font-sans flex h-screen overflow-hidden bg-background text-foreground antialiased print:block print:h-auto print:overflow-visible`}>
         <AppShell>{children}</AppShell>
       </body>
     </html>
