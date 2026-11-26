@@ -17,6 +17,10 @@ import {
     BOOK3_AI_CLOSER_LEGO_V1_KEY,
     runBook3AiCloserLegoMigration,
 } from './book3AiCloserMigration';
+import {
+    BIO_ACCURACY_MIGRATION_V1_KEY,
+    runAuthorBioAccuracyMigration,
+} from './book3BioAccuracyMigration';
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
 
 export interface Project {
@@ -519,6 +523,7 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
                 await runBook3Ch3IntroV2Migration(DB_DIR);
                 await runBook3Ch3GoldenThreadV3Migration(DB_DIR);
                 await runBook3AiCloserLegoMigration(DB_DIR);
+                await runAuthorBioAccuracyMigration(DB_DIR);
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
@@ -527,7 +532,8 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
                         parsed[BOOK3_CH3_MIGRATION_KEY] &&
                         parsed[BOOK3_CH3_INTRO_V2_KEY] &&
                         parsed[BOOK3_CH3_GOLDEN_THREAD_V3_KEY] &&
-                        parsed[BOOK3_AI_CLOSER_LEGO_V1_KEY]
+                        parsed[BOOK3_AI_CLOSER_LEGO_V1_KEY] &&
+                        parsed[BIO_ACCURACY_MIGRATION_V1_KEY]
                     ) {
                         book3Ch3MigrationDoneInMemory = true;
                     }

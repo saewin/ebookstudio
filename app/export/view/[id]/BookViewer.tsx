@@ -2272,8 +2272,9 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
 
                         <div lang="th" className={`max-w-xl mx-auto ${pageSize === 'a5' ? 'text-[13.5px]' : ''} text-slate-700 break-words book-body-content`}>
                             <p className="text-indent-book">
-                                หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) 
-                                และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)
+                                หนังสือเล่มนี้กลั่นกรองจากประสบการณ์ผู้ประกอบการและการบริหารธุรกิจจริงมากว่า 25 ปี 
+                                ตั้งแต่การก่อตั้งและบริหารบริษัทด้านไอทีและซอฟต์แวร์ ธุรกิจร่วมทุน Direct Marketing &amp; Direct Selling (Call Center) 
+                                ไปจนถึงสตาร์ทอัพและการตลาดดิจิทัล (Digital Marketing) รวมถึงบทบาทที่ปรึกษาและวิทยากรช่วยยกระดับ SMEs สู่ยุคดิจิทัล
                             </p>
                             <p className="text-indent-book">
                                 ถ่ายทอดองค์ความรู้และกลยุทธ์ที่ผ่านการพิสูจน์แล้วจากหน้างานจริง ผสานกรณีศึกษาและงานวิจัยระดับสากล 

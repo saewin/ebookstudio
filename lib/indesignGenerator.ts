@@ -802,7 +802,7 @@ export async function generateBookIdmlBuffer(book: InDesignBookPayload): Promise
         buildParaXml('ChapterTitle', 'เกี่ยวกับผู้เขียน') +
         buildParaXml(
             'BodyText',
-            'หนังสือเล่มนี้กลั่นกรองจากประสบการณ์การทำงานจริงกว่า 25 ปีในแวดวงเทคโนโลยีสารสนเทศ (IT) และกว่า 20 ปีในการบริหารจัดการระบบ E-commerce, Digital Marketing, Direct Marketing และการวิเคราะห์ระบบ (System Analysis)'
+            'หนังสือเล่มนี้กลั่นกรองจากประสบการณ์ผู้ประกอบการและการบริหารธุรกิจจริงมากว่า 25 ปี ตั้งแต่การก่อตั้งและบริหารบริษัทด้านไอทีและซอฟต์แวร์ ธุรกิจร่วมทุน Direct Marketing & Direct Selling (Call Center) ไปจนถึงสตาร์ทอัพและการตลาดดิจิทัล (Digital Marketing) รวมถึงบทบาทที่ปรึกษาและวิทยากรช่วยยกระดับ SMEs สู่ยุคดิจิทัล'
         ) +
         buildParaXml(
             'BodyText',

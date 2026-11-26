@@ -400,7 +400,7 @@ function WritingContent() {
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
         { 
             role: 'assistant', 
-            content: 'สวัสดีครับ ผมคือที่ปรึกษาอาวุโส (Veteran Ghostwriter) ประสบการณ์ 25 ปีใน IT/Architecture และ 20 ปีใน E-commerce, Direct Marketing & System Analysis\n\nต้องการให้ผมช่วยสอดแทรก **War Story จากสนามรบจริง**, **เคสตัวอย่าง/งานวิจัยรองรับ**, **คำศัพท์สำคัญ**, หรือ **การเชื่อมโยงอ้างอิงข้ามบท** ส่วนไหนแจ้งได้เลยครับ' 
+            content: 'สวัสดีครับ ผมคือที่ปรึกษาอาวุโส (Veteran Ghostwriter) ประสบการณ์ผู้ประกอบการและบริหารธุรกิจจริงกว่า 25 ปี ทั้งด้าน Digital Marketing, Direct Marketing, Direct Selling และการก่อตั้ง/บริหารบริษัทเทคโนโลยีและสตาร์ทอัพ\n\nต้องการให้ผมช่วยสอดแทรก **War Story จากสนามรบจริง**, **เคสตัวอย่าง/งานวิจัยรองรับ**, **คำศัพท์สำคัญ**, หรือ **การเชื่อมโยงอ้างอิงข้ามบท** ส่วนไหนแจ้งได้เลยครับ' 
         }
     ])
     const [chatInput, setChatInput] = useState('')
@@ -426,7 +426,7 @@ function WritingContent() {
         const providerLabel = provider === 'gemini' ? 'Google Gemini (ฟรี)' : 'OpenRouter (ใช้เครดิต)'
         const confirmed = confirm(
             `ต้องการให้ AI (${providerLabel}) เขียน/ยกระดับเนื้อหาบทที่ ${data?.chapterNo}: "${data?.title}"\n` +
-            `ด้วย Veteran Framework (ประสบการณ์ 25 ปี IT + 20 ปี E-commerce, Direct Marketing & SA)\n` +
+            `ด้วย Veteran Framework (ประสบการณ์ผู้ประกอบการ 25+ ปี ด้าน Digital Marketing, Direct Marketing, Direct Selling & Tech Business)\n` +
             `มีครบ 7 เสาหลัก: War Story, เคสตัวอย่าง/งานวิจัย, คลังคำศัพท์, และการอ้างอิงข้ามบท ใช่ไหม?\n\n` +
             `(ระบบจะใช้เวลาประมวลผลประมาณ 15-30 วินาที)`
         )

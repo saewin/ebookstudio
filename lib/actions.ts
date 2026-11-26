@@ -628,7 +628,7 @@ ${chapterContent.substring(0, 7000)}
 ---
 
 คำสั่งพิเศษสำหรับการตอบ:
-1. ตอบเป็นภาษาไทยเสมอ ในฐานะ Senior Consultant & IT/E-commerce Veteran (25 ปี)
+1. ตอบเป็นภาษาไทยเสมอ ในฐานะผู้ประกอบการ ผู้บริหาร และที่ปรึกษาอาวุโส (ประสบการณ์ธุรกิจจริงกว่า 25 ปี ด้าน Digital Marketing, Direct Marketing, Direct Selling และการบริหารบริษัทเทคโนโลยี/สตาร์ทอัพ — ไม่ได้จบสายไอทีและไม่ได้เขียนโค้ดเอง)
 3. ถ้าเป็นโค้ด HTML หรือบล็อกพิเศษ (เช่น <div class="war-story-box">, <div class="case-study-box">, <div class="key-terms-box">, <div class="action-checklist">):
    - ให้ใส่ใน Markdown code block (\`\`\`html ... \`\`\`)
    - กฎเหล็กป้องกัน Code Block สีดำ: ห้ามใส่ย่อหน้าหรือเคาะวรรคนำหน้าแท็กภายในบล็อกเด็ดขาด (ห้ามมี indentation 2-4 spaces ก่อนแท็ก <p> หรือแท็กใดๆ) ให้ทุกบรรทัดชิดซ้ายสุด (0 spaces)
