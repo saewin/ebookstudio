@@ -200,26 +200,103 @@ async function embedInlineImagesInXhtml(
     return result
 }
 
+const XHTML_VOID_TAGS = new Set([
+    'br',
+    'hr',
+    'img',
+    'input',
+    'meta',
+    'link',
+    'col',
+    'area',
+    'base',
+    'embed',
+    'param',
+    'source',
+    'track',
+    'wbr',
+])
+
+const XHTML_TOKEN_REGEX =
+    /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![A-Z][^>]*>|<\/?[a-zA-Z][a-zA-Z0-9:-]*(?:\s+[^<>]*)?\/?>/g
+
+/**
+ * Balances unclosed or orphan HTML tags so generated EPUB chapter files
+ * remain strictly well-formed XHTML for MEB and Apple Books.
+ */
+function balanceXhtmlTags(xhtml: string): string {
+    const stack: string[] = []
+    let out = ''
+    let cursor = 0
+
+    for (const match of xhtml.matchAll(XHTML_TOKEN_REGEX)) {
+        const idx = match.index ?? 0
+        if (idx > cursor) {
+            out += xhtml.slice(cursor, idx)
+        }
+        const tok = match[0]
+        cursor = idx + tok.length
+
+        if (tok.startsWith('<!--') || tok.startsWith('<?') || tok.startsWith('<!')) {
+            out += tok
+            continue
+        }
+
+        if (tok.startsWith('</')) {
+            const tagName = tok.slice(2, -1).trim().split(/\s+/)[0]?.toLowerCase()
+            if (!tagName || XHTML_VOID_TAGS.has(tagName)) continue
+            const stackIdx = stack.lastIndexOf(tagName)
+            if (stackIdx === -1) {
+                // Drop orphan closing tag
+                continue
+            }
+            while (stack.length - 1 > stackIdx) {
+                out += `</${stack.pop()}>`
+            }
+            stack.pop()
+            out += `</${tagName}>`
+        } else {
+            const selfClose = tok.endsWith('/>')
+            const inner = tok.slice(1, selfClose ? -2 : -1).trim()
+            const tagName = inner.split(/\s+/)[0]?.toLowerCase()
+            if (!tagName) {
+                out += tok
+                continue
+            }
+            if (XHTML_VOID_TAGS.has(tagName)) {
+                const cleanInner = inner.replace(/\/+$/, '').trimEnd()
+                out += `<${cleanInner} />`
+            } else if (selfClose) {
+                out += tok
+            } else {
+                stack.push(tagName)
+                out += tok
+            }
+        }
+    }
+
+    if (cursor < xhtml.length) {
+        out += xhtml.slice(cursor)
+    }
+    while (stack.length > 0) {
+        out += `</${stack.pop()}>`
+    }
+    return out
+}
+
 async function parseAndCleanToXhtml(raw: string): Promise<string> {
     if (!raw || !raw.trim()) return '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>'
     // 1. Convert Markdown & preserve embedded HTML via marked
     const html = await marked.parse(raw, { gfm: true, breaks: true })
 
-    // 2. Strict XHTML cleanup
-    let cleaned = html
-        // Self-close void tags
-        .replace(/<hr\b([^>]*?)(?<!\/)>/gi, '<hr$1 />')
-        .replace(/<br\b([^>]*?)(?<!\/)>/gi, '<br$1 />')
-        .replace(/<img\b([^>]*?)(?<!\/)>/gi, '<img$1 />')
-        .replace(/<input\b([^>]*?)(?<!\/)>/gi, '<input$1 />')
-        // Remove unescaped bare ampersands
-        .replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[a-fA-F0-9]+);)/g, '&amp;')
-
-    // Wrap bare text in paragraphs if not wrapped
+    // 2. Escape bare ampersands and wrap bare leading text
+    let cleaned = html.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[a-fA-F0-9]+);)/g, '&amp;')
     if (!cleaned.startsWith('<')) {
         cleaned = `<p>${cleaned}</p>`
     }
-    return cleaned
+
+    // 3. Enforce strict well-formed XHTML tag balance and void-tag self-closing
+    return balanceXhtmlTags(cleaned)
 }
 
 export async function generateEpubBuffer(options: GenerateEpubOptions): Promise<Buffer> {
