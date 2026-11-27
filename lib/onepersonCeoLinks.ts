@@ -65,6 +65,19 @@ export const ONEPERSON_FUNNEL_PRESETS: OnePersonFunnelPreset[] = [
     variant: 'dark',
   },
   {
+    id: 'b3-antigravity',
+    slug: 'b3-antigravity',
+    label: '🤖 โบนัสเล่ม 3 บทที่ 12: พิมพ์เขียว 30 วัน Google Antigravity',
+    eyebrow: 'BOOK 3 CH12 BONUS · GOOGLE ANTIGRAVITY 4-WEEK KIT',
+    title: 'รับฟรี: ชุดพิมพ์เขียว 30 วัน ปั้นแอปด้วย Google Antigravity (AGENTS.md + SKILL.md)',
+    description:
+      'ดาวน์โหลดฟรีครบ 4 ไฟล์ตั้งต้นตามพิมพ์เขียวบทที่ 10 & 12: แม่แบบ AGENTS.md, คู่มือ SKILL.md, ชุดคำสั่งสัปดาห์ที่ 1–4 และเช็กลิสต์ความปลอดภัยก่อนเปิดตัวจริง (โดย เสวิญ)',
+    bonusLabel: 'พิเศษสำหรับผู้อ่านบทที่ 10 & 12',
+    buttonLabel: 'รับฟรี 4 ไฟล์ Antigravity →',
+    url: 'https://onepersonceo.com/go/b3-antigravity',
+    variant: 'dark',
+  },
+  {
     id: 'articles',
     slug: 'articles',
     label: '📰 อ่านบทความความรู้เพิ่มเติม (onepersonceo.com)',
