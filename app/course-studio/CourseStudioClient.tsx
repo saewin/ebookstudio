@@ -14,6 +14,7 @@ import {
   Copy,
   Trash2,
   Sparkles,
+  BookOpen,
 } from 'lucide-react'
 import type { CourseProject } from '@/lib/courseStudioTypes'
 import OutlineTab from './components/OutlineTab'
@@ -21,6 +22,7 @@ import SlideDeckTab from './components/SlideDeckTab'
 import SalesLaunchTab from './components/SalesLaunchTab'
 import StarterKitTab from './components/StarterKitTab'
 import TeachingKitTab from './components/TeachingKitTab'
+import ConvertToEbookModal from './components/ConvertToEbookModal'
 
 type StudioTab = 'outline' | 'slides' | 'sales' | 'starter-kit' | 'teaching-kit'
 
@@ -46,6 +48,7 @@ export default function CourseStudioClient({
   const [newBigIdea, setNewBigIdea] = useState('')
   const [newMode, setNewMode] = useState<'clone-prototype' | 'blank'>('clone-prototype')
   const [creating, setCreating] = useState(false)
+  const [showConvertEbookModal, setShowConvertEbookModal] = useState(false)
 
   const activeCourse =
     courses.find((c) => c.id === activeId) || courses[0]
@@ -213,6 +216,15 @@ export default function CourseStudioClient({
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer"
           >
             <Plus size={14} /> คอร์สใหม่
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowConvertEbookModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-700 cursor-pointer transition-colors"
+            title="แปลงโครงสร้างและสไลด์คอร์สนี้เป็นโปรเจกต์ E-book Draft ใน Ebook Creator Studio"
+          >
+            <BookOpen size={14} /> แปลงเป็น E-book
           </button>
 
           {courses.length > 1 && (
@@ -407,6 +419,14 @@ export default function CourseStudioClient({
             </div>
           </form>
         </div>
+      )}
+
+      {/* Convert Course to E-book Draft Modal */}
+      {showConvertEbookModal && (
+        <ConvertToEbookModal
+          course={activeCourse}
+          onClose={() => setShowConvertEbookModal(false)}
+        />
       )}
     </div>
   )

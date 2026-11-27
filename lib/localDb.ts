@@ -22,6 +22,7 @@ import {
     runAuthorBioAccuracyMigration,
 } from './book3BioAccuracyMigration';
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
+import { CEO20_BOOK_MIGRATION_V1_KEY, runCeo20BookSeedMigration } from './ceo20BookSeed';
 import { MARKETPLACE_BRAND_SANITIZE_V1_KEY, runMarketplaceBrandSanitizationMigration } from './marketplaceMigration';
 import { BOOK3_CH12_ANTIGRAVITY_CTA_V1_KEY, runBook3Ch12AntigravityCtaMigration } from './book3Ch12AntigravityCtaMigration';
 import { BOOK3_CH10_CH12_META_V1_KEY, runBook3Ch10Ch12MetaMigration } from './book3Ch10Ch12MetaMigration';
@@ -90,6 +91,8 @@ let book3Ch3MigrationPromise: Promise<void> | null = null;
 let book3Ch3MigrationDoneInMemory = false;
 let profitEngineMigrationPromise: Promise<void> | null = null;
 let profitEngineMigrationDoneInMemory = false;
+let ceo20MigrationPromise: Promise<void> | null = null;
+let ceo20MigrationDoneInMemory = false;
 let marketplaceSanitizeMigrationPromise: Promise<void> | null = null;
 let marketplaceSanitizeDoneInMemory = false;
 
@@ -121,6 +124,9 @@ export async function getProjects(): Promise<Project[]> {
     await ensureDirs();
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
+    }
+    if (!ceo20MigrationDoneInMemory) {
+        await ensureCeo20BookSeed();
     }
     if (!marketplaceSanitizeDoneInMemory) {
         await ensureMarketplaceBrandSanitization();
@@ -583,6 +589,29 @@ async function ensureProfitEngineBookSeed(): Promise<void> {
     await profitEngineMigrationPromise;
 }
 
+async function ensureCeo20BookSeed(): Promise<void> {
+    if (ceo20MigrationDoneInMemory) return;
+    if (!ceo20MigrationPromise) {
+        ceo20MigrationPromise = (async () => {
+            try {
+                await runCeo20BookSeedMigration(DB_DIR);
+                if (existsSync(MIGRATIONS_FILE)) {
+                    const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
+                    const parsed = JSON.parse(raw || '{}');
+                    if (parsed && parsed[CEO20_BOOK_MIGRATION_V1_KEY]) {
+                        ceo20MigrationDoneInMemory = true;
+                    }
+                }
+            } catch (err) {
+                console.error('[CEO 2.0 Book Seed Migration] Error:', err);
+            } finally {
+                ceo20MigrationPromise = null;
+            }
+        })();
+    }
+    await ceo20MigrationPromise;
+}
+
 async function ensureMarketplaceBrandSanitization(): Promise<void> {
     if (marketplaceSanitizeDoneInMemory) return;
     if (!marketplaceSanitizeMigrationPromise) {
@@ -617,6 +646,9 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
     }
+    if (!ceo20MigrationDoneInMemory) {
+        await ensureCeo20BookSeed();
+    }
     if (!marketplaceSanitizeDoneInMemory) {
         await ensureMarketplaceBrandSanitization();
     }
@@ -643,6 +675,9 @@ export async function getChapter(chapterId: string): Promise<Chapter | null> {
     }
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
+    }
+    if (!ceo20MigrationDoneInMemory) {
+        await ensureCeo20BookSeed();
     }
     if (!marketplaceSanitizeDoneInMemory) {
         await ensureMarketplaceBrandSanitization();
