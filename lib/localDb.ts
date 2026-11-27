@@ -22,6 +22,7 @@ import {
     runAuthorBioAccuracyMigration,
 } from './book3BioAccuracyMigration';
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
+import { MARKETPLACE_BRAND_SANITIZE_V1_KEY, runMarketplaceBrandSanitizationMigration } from './marketplaceMigration';
 
 export interface Project {
     id: string;
@@ -87,6 +88,8 @@ let book3Ch3MigrationPromise: Promise<void> | null = null;
 let book3Ch3MigrationDoneInMemory = false;
 let profitEngineMigrationPromise: Promise<void> | null = null;
 let profitEngineMigrationDoneInMemory = false;
+let marketplaceSanitizeMigrationPromise: Promise<void> | null = null;
+let marketplaceSanitizeDoneInMemory = false;
 
 async function ensureDirs(): Promise<void> {
     if (!existsSync(DB_DIR)) {
@@ -116,6 +119,9 @@ export async function getProjects(): Promise<Project[]> {
     await ensureDirs();
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
+    }
+    if (!marketplaceSanitizeDoneInMemory) {
+        await ensureMarketplaceBrandSanitization();
     }
     try {
         if (!existsSync(PROJECTS_FILE)) return [];
@@ -571,6 +577,29 @@ async function ensureProfitEngineBookSeed(): Promise<void> {
     await profitEngineMigrationPromise;
 }
 
+async function ensureMarketplaceBrandSanitization(): Promise<void> {
+    if (marketplaceSanitizeDoneInMemory) return;
+    if (!marketplaceSanitizeMigrationPromise) {
+        marketplaceSanitizeMigrationPromise = (async () => {
+            try {
+                await runMarketplaceBrandSanitizationMigration(DB_DIR);
+                if (existsSync(MIGRATIONS_FILE)) {
+                    const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
+                    const parsed = JSON.parse(raw || '{}');
+                    if (parsed && parsed[MARKETPLACE_BRAND_SANITIZE_V1_KEY]) {
+                        marketplaceSanitizeDoneInMemory = true;
+                    }
+                }
+            } catch (err) {
+                console.error('[Marketplace Brand Sanitize Migration] Error:', err);
+            } finally {
+                marketplaceSanitizeMigrationPromise = null;
+            }
+        })();
+    }
+    await marketplaceSanitizeMigrationPromise;
+}
+
 export async function getChapters(projectId?: string): Promise<Chapter[]> {
     await ensureDirs();
     if (!ceoOs2026MigrationDoneInMemory) {
@@ -581,6 +610,9 @@ export async function getChapters(projectId?: string): Promise<Chapter[]> {
     }
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
+    }
+    if (!marketplaceSanitizeDoneInMemory) {
+        await ensureMarketplaceBrandSanitization();
     }
     const index = await getChaptersIndex();
     const filteredIndex = projectId ? index.filter(i => i.projectId === projectId) : index;
@@ -605,6 +637,9 @@ export async function getChapter(chapterId: string): Promise<Chapter | null> {
     }
     if (!profitEngineMigrationDoneInMemory) {
         await ensureProfitEngineBookSeed();
+    }
+    if (!marketplaceSanitizeDoneInMemory) {
+        await ensureMarketplaceBrandSanitization();
     }
     const filePath = path.join(CHAPTERS_DIR, `${chapterId}.json`);
     try {

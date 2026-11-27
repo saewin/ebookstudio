@@ -1,3 +1,5 @@
+import { sanitizeMarketplaceNames } from './marketplaceSanitizer';
+
 /**
  * Sanitizes book content by unescaping literal newline codes,
  * cleaning rogue slash/backslash escape characters, and ensuring clean Markdown/HTML formatting.
@@ -59,5 +61,5 @@ export function sanitizeBookContent(raw?: string | null): string {
         return open + fixedInner + close;
     });
 
-    return text;
+    return sanitizeMarketplaceNames(text);
 }
