@@ -22,7 +22,7 @@ import {
     runAuthorBioAccuracyMigration,
 } from './book3BioAccuracyMigration';
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
-import { CEO20_BOOK_TITLE_V2_KEY, runCeo20BookSeedMigration } from './ceo20BookSeed';
+import { CEO20_BOOK_MIGRATION_V3_KEY, runCeo20BookSeedMigration } from './ceo20BookSeed';
 import { MARKETPLACE_BRAND_SANITIZE_V1_KEY, runMarketplaceBrandSanitizationMigration } from './marketplaceMigration';
 import { BOOK3_CH12_ANTIGRAVITY_CTA_V1_KEY, runBook3Ch12AntigravityCtaMigration } from './book3Ch12AntigravityCtaMigration';
 import { BOOK3_CH10_CH12_META_V1_KEY, runBook3Ch10Ch12MetaMigration } from './book3Ch10Ch12MetaMigration';
@@ -598,7 +598,7 @@ async function ensureCeo20BookSeed(): Promise<void> {
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
-                    if (parsed && parsed[CEO20_BOOK_TITLE_V2_KEY]) {
+                    if (parsed && parsed[CEO20_BOOK_MIGRATION_V3_KEY]) {
                         ceo20MigrationDoneInMemory = true;
                     }
                 }

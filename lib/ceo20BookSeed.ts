@@ -15,10 +15,14 @@ import { CEO20_CH5 } from './books/ceo20/ch5'
 import { CEO20_CH6 } from './books/ceo20/ch6'
 import { CEO20_CH7 } from './books/ceo20/ch7'
 import { CEO20_CH8 } from './books/ceo20/ch8'
+import { CEO20_CH9 } from './books/ceo20/ch9'
+import { CEO20_CH10 } from './books/ceo20/ch10'
+import { CEO20_CH11 } from './books/ceo20/ch11'
 
 export const CEO20_BOOK_ID = '2026ce02-b00k-4a20-9000-000000002026'
 export const CEO20_BOOK_MIGRATION_V1_KEY = 'ceo20_full_book_seed_v1'
 export const CEO20_BOOK_TITLE_V2_KEY = 'ceo20_book_title_v2'
+export const CEO20_BOOK_MIGRATION_V3_KEY = 'ceo20_full_200p_howto_v3'
 
 const OLD_V1_TITLE =
   'ฉันนี่แหล่ะประธานบริษัท 2.0: ปลดปล่อยพลังสมอง ปั้นกองทัพ AI Agents ทำงานแทนคุณ'
@@ -31,16 +35,16 @@ export const CEO20_PROJECT_TEMPLATE: Omit<
   title: 'ตัวเบา กระเป๋าตังค์หนัก ด้วยทีม AI Agents',
   status: 'Reviewing',
   theme:
-    'คู่มือภาคปฏิบัติการ 2.0 สร้างระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity — ตั้งแต่ BrainStudio 4 ไฟล์หัวใจ, บุคลิกเอเจนต์ (Persona), ทีม 8 AI Agents ประจำแผนก, AI CEO บนสถาปัตยกรรม Event-Driven Multi-Agent, MCP & Data Streaming 4 เสาหลัก ไปจนถึงกฎ 80/20 และแผนลงมือทำ 30 วัน',
+    'คู่มือ How-To ภาษาคนธรรมดา ฉบับเต็ม 12 บท (~220 หน้า A5) — สร้างระบบบริษัทคนเดียว 3 สมอง ตั้งแต่สมุดคู่มือร้าน 4 แผ่น, ปั้นนิสัยและบุคลิกพนักงาน AI, ผังทีม 8 ตำแหน่งหน้าบ้าน-หลังบ้าน, ตั้งผู้จัดการร้าน AI, ให้ทีมสะกิดงานส่งต่อกันเอง, เชื่อม Google Drive พร้อมด่านตรวจงานและกล่องกันพลาด ไปจนถึงกฎ 80/20 และแผนลงมือทำ 30 วัน',
   audience:
-    'ผู้ประกอบการคนเดียว (One-Person Company), เจ้าของแบรนด์ออนไลน์, ผู้ให้บริการความรู้ และเจ้าของ SME ที่ต้องการปลดปล่อยเวลาและขยายกำลังผลิตด้วยทีม AI Workforce',
-  tone: 'Pragmatic Founder — จริงใจ เข้าใจง่าย ตรงประเด็น แบบพี่สอนน้องจากประสบการณ์ธุรกิจ 25 ปี (เสวิญ · OnePersonCEO)',
+    'ผู้ประกอบการคนเดียว เจ้าของร้านออนไลน์ ผู้ให้บริการความรู้ ที่ปรึกษา และเจ้าของ SME ที่ไม่ได้จบสายไอที แต่อยากสร้างทีม AI ทำงานแทนอย่างเป็นระบบ',
+  tone: 'Pragmatic Founder How-To — ภาษาคนธรรมดา 100% อ่านสนุก ตรงประเด็น เหมือนพี่ชายที่ทำธุรกิจมา 25 ปีมานั่งสอนน้องทีละขั้น (เสวิญ · OnePersonCEO)',
   coverImageUrl: null,
   backCoverUrl: null,
   extraInfo: {
     source: 'CourseStudio',
     sourceCourseId: 'course-ceo-ai-solopreneur-2-0',
-    roleOfBook: 'Flagship Playbook 2.0 (OnePersonCEO)',
+    roleOfBook: 'Flagship How-To Playbook 2.0 (OnePersonCEO)',
     coreMessage:
       'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1 — ตัวเบา กระเป๋าตังค์หนัก',
     authorPenName: 'เสวิญ (Saewin · OnePersonCEO)',
@@ -57,13 +61,16 @@ export const CEO20_CHAPTERS: SeedBookChapterData[] = [
   CEO20_CH6,
   CEO20_CH7,
   CEO20_CH8,
+  CEO20_CH9,
+  CEO20_CH10,
+  CEO20_CH11,
 ]
 
 const CHAPTER_CTA_PRESET_MAP: Record<number, string[]> = {
   2: ['ebooks'],
-  4: ['ceo2'],
-  6: ['consult'],
-  7: ['ceo2', 'articles'],
+  5: ['ceo2'],
+  8: ['consult'],
+  10: ['ceo2', 'articles'],
 }
 
 async function buildPresetCtaHtml(presetId: string): Promise<string> {
@@ -115,11 +122,14 @@ export interface Ceo20SeedResult {
   reason: string
   projectId: string
   createdChapterCount: number
+  upgradedChapterCount: number
 }
 
 /**
- * Idempotent one-time migration to seed the full flagship E-book
- * "ฉันนี่แหล่ะประธานบริษัท 2.0" (9 chapters) without overwriting user edits.
+ * Idempotent one-time migration (v3: 12-chapter ~220-page plain-Thai How-To edition)
+ * for "ตัวเบา กระเป๋าตังค์หนัก ด้วยทีม AI Agents".
+ * Upgrades v1/v2 9-chapter seed cleanly to v3 12-chapter full edition once,
+ * then locks with CEO20_BOOK_MIGRATION_V3_KEY so future user edits are never overwritten.
  */
 export async function runCeo20BookSeedMigration(
   dbDir: string
@@ -145,12 +155,13 @@ export async function runCeo20BookSeedMigration(
     migrationState = {}
   }
 
-  if (migrationState[CEO20_BOOK_TITLE_V2_KEY]) {
+  if (migrationState[CEO20_BOOK_MIGRATION_V3_KEY]) {
     return {
       applied: false,
-      reason: 'already_applied_v2',
+      reason: 'already_applied_v3',
       projectId: CEO20_BOOK_ID,
       createdChapterCount: 0,
+      upgradedChapterCount: 0,
     }
   }
 
@@ -170,10 +181,18 @@ export async function runCeo20BookSeedMigration(
       JSON.stringify([newProject, ...projects], null, 2),
       'utf-8'
     )
-  } else if (projects[existingProjIdx].title === OLD_V1_TITLE) {
+  } else {
+    const existing = projects[existingProjIdx]
+    const nextTitle =
+      existing.title === OLD_V1_TITLE || !existing.title
+        ? CEO20_PROJECT_TEMPLATE.title
+        : existing.title
     projects[existingProjIdx] = {
-      ...projects[existingProjIdx],
-      title: CEO20_PROJECT_TEMPLATE.title,
+      ...existing,
+      title: nextTitle,
+      theme: CEO20_PROJECT_TEMPLATE.theme,
+      audience: CEO20_PROJECT_TEMPLATE.audience,
+      tone: CEO20_PROJECT_TEMPLATE.tone,
       updatedAt: now,
       lastEditedTime: now,
     }
@@ -182,53 +201,68 @@ export async function runCeo20BookSeedMigration(
 
   const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile)
   let createdChapterCount = 0
+  let upgradedChapterCount = 0
 
   for (const seedChap of CEO20_CHAPTERS) {
     const chapterFilePath = path.join(chaptersDir, `${seedChap.id}.json`)
-    if (!existsSync(chapterFilePath)) {
-      const contentWithCtas = await attachCeo20Ctas(
-        seedChap.chapterNo,
-        seedChap.content
-      )
-      const cleanedContent = sanitizeBookContent(contentWithCtas)
-      const cleanedTakeaways = sanitizeBookContent(seedChap.keyTakeaways)
-      const cleanedTerminology = sanitizeBookContent(seedChap.keyTerminology)
+    const contentWithCtas = await attachCeo20Ctas(
+      seedChap.chapterNo,
+      seedChap.content
+    )
+    const cleanedContent = sanitizeBookContent(contentWithCtas)
+    const cleanedTakeaways = sanitizeBookContent(seedChap.keyTakeaways)
+    const cleanedTerminology = sanitizeBookContent(seedChap.keyTerminology)
 
-      const chapterRecord: Chapter = {
-        id: seedChap.id,
-        projectId: CEO20_BOOK_ID,
-        title: seedChap.title,
-        chapterNo: seedChap.chapterNo,
-        status: 'Reviewing',
-        content: cleanedContent,
-        hasContent: Boolean(cleanedContent.trim()),
-        keyTakeaways: cleanedTakeaways,
-        keyTerminology: cleanedTerminology,
-        createdAt: now,
-        updatedAt: now,
+    let existingChapter: Chapter | null = null
+    if (existsSync(chapterFilePath)) {
+      try {
+        existingChapter = JSON.parse(await readFile(chapterFilePath, 'utf-8'))
+      } catch {
+        existingChapter = null
       }
-      await writeFile(
-        chapterFilePath,
-        JSON.stringify(chapterRecord, null, 2),
-        'utf-8'
-      )
+    }
+
+    const chapterRecord: Chapter = {
+      ...(existingChapter || {}),
+      id: seedChap.id,
+      projectId: CEO20_BOOK_ID,
+      title: seedChap.title,
+      chapterNo: seedChap.chapterNo,
+      status: existingChapter?.status || 'Reviewing',
+      content: cleanedContent,
+      hasContent: Boolean(cleanedContent.trim()),
+      keyTakeaways: cleanedTakeaways,
+      keyTerminology: cleanedTerminology,
+      createdAt: existingChapter?.createdAt || now,
+      updatedAt: now,
+    }
+
+    await writeFile(
+      chapterFilePath,
+      JSON.stringify(chapterRecord, null, 2),
+      'utf-8'
+    )
+
+    if (existingChapter) {
+      upgradedChapterCount++
+    } else {
       createdChapterCount++
+    }
 
-      const existingIdx = index.findIndex((i) => i.id === seedChap.id)
-      const indexEntry: ChapterIndexItem = {
-        id: chapterRecord.id,
-        projectId: chapterRecord.projectId,
-        chapterNo: chapterRecord.chapterNo,
-        title: chapterRecord.title,
-        status: chapterRecord.status,
-        hasContent: chapterRecord.hasContent,
-        updatedAt: now,
-      }
-      if (existingIdx >= 0) {
-        index[existingIdx] = indexEntry
-      } else {
-        index.push(indexEntry)
-      }
+    const existingIdx = index.findIndex((i) => i.id === seedChap.id)
+    const indexEntry: ChapterIndexItem = {
+      id: chapterRecord.id,
+      projectId: chapterRecord.projectId,
+      chapterNo: chapterRecord.chapterNo,
+      title: chapterRecord.title,
+      status: chapterRecord.status,
+      hasContent: chapterRecord.hasContent,
+      updatedAt: now,
+    }
+    if (existingIdx >= 0) {
+      index[existingIdx] = indexEntry
+    } else {
+      index.push(indexEntry)
     }
   }
 
@@ -238,13 +272,22 @@ export async function runCeo20BookSeedMigration(
     migrationState[CEO20_BOOK_MIGRATION_V1_KEY] = {
       appliedAt: now,
       projectId: CEO20_BOOK_ID,
-      createdChapterCount,
     }
   }
-  migrationState[CEO20_BOOK_TITLE_V2_KEY] = {
+  if (!migrationState[CEO20_BOOK_TITLE_V2_KEY]) {
+    migrationState[CEO20_BOOK_TITLE_V2_KEY] = {
+      appliedAt: now,
+      projectId: CEO20_BOOK_ID,
+      title: CEO20_PROJECT_TEMPLATE.title,
+    }
+  }
+  migrationState[CEO20_BOOK_MIGRATION_V3_KEY] = {
     appliedAt: now,
     projectId: CEO20_BOOK_ID,
     title: CEO20_PROJECT_TEMPLATE.title,
+    chapterCount: CEO20_CHAPTERS.length,
+    createdChapterCount,
+    upgradedChapterCount,
   }
   await writeFile(
     migrationsFile,
@@ -254,8 +297,9 @@ export async function runCeo20BookSeedMigration(
 
   return {
     applied: true,
-    reason: 'seeded_v2_title',
+    reason: 'upgraded_v3_200p_howto',
     projectId: CEO20_BOOK_ID,
     createdChapterCount,
+    upgradedChapterCount,
   }
 }
