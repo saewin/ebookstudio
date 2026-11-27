@@ -18,13 +18,17 @@ import { CEO20_CH8 } from './books/ceo20/ch8'
 
 export const CEO20_BOOK_ID = '2026ce02-b00k-4a20-9000-000000002026'
 export const CEO20_BOOK_MIGRATION_V1_KEY = 'ceo20_full_book_seed_v1'
+export const CEO20_BOOK_TITLE_V2_KEY = 'ceo20_book_title_v2'
+
+const OLD_V1_TITLE =
+  'ฉันนี่แหล่ะประธานบริษัท 2.0: ปลดปล่อยพลังสมอง ปั้นกองทัพ AI Agents ทำงานแทนคุณ'
 
 export const CEO20_PROJECT_TEMPLATE: Omit<
   Project,
   'createdAt' | 'updatedAt' | 'lastEditedTime'
 > = {
   id: CEO20_BOOK_ID,
-  title: 'ฉันนี่แหล่ะประธานบริษัท 2.0: ปลดปล่อยพลังสมอง ปั้นกองทัพ AI Agents ทำงานแทนคุณ',
+  title: 'ตัวเบา กระเป๋าตังค์หนัก ด้วยทีม AI Agents',
   status: 'Reviewing',
   theme:
     'คู่มือภาคปฏิบัติการ 2.0 สร้างระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity — ตั้งแต่ BrainStudio 4 ไฟล์หัวใจ, บุคลิกเอเจนต์ (Persona), ทีม 8 AI Agents ประจำแผนก, AI CEO บนสถาปัตยกรรม Event-Driven Multi-Agent, MCP & Data Streaming 4 เสาหลัก ไปจนถึงกฎ 80/20 และแผนลงมือทำ 30 วัน',
@@ -141,10 +145,10 @@ export async function runCeo20BookSeedMigration(
     migrationState = {}
   }
 
-  if (migrationState[CEO20_BOOK_MIGRATION_V1_KEY]) {
+  if (migrationState[CEO20_BOOK_TITLE_V2_KEY]) {
     return {
       applied: false,
-      reason: 'already_applied_v1',
+      reason: 'already_applied_v2',
       projectId: CEO20_BOOK_ID,
       createdChapterCount: 0,
     }
@@ -166,6 +170,14 @@ export async function runCeo20BookSeedMigration(
       JSON.stringify([newProject, ...projects], null, 2),
       'utf-8'
     )
+  } else if (projects[existingProjIdx].title === OLD_V1_TITLE) {
+    projects[existingProjIdx] = {
+      ...projects[existingProjIdx],
+      title: CEO20_PROJECT_TEMPLATE.title,
+      updatedAt: now,
+      lastEditedTime: now,
+    }
+    await writeFile(projectsFile, JSON.stringify(projects, null, 2), 'utf-8')
   }
 
   const index = await readJsonArraySafe<ChapterIndexItem>(chaptersIndexFile)
@@ -222,10 +234,17 @@ export async function runCeo20BookSeedMigration(
 
   await writeFile(chaptersIndexFile, JSON.stringify(index, null, 2), 'utf-8')
 
-  migrationState[CEO20_BOOK_MIGRATION_V1_KEY] = {
+  if (!migrationState[CEO20_BOOK_MIGRATION_V1_KEY]) {
+    migrationState[CEO20_BOOK_MIGRATION_V1_KEY] = {
+      appliedAt: now,
+      projectId: CEO20_BOOK_ID,
+      createdChapterCount,
+    }
+  }
+  migrationState[CEO20_BOOK_TITLE_V2_KEY] = {
     appliedAt: now,
     projectId: CEO20_BOOK_ID,
-    createdChapterCount,
+    title: CEO20_PROJECT_TEMPLATE.title,
   }
   await writeFile(
     migrationsFile,
@@ -235,7 +254,7 @@ export async function runCeo20BookSeedMigration(
 
   return {
     applied: true,
-    reason: 'seeded_v1',
+    reason: 'seeded_v2_title',
     projectId: CEO20_BOOK_ID,
     createdChapterCount,
   }
