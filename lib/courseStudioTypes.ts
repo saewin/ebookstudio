@@ -51,6 +51,8 @@ export interface CourseSlide {
   rightBullets?: string[]
   highlightBox?: string
   speakerNotes: string
+  visualImageUrl?: string
+  visualSourceLabel?: string
 }
 
 export interface PricingTier {

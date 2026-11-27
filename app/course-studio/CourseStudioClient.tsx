@@ -58,14 +58,15 @@ export default function CourseStudioClient({
     setDirty(true)
   }
 
-  async function handleSave(): Promise<boolean> {
-    if (!activeCourse || saving) return true
+  async function handleSave(overrideCourse?: CourseProject): Promise<boolean> {
+    const target = overrideCourse || activeCourse
+    if (!target || saving) return true
     setSaving(true)
     try {
-      const res = await fetch(`/api/course-studio/${activeCourse.id}`, {
+      const res = await fetch(`/api/course-studio/${target.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(activeCourse),
+        body: JSON.stringify(target),
       })
       const json = await res.json()
       if (json?.success && json.course) {
@@ -240,7 +241,7 @@ export default function CourseStudioClient({
 
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saving}
             className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               savedToast

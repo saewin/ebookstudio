@@ -1,7 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readFile } from 'fs/promises'
+import path from 'path'
 import PptxGenJS from 'pptxgenjs'
 import { getCourseById } from '@/lib/courseStudioDb'
 import type { SlideTheme } from '@/lib/courseStudioTypes'
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+}
+
+async function resolveSlideImageDataUri(imageUrl: string): Promise<string | null> {
+  try {
+    const cleanUrl = imageUrl.trim()
+    if (!cleanUrl) return null
+    if (cleanUrl.startsWith('data:image/')) return cleanUrl
+
+    if (cleanUrl.startsWith('/api/uploads/') || cleanUrl.startsWith('/uploads/')) {
+      const urlPath = cleanUrl.split('?')[0]
+      const safeName = path.basename(decodeURIComponent(urlPath))
+      const filePath = path.join(process.cwd(), 'public', 'uploads', safeName)
+      const buf = await readFile(filePath)
+      const ext = path.extname(safeName).toLowerCase()
+      const mime = IMAGE_MIME_BY_EXT[ext] || 'image/jpeg'
+      return `data:${mime};base64,${buf.toString('base64')}`
+    }
+
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+      const res = await fetch(cleanUrl)
+      if (!res.ok) return null
+      const arrayBuf = await res.arrayBuffer()
+      const mime = res.headers.get('content-type')?.split(';')[0] || 'image/jpeg'
+      return `data:${mime};base64,${Buffer.from(arrayBuf).toString('base64')}`
+    }
+  } catch (err) {
+    console.warn('[export-pptx] Failed to resolve visual image:', imageUrl, err)
+  }
+  return null
+}
 
 interface ThemePalette {
   bg: string
@@ -69,6 +108,26 @@ export async function GET(
     for (const s of course.slides) {
       const palette = PALETTES[s.theme || course.slideTheme || 'executive-blue'] || PALETTES['executive-blue']
       const slide = pptx.addSlide()
+
+      if (s.visualImageUrl) {
+        const imageDataUri = await resolveSlideImageDataUri(s.visualImageUrl)
+        if (imageDataUri) {
+          slide.background = { color: '0F172A' }
+          slide.addImage({
+            data: imageDataUri,
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 5.625,
+            sizing: { type: 'contain', w: 10, h: 5.625 },
+          })
+          if (s.speakerNotes) {
+            slide.addNotes(s.speakerNotes)
+          }
+          continue
+        }
+      }
+
       slide.background = { color: palette.bg }
 
       // Top accent bar
