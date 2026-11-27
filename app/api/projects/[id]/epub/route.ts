@@ -56,8 +56,10 @@ export async function GET(
         // 5. Send file download response
         const safeTitle = (project.title || 'ebook')
             .replace(/[/\\?%*:|"<>]/g, '-')
+            .replace(/[-_\s]+$/g, '')
             .trim()
-            .slice(0, 50)
+            .slice(0, 60)
+            .replace(/[-_\s]+$/g, '') || 'ebook'
 
         const filename = `${safeTitle}.epub`
         const encodedFilename = encodeURIComponent(filename)

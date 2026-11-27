@@ -1,9 +1,25 @@
 
+import type { Metadata } from 'next'
 import { fetchAllProjectChapters } from '@/lib/actions'
 import { getProject, getProjects } from '@/lib/notion'
 import BookViewer from './BookViewer'
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({
+    params,
+}: {
+    params: Promise<{ id: string }>
+}): Promise<Metadata> {
+    const { id: projectId } = await params
+    let project = await getProject(projectId).catch(() => null)
+    if (!project) {
+        const projects = await getProjects().catch(() => [])
+        project = projects.find((p) => p.id === projectId) || null
+    }
+    const title = project?.extraInfo?.copyright?.bookTitle || project?.title || 'Ebook Preview'
+    return { title }
+}
 
 export default async function ExportViewPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = await params

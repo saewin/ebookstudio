@@ -1,5 +1,8 @@
 import JSZip from 'jszip'
 import { marked } from 'marked'
+import path from 'path'
+import { existsSync } from 'fs'
+import { readFile } from 'fs/promises'
 import { Chapter, Project } from '@/lib/notion'
 import { CopyrightSettings, DEFAULT_COPYRIGHT_SETTINGS } from '@/app/export/view/[id]/BookViewer'
 
@@ -11,6 +14,12 @@ interface GenerateEpubOptions {
     themePreset?: string
 }
 
+interface LoadedImageAsset {
+    buffer: Buffer
+    mediaType: string
+    ext: string
+}
+
 function escapeXml(unsafe: string): string {
     return (unsafe || '')
         .replace(/&/g, '&amp;')
@@ -20,11 +29,182 @@ function escapeXml(unsafe: string): string {
         .replace(/'/g, '&apos;')
 }
 
+function detectImageType(buffer: Buffer, sourceHint: string): { mediaType: string; ext: string } {
+    if (buffer.length >= 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+        return { mediaType: 'image/png', ext: 'png' }
+    }
+    if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+        return { mediaType: 'image/jpeg', ext: 'jpg' }
+    }
+    if (
+        buffer.length >= 12 &&
+        buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+        buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+        return { mediaType: 'image/webp', ext: 'webp' }
+    }
+    if (buffer.length >= 6 && /^GIF8[79]a/.test(buffer.subarray(0, 6).toString('ascii'))) {
+        return { mediaType: 'image/gif', ext: 'gif' }
+    }
+    const headText = buffer.subarray(0, Math.min(buffer.length, 256)).toString('utf8').trimStart()
+    if (/^(?:<\?xml[^>]*>\s*)?<svg\b/i.test(headText)) {
+        return { mediaType: 'image/svg+xml', ext: 'svg' }
+    }
+
+    const cleanHint = sourceHint.split('?')[0].toLowerCase()
+    if (cleanHint.endsWith('.png')) return { mediaType: 'image/png', ext: 'png' }
+    if (cleanHint.endsWith('.webp')) return { mediaType: 'image/webp', ext: 'webp' }
+    if (cleanHint.endsWith('.gif')) return { mediaType: 'image/gif', ext: 'gif' }
+    if (cleanHint.endsWith('.svg')) return { mediaType: 'image/svg+xml', ext: 'svg' }
+    return { mediaType: 'image/jpeg', ext: 'jpg' }
+}
+
+async function loadImageBuffer(rawSrc: string): Promise<LoadedImageAsset | null> {
+    const decoded = (rawSrc || '').replace(/&amp;/g, '&').trim()
+    if (!decoded) return null
+
+    // 1. Base64 Data URL
+    const dataUriMatch = decoded.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif|svg\+xml));base64,([\s\S]+)$/i)
+    if (dataUriMatch) {
+        const mime = dataUriMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataUriMatch[1].toLowerCase()
+        const buffer = Buffer.from(dataUriMatch[2], 'base64')
+        if (buffer.length === 0) return null
+        const detected = detectImageType(buffer, mime === 'image/svg+xml' ? '.svg' : '')
+        return { buffer, mediaType: detected.mediaType, ext: detected.ext }
+    }
+
+    // 2. Local /api/uploads/... or /uploads/...
+    let normalized = decoded
+    if (normalized.startsWith('/uploads/')) {
+        normalized = '/api' + normalized
+    }
+    if (normalized.startsWith('/api/uploads/')) {
+        const uploadsRoot = path.resolve(process.cwd(), 'public', 'uploads')
+        const rawRel = normalized.slice('/api/uploads/'.length).split('?')[0]
+        let decodedRel = rawRel
+        try {
+            decodedRel = decodeURIComponent(rawRel)
+        } catch {
+            decodedRel = rawRel
+        }
+        const safeRel = decodedRel.replace(/^\/+/, '')
+        const candidateNested = path.resolve(uploadsRoot, safeRel)
+        const candidateBase = path.resolve(uploadsRoot, path.basename(safeRel))
+
+        const targetPath =
+            candidateNested.startsWith(uploadsRoot + path.sep) && existsSync(candidateNested)
+                ? candidateNested
+                : existsSync(candidateBase)
+                  ? candidateBase
+                  : null
+
+        if (!targetPath) return null
+        const buffer = await readFile(targetPath)
+        if (buffer.length === 0) return null
+        const detected = detectImageType(buffer, targetPath)
+        return { buffer, ...detected }
+    }
+
+    // 3. Remote HTTP/HTTPS or Google Drive URLs
+    let fetchUrl = normalized
+    if (normalized.includes('drive.google.com')) {
+        const driveMatch = normalized.match(/\/d\/([a-zA-Z0-9_-]+)/) || normalized.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+        if (driveMatch?.[1]) {
+            fetchUrl = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`
+        }
+    }
+
+    if (/^https?:\/\//i.test(fetchUrl)) {
+        try {
+            const res = await fetch(fetchUrl)
+            if (!res.ok) return null
+            const arr = await res.arrayBuffer()
+            const buffer = Buffer.from(arr)
+            if (buffer.length === 0) return null
+            const contentType = res.headers.get('content-type') || ''
+            const hint = contentType.includes('png')
+                ? '.png'
+                : contentType.includes('webp')
+                  ? '.webp'
+                  : contentType.includes('gif')
+                    ? '.gif'
+                    : contentType.includes('svg')
+                      ? '.svg'
+                      : fetchUrl
+            const detected = detectImageType(buffer, hint)
+            return { buffer, ...detected }
+        } catch {
+            return null
+        }
+    }
+
+    return null
+}
+
+async function embedInlineImagesInXhtml(
+    xhtml: string,
+    zip: JSZip,
+    manifestItems: string[],
+    imageCache: Map<string, string>,
+    counterRef: { count: number }
+): Promise<string> {
+    const imgTagRegex = /<img\b([^>]*?)\bsrc=(["'])([^"']+)\2([^>]*?)\s*\/?>/gi
+    const matches = Array.from(xhtml.matchAll(imgTagRegex))
+    if (matches.length === 0) return xhtml
+
+    let cursor = 0
+    let result = ''
+
+    for (const m of matches) {
+        const fullTag = m[0]
+        const beforeSrc = m[1] || ''
+        const quote = m[2]
+        const rawSrc = (m[3] || '').trim()
+        const afterSrc = m[4] || ''
+        const startIdx = m.index ?? 0
+
+        result += xhtml.slice(cursor, startIdx)
+        cursor = startIdx + fullTag.length
+
+        if (!rawSrc || rawSrc.startsWith('images/')) {
+            result += fullTag
+            continue
+        }
+
+        let relPath = imageCache.get(rawSrc)
+        if (!relPath) {
+            try {
+                const asset = await loadImageBuffer(rawSrc)
+                if (asset) {
+                    counterRef.count += 1
+                    const idxNum = counterRef.count
+                    relPath = `images/inline_${idxNum}.${asset.ext}`
+                    zip.file(`OEBPS/${relPath}`, asset.buffer)
+                    manifestItems.push(`<item id="inline_img_${idxNum}" href="${relPath}" media-type="${asset.mediaType}"/>`)
+                    imageCache.set(rawSrc, relPath)
+                }
+            } catch (err) {
+                console.warn(`Failed to embed inline EPUB image (${rawSrc.slice(0, 80)}):`, err)
+            }
+        }
+
+        if (relPath) {
+            const cleanAfter = afterSrc.replace(/\/\s*$/, '').trimEnd()
+            result += `<img${beforeSrc}src=${quote}${relPath}${quote}${cleanAfter} />`
+        } else {
+            result += fullTag
+        }
+    }
+
+    result += xhtml.slice(cursor)
+    return result
+}
+
 async function parseAndCleanToXhtml(raw: string): Promise<string> {
     if (!raw || !raw.trim()) return '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>'
     // 1. Convert Markdown & preserve embedded HTML via marked
     const html = await marked.parse(raw, { gfm: true, breaks: true })
-    
+
     // 2. Strict XHTML cleanup
     let cleaned = html
         // Self-close void tags
@@ -34,7 +214,7 @@ async function parseAndCleanToXhtml(raw: string): Promise<string> {
         .replace(/<input\b([^>]*?)(?<!\/)>/gi, '<input$1 />')
         // Remove unescaped bare ampersands
         .replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[a-fA-F0-9]+);)/g, '&amp;')
-    
+
     // Wrap bare text in paragraphs if not wrapped
     if (!cleaned.startsWith('<')) {
         cleaned = `<p>${cleaned}</p>`
@@ -43,8 +223,10 @@ async function parseAndCleanToXhtml(raw: string): Promise<string> {
 }
 
 export async function generateEpubBuffer(options: GenerateEpubOptions): Promise<Buffer> {
-    const { project, chapters, copyrightSettings, frontCoverUrl, themePreset = 'executive' } = options
+    const { project, chapters, copyrightSettings, frontCoverUrl } = options
     const zip = new JSZip()
+
+    const sortedChapters = [...chapters].sort((a, b) => (a.chapterNo ?? 0) - (b.chapterNo ?? 0))
 
     const bookTitle = copyrightSettings?.bookTitle || project.title || 'Untitled Book'
     const author = copyrightSettings?.author || 'Saewin'
@@ -66,74 +248,120 @@ export async function generateEpubBuffer(options: GenerateEpubOptions): Promise<
   </rootfiles>
 </container>`)
 
-    // 3. OEBPS/styles.css
+    // 3. OEBPS/styles.css (Apple Books / MEB Light & Dark Mode friendly)
     const cssContent = `
 @charset "UTF-8";
 body {
     font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     line-height: 1.8;
-    color: #1a202c;
-    background-color: #ffffff;
     margin: 5% 8%;
     padding: 0;
     text-align: left;
 }
 h1, h2, h3, h4 {
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.35;
     margin-top: 1.5em;
     margin-bottom: 0.5em;
     text-align: left;
     page-break-after: avoid;
 }
-h1 { font-size: 2em; border-bottom: 2px solid #3b82f6; padding-bottom: 0.3em; margin-bottom: 1em; }
-h2 { font-size: 1.5em; color: #1e293b; }
-h3 { font-size: 1.25em; color: #334155; }
+h1 { font-size: 1.85em; border-bottom: 2px solid #3b82f6; padding-bottom: 0.3em; margin-bottom: 1em; }
+h2 { font-size: 1.4em; }
+h3 { font-size: 1.2em; }
 p { margin-top: 0; margin-bottom: 1em; text-indent: 1.5em; }
 p.no-indent { text-indent: 0; }
 blockquote {
     border-left: 4px solid #3b82f6;
-    margin: 1.5em 0;
-    padding: 0.5em 1em;
-    background: #f8fafc;
+    margin: 1.4em 0;
+    padding: 0.6em 1em;
+    background: rgba(148, 163, 184, 0.12);
     font-style: italic;
-    color: #475569;
 }
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 1.5em 0;
+    margin: 1.4em 0;
+    font-size: 0.9em;
 }
 th, td {
-    border: 1px solid #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.45);
     padding: 0.5em;
     text-align: left;
 }
-th { background-color: #f1f5f9; font-weight: bold; }
+th { background: rgba(148, 163, 184, 0.18); font-weight: bold; }
 img {
     max-width: 100%;
     height: auto;
     display: block;
     margin: 1em auto;
+    border-radius: 8px;
+}
+figure {
+    margin: 1.4em 0;
+    text-align: center;
+    page-break-inside: avoid;
+}
+figure img, img.chapter-hero-img {
+    background: #ffffff;
+    padding: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+}
+figcaption {
+    font-size: 0.85em;
+    opacity: 0.8;
+    margin-top: 0.4em;
+    text-align: center;
+}
+.war-story-box,
+.case-study-box,
+.key-terms-box,
+.action-checklist {
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    border-left: 4px solid #2563eb;
+    border-radius: 8px;
+    padding: 1em 1.1em;
+    margin: 1.3em 0;
+}
+.war-story-box { border-left-color: #d97706; }
+.key-terms-box { border-left-color: #7c3aed; }
+.action-checklist { border-left-color: #059669; }
+.war-story-box p,
+.case-study-box p,
+.key-terms-box p,
+.action-checklist p {
+    text-indent: 0;
+}
+.war-story-box[data-title]::before,
+.case-study-box[data-title]::before,
+.key-terms-box[data-title]::before,
+.action-checklist[data-title]::before {
+    content: attr(data-title);
+    display: block;
+    font-weight: 700;
+    margin-bottom: 0.55em;
+    padding-bottom: 0.35em;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
 }
 .cip-box {
-    border: 1px solid #94a3b8;
-    padding: 1.5em;
-    background: #f8fafc;
-    margin: 2em 0;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    padding: 1.4em;
+    background: rgba(148, 163, 184, 0.1);
+    margin: 1.8em 0;
     font-family: monospace;
     font-size: 0.85em;
 }
 .colophon-meta {
     margin: 1.5em 0;
     font-size: 0.9em;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid rgba(148, 163, 184, 0.35);
     padding-top: 1em;
 }
 .legal-notice {
     font-size: 0.8em;
-    color: #64748b;
-    border-top: 1px solid #e2e8f0;
+    opacity: 0.8;
+    border-top: 1px solid rgba(148, 163, 184, 0.35);
     padding-top: 1em;
     margin-top: 2em;
 }
@@ -141,10 +369,11 @@ img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 0;
 }
 .diagram-box {
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.35);
     border-top: 3px solid #1e3a8a;
     border-radius: 8px;
     padding: 1em;
@@ -164,7 +393,7 @@ img {
     color: #f8fafc;
 }
 a {
-    color: #1d4ed8;
+    color: #2563eb;
     text-decoration: underline;
     font-weight: 600;
 }
@@ -224,35 +453,11 @@ a {
     let coverImageMediaType = 'image/jpeg'
     if (frontCoverUrl) {
         try {
-            let buffer: Buffer | null = null
-            let trimmed = frontCoverUrl.trim()
-            if (trimmed.startsWith('/uploads/')) {
-                trimmed = '/api' + trimmed
-            }
-            if (trimmed.startsWith('/api/uploads/')) {
-                const fs = await import('fs/promises')
-                const path = await import('path')
-                const { existsSync } = await import('fs')
-                const rawFile = trimmed.slice('/api/uploads/'.length)
-                const filename = decodeURIComponent(rawFile)
-                const filePath = path.join(process.cwd(), 'public', 'uploads', path.basename(filename))
-                if (existsSync(filePath)) {
-                    buffer = await fs.readFile(filePath)
-                }
-            } else if (trimmed.startsWith('http')) {
-                const res = await fetch(trimmed)
-                if (res.ok) {
-                    const arr = await res.arrayBuffer()
-                    buffer = Buffer.from(arr)
-                }
-            }
-
-            if (buffer) {
-                if (trimmed.endsWith('.png')) coverImageMediaType = 'image/png'
-                else if (trimmed.endsWith('.webp')) coverImageMediaType = 'image/webp'
-                const ext = coverImageMediaType === 'image/png' ? 'png' : (coverImageMediaType === 'image/webp' ? 'webp' : 'jpg')
-                coverImagePath = `images/cover.${ext}`
-                zip.file(`OEBPS/${coverImagePath}`, buffer)
+            const coverAsset = await loadImageBuffer(frontCoverUrl)
+            if (coverAsset) {
+                coverImageMediaType = coverAsset.mediaType
+                coverImagePath = `images/cover.${coverAsset.ext}`
+                zip.file(`OEBPS/${coverImagePath}`, coverAsset.buffer)
             }
         } catch (e) {
             console.error('Failed to include cover image in EPUB:', e)
@@ -266,6 +471,8 @@ a {
         `<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>`
     ]
     const spineItems: string[] = []
+    const inlineImageCache = new Map<string, string>()
+    const inlineCounter = { count: 0 }
 
     // 4. Cover Page XHTML
     if (coverImagePath) {
@@ -337,8 +544,8 @@ a {
     }
 
     // 6. Chapters XHTML
-    for (let idx = 0; idx < chapters.length; idx++) {
-        const chap = chapters[idx]
+    for (let idx = 0; idx < sortedChapters.length; idx++) {
+        const chap = sortedChapters[idx]
         const fileId = `chapter_${idx + 1}`
         const fileName = `${fileId}.xhtml`
         manifestItems.push(`<item id="${fileId}" href="${fileName}" media-type="application/xhtml+xml"/>`)
@@ -346,45 +553,27 @@ a {
 
         const chapLabel = chap.chapterNo === 0 ? 'คำนำ' : `บทที่ ${chap.chapterNo}`
         const chapTitle = chap.title || chapLabel
-        const bodyContent = await parseAndCleanToXhtml(chap.content || '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>')
+        const parsedContent = await parseAndCleanToXhtml(chap.content || '<p>เนื้อหาอยู่ระหว่างการจัดทำ</p>')
+        const bodyContent = await embedInlineImagesInXhtml(
+            parsedContent,
+            zip,
+            manifestItems,
+            inlineImageCache,
+            inlineCounter
+        )
 
         // Handle Chapter Hero Image if present
         let heroImageTag = ''
         const chapImgUrl = chap.image1Url || chap.chapterImage
         if (chapImgUrl) {
             try {
-                let imgBuffer: Buffer | null = null
-                let imgType = 'image/jpeg'
-                let trimmedImg = chapImgUrl.trim()
-                if (trimmedImg.startsWith('/uploads/')) trimmedImg = '/api' + trimmedImg
-
-                if (trimmedImg.startsWith('/api/uploads/')) {
-                    const fs = await import('fs/promises')
-                    const path = await import('path')
-                    const { existsSync } = await import('fs')
-                    const rawFile = trimmedImg.slice('/api/uploads/'.length)
-                    const filename = decodeURIComponent(rawFile)
-                    const filePath = path.join(process.cwd(), 'public', 'uploads', path.basename(filename))
-                    if (existsSync(filePath)) {
-                        imgBuffer = await fs.readFile(filePath)
-                    }
-                } else if (trimmedImg.startsWith('http')) {
-                    const res = await fetch(trimmedImg)
-                    if (res.ok) {
-                        const arr = await res.arrayBuffer()
-                        imgBuffer = Buffer.from(arr)
-                    }
-                }
-
-                if (imgBuffer) {
-                    if (trimmedImg.endsWith('.png')) imgType = 'image/png'
-                    else if (trimmedImg.endsWith('.webp')) imgType = 'image/webp'
-                    const ext = imgType === 'image/png' ? 'png' : (imgType === 'image/webp' ? 'webp' : 'jpg')
-                    const imgRelPath = `images/chapter_${idx + 1}_hero.${ext}`
+                const heroAsset = await loadImageBuffer(chapImgUrl)
+                if (heroAsset) {
+                    const imgRelPath = `images/chapter_${idx + 1}_hero.${heroAsset.ext}`
                     const imgId = `chap_img_${idx + 1}`
-                    zip.file(`OEBPS/${imgRelPath}`, imgBuffer)
-                    manifestItems.push(`<item id="${imgId}" href="${imgRelPath}" media-type="${imgType}"/>`)
-                    heroImageTag = `<div style="text-align: center; margin: 1.5em 0;"><img src="${imgRelPath}" alt="${escapeXml(chapTitle)}" style="max-width: 100%; height: auto; border-radius: 8px;" /></div>`
+                    zip.file(`OEBPS/${imgRelPath}`, heroAsset.buffer)
+                    manifestItems.push(`<item id="${imgId}" href="${imgRelPath}" media-type="${heroAsset.mediaType}"/>`)
+                    heroImageTag = `<div style="text-align: center; margin: 1.5em 0;"><img src="${imgRelPath}" alt="${escapeXml(chapTitle)}" class="chapter-hero-img" style="max-width: 100%; height: auto; border-radius: 8px;" /></div>`
                 }
             } catch (err) {
                 console.warn(`Failed to embed chapter ${idx + 1} image:`, err)
@@ -410,7 +599,7 @@ a {
     }
 
     // 7. Navigation Document (OEBPS/nav.xhtml - EPUB 3 Standard)
-    const navItems = chapters.map((c, i) => {
+    const navItems = sortedChapters.map((c, i) => {
         const label = c.chapterNo === 0 ? 'คำนำ' : `บทที่ ${c.chapterNo}`
         return `<li><a href="chapter_${i + 1}.xhtml">${escapeXml(c.title || label)}</a></li>`
     }).join('\n            ')
@@ -445,7 +634,7 @@ a {
     </navPoint>`)
         playOrder++
     }
-    chapters.forEach((c, i) => {
+    sortedChapters.forEach((c, i) => {
         const label = c.chapterNo === 0 ? 'คำนำ' : `บทที่ ${c.chapterNo}`
         ncxPoints.push(`
     <navPoint id="navpoint-${playOrder}" playOrder="${playOrder}">
@@ -477,7 +666,7 @@ a {
 
     // 9. Package Document (OEBPS/content.opf)
     const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">
+<package xmlns="http://www.idpf.org/opf" version="3.0" unique-identifier="BookId">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:title>${escapeXml(bookTitle)}</dc:title>
     <dc:creator id="creator">${escapeXml(author)}</dc:creator>

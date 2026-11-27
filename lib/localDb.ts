@@ -24,6 +24,7 @@ import {
 import { PROFIT_ENGINE_BOOK_MIGRATION_V3_KEY, runProfitEngineBookSeedMigration } from './profitEngineBookSeed';
 import { MARKETPLACE_BRAND_SANITIZE_V1_KEY, runMarketplaceBrandSanitizationMigration } from './marketplaceMigration';
 import { BOOK3_CH12_ANTIGRAVITY_CTA_V1_KEY, runBook3Ch12AntigravityCtaMigration } from './book3Ch12AntigravityCtaMigration';
+import { BOOK3_CH10_CH12_META_V1_KEY, runBook3Ch10Ch12MetaMigration } from './book3Ch10Ch12MetaMigration';
 
 export interface Project {
     id: string;
@@ -532,6 +533,7 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
                 await runBook3AiCloserLegoMigration(DB_DIR);
                 await runAuthorBioAccuracyMigration(DB_DIR);
                 await runBook3Ch12AntigravityCtaMigration(DB_DIR);
+                await runBook3Ch10Ch12MetaMigration(DB_DIR);
                 if (existsSync(MIGRATIONS_FILE)) {
                     const raw = await readFile(MIGRATIONS_FILE, 'utf-8').catch(() => '{}');
                     const parsed = JSON.parse(raw || '{}');
@@ -542,7 +544,8 @@ async function ensureBook3Ch3Upgrade(): Promise<void> {
                         parsed[BOOK3_CH3_GOLDEN_THREAD_V3_KEY] &&
                         parsed[BOOK3_AI_CLOSER_LEGO_V1_KEY] &&
                         parsed[BIO_ACCURACY_MIGRATION_V1_KEY] &&
-                        parsed[BOOK3_CH12_ANTIGRAVITY_CTA_V1_KEY]
+                        parsed[BOOK3_CH12_ANTIGRAVITY_CTA_V1_KEY] &&
+                        parsed[BOOK3_CH10_CH12_META_V1_KEY]
                     ) {
                         book3Ch3MigrationDoneInMemory = true;
                     }
