@@ -192,11 +192,39 @@ body {
   border-bottom: 1px solid #d1fae5;
 }
 
+.ceo-tip-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-left: 6px solid #0284c7;
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin: 24px 0;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.06);
+  position: relative;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.ceo-tip-box::before {
+  content: "💡 เคล็ดลับประธานบริษัท (CEO Tip)";
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #0369a1;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e0f2fe;
+}
+.ceo-tip-box p,
+.ceo-tip-box li {
+  text-indent: 0 !important;
+}
+
 /* Honor explicit data-title attributes on callout boxes */
 .war-story-box[data-title]::before,
 .case-study-box[data-title]::before,
 .key-terms-box[data-title]::before,
-.action-checklist[data-title]::before {
+.action-checklist[data-title]::before,
+.ceo-tip-box[data-title]::before {
   content: attr(data-title);
 }
 

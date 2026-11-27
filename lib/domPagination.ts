@@ -427,8 +427,14 @@ function trySplitParagraphDOM(
     const trimmed = pHtml.trim();
     const match = trimmed.match(/^<p(\b[^>]*)>([\s\S]*?)<\/p>$/i);
     const attrs = match ? match[1] : '';
-    const inner = match ? match[2].trim() : (!trimmed.startsWith('<') ? trimmed : '');
+    let inner = match ? match[2].trim() : (!trimmed.startsWith('<') ? trimmed : '');
     if (!inner) return null;
+
+    // Convert inline Markdown before wrapping in raw HTML <p> tags so ReactMarkdown+rehypeRaw never leaves literal ** behind
+    inner = inner
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
     const totalVis = getVisualCharLength(inner);
     if (totalVis < minOrphanChars + minWidowChars + 15) return null;
@@ -914,7 +920,7 @@ export function paginateSingleChapterWithDOM({
             let splitPart2Blocks: string[] | null = null;
 
             const isSplittableCallout =
-                /^<div\b[^>]*class="[^"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist)[^"]*"/i.test(trimmed);
+                /^<div\b[^>]*class="[^"]*(?:war-story-box|case-study-box|key-terms-box|action-checklist|ceo-tip-box)[^"]*"/i.test(trimmed);
 
             if (isSplittableCallout) {
                 const res = trySplitCalloutBoxDOM(trimmed, currentPageBlocks, targetBudget, measureBlocks);
