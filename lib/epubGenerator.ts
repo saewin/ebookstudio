@@ -330,7 +330,7 @@ export async function generateEpubBuffer(options: GenerateEpubOptions): Promise<
 @charset "UTF-8";
 body {
     font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.56;
+    line-height: 1.8;
     margin: 5% 8%;
     padding: 0;
     text-align: left;
@@ -346,7 +346,7 @@ h1, h2, h3, h4 {
 h1 { font-size: 1.85em; border-bottom: 2px solid #3b82f6; padding-bottom: 0.3em; margin-bottom: 1em; }
 h2 { font-size: 1.4em; }
 h3 { font-size: 1.2em; }
-p { margin-top: 0; margin-bottom: 0.85em; text-indent: 1.4em; }
+p { margin-top: 0; margin-bottom: 1em; text-indent: 1.5em; }
 p.no-indent { text-indent: 0; }
 blockquote {
     border-left: 4px solid #3b82f6;
@@ -358,15 +358,13 @@ blockquote {
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 1.2em 0;
-    font-size: 0.88em;
-    line-height: 1.42;
+    margin: 1.4em 0;
+    font-size: 0.9em;
 }
 th, td {
     border: 1px solid rgba(148, 163, 184, 0.45);
-    padding: 0.45em 0.6em;
+    padding: 0.5em;
     text-align: left;
-    vertical-align: top;
 }
 th { background: rgba(148, 163, 184, 0.18); font-weight: bold; }
 img {
@@ -402,7 +400,7 @@ figcaption {
     border-left: 4px solid #2563eb;
     border-radius: 8px;
     padding: 1em 1.1em;
-    margin: 1.2em 0;
+    margin: 1.3em 0;
 }
 .war-story-box { border-left-color: #d97706; }
 .key-terms-box { border-left-color: #7c3aed; }

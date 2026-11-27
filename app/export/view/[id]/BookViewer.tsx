@@ -3092,8 +3092,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     text-align-last: left;
                     text-wrap: pretty;
                     word-spacing: -0.02em;
-                    letter-spacing: 0;
-                    line-height: ${pageSize === 'a5' ? '1.52' : '1.6'};
+                    line-height: ${pageSize === 'a5' ? '1.75' : '1.8'};
                     word-break: normal;
                     overflow-wrap: break-word;
                     -webkit-hyphens: auto;
@@ -3101,7 +3100,7 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p {
                     margin-top: 0;
-                    margin-bottom: ${pageSize === 'a5' ? '0.36em' : '0.48em'};
+                    margin-bottom: ${pageSize === 'a5' ? '0.42em' : '0.55em'};
                 }
                 .book-body-content p.text-indent-book {
                     text-indent: ${pageSize === 'a5' ? '1.5rem' : '2rem'};
@@ -3184,12 +3183,12 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                     content: attr(data-title) !important;
                 }
 
-                .box-split-first { margin-bottom: 10px !important; border-bottom-style: dashed !important; }
-                .box-split-next { margin-top: 10px !important; border-top-style: dashed !important; }
+                .box-split-first { margin-bottom: 12px !important; border-bottom-style: dashed !important; }
+                .box-split-next { margin-top: 12px !important; border-top-style: dashed !important; }
                 .box-continuation-footer {
                     border-top: 1px dashed rgba(0, 0, 0, 0.15);
-                    margin-top: 8px;
-                    padding-top: 4px;
+                    margin-top: 10px;
+                    padding-top: 5px;
                     font-size: 0.75rem;
                     color: #64748b;
                     text-align: right;
@@ -3205,19 +3204,16 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 .book-body-content table {
                     width: 100%;
                     border-collapse: collapse;
-                    table-layout: auto;
-                    margin: ${pageSize === 'a5' ? '8px 0 10px 0' : '12px 0 14px 0'};
-                    font-size: ${pageSize === 'a5' ? '0.82em' : '0.88em'};
-                    line-height: 1.4;
+                    margin: ${pageSize === 'a5' ? '10px 0' : '14px 0'};
+                    font-size: ${pageSize === 'a5' ? '0.84em' : '0.9em'};
+                    line-height: 1.48;
                 }
                 .book-body-content th,
                 .book-body-content td {
                     border: 1px solid #cbd5e1;
-                    padding: ${pageSize === 'a5' ? '4px 7px' : '6px 9px'};
+                    padding: ${pageSize === 'a5' ? '5px 8px' : '7px 10px'};
                     text-align: left;
                     vertical-align: top;
-                    word-break: break-word;
-                    overflow-wrap: anywhere;
                 }
                 .book-body-content th {
                     background-color: #f1f5f9;
@@ -3249,17 +3245,18 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
 
                 ${pageSize === 'a5' ? [
-                    '.book-body-content .war-story-box, .book-body-content .case-study-box, .book-body-content .key-terms-box, .book-body-content .action-checklist, .book-body-content .ceo-tip-box { padding: 10px 14px !important; margin: 10px 0 !important; font-size: 0.90em !important; line-height: 1.44 !important; }',
-                    '.book-body-content .war-story-box::before, .book-body-content .case-study-box::before, .book-body-content .key-terms-box::before, .book-body-content .action-checklist::before, .book-body-content .ceo-tip-box::before { font-size: 0.85rem !important; margin-bottom: 6px !important; padding-bottom: 4px !important; }',
-                    '.book-body-content .war-story-box p, .book-body-content .case-study-box p, .book-body-content .key-terms-box p, .book-body-content .action-checklist p, .book-body-content .ceo-tip-box p, .book-body-content .war-story-box li, .book-body-content .case-study-box li, .book-body-content .key-terms-box li, .book-body-content .action-checklist li, .book-body-content .ceo-tip-box li { margin-bottom: 0.34em !important; line-height: 1.44 !important; }',
-                    '.book-body-content .diagram-box { padding: 10px 12px !important; margin: 10px 0 !important; font-size: 0.88em !important; }',
-                    '.book-body-content .diagram-box::before { font-size: 0.85rem !important; margin-bottom: 6px !important; padding-bottom: 4px !important; }',
-                    '.book-body-content .diagram-box .diagram-step { padding: 5px 9px !important; margin-bottom: 4px !important; line-height: 1.4 !important; }',
-                    '.book-body-content .diagram-box .diagram-arrow { margin: 2px 0 !important; font-size: 0.76rem !important; }',
-                    '.book-body-content .pull-quote-box { padding: 11px 14px !important; margin: 10px 0 !important; font-size: 0.92em !important; }',
-                    '.book-body-content blockquote { padding: 8px 12px !important; margin: 8px 0 !important; line-height: 1.45 !important; }'
+                    '.book-body-content .war-story-box, .book-body-content .case-study-box, .book-body-content .key-terms-box, .book-body-content .action-checklist, .book-body-content .ceo-tip-box { padding: 12px 15px !important; margin: 12px 0 !important; font-size: 0.90em !important; line-height: 1.54 !important; }',
+                    '.book-body-content .war-story-box::before, .book-body-content .case-study-box::before, .book-body-content .key-terms-box::before, .book-body-content .action-checklist::before, .book-body-content .ceo-tip-box::before { font-size: 0.86rem !important; margin-bottom: 8px !important; padding-bottom: 5px !important; }',
+                    '.book-body-content .war-story-box p, .book-body-content .case-study-box p, .book-body-content .key-terms-box p, .book-body-content .action-checklist p, .book-body-content .ceo-tip-box p, .book-body-content .war-story-box li, .book-body-content .case-study-box li, .book-body-content .key-terms-box li, .book-body-content .action-checklist li, .book-body-content .ceo-tip-box li { margin-bottom: 0.42em !important; line-height: 1.54 !important; }',
+                    '.book-body-content .diagram-box { padding: 12px 15px !important; margin: 12px 0 !important; font-size: 0.88em !important; }',
+                    '.book-body-content .diagram-box::before { font-size: 0.86rem !important; margin-bottom: 8px !important; padding-bottom: 5px !important; }',
+                    '.book-body-content .diagram-box .diagram-step { padding: 6px 10px !important; margin-bottom: 4px !important; line-height: 1.46 !important; }',
+                    '.book-body-content .diagram-box .diagram-arrow { margin: 2px 0 !important; font-size: 0.78rem !important; }',
+                    '.book-body-content .pull-quote-box { padding: 13px 16px !important; margin: 12px 0 !important; font-size: 0.92em !important; }',
+                    '.book-body-content blockquote { padding: 10px 14px !important; margin: 10px 0 !important; line-height: 1.55 !important; }'
                 ].join('\n') : ''}
-                .book-body-content blockquote p { text-indent: 0 !important; margin-bottom: 0.35em !important; }
+
+                .book-body-content blockquote p { text-indent: 0 !important; margin-bottom: 0.45em !important; }
                 .book-body-content blockquote p:last-child { margin-bottom: 0 !important; }
 
                 /* Constrain body images & figures so they never blow out page height */
