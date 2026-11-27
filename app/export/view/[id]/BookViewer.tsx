@@ -3087,22 +3087,24 @@ export default function BookViewer({ chapters, projectTitle, project, projectId 
                 }
                 .book-body-content p,
                 .book-body-content li {
-                    text-align: left;
+                    text-align: justify;
+                    text-justify: inter-cluster;
                     text-align-last: left;
                     text-wrap: pretty;
+                    word-spacing: -0.02em;
                     letter-spacing: 0;
-                    line-height: ${pageSize === 'a5' ? '1.48' : '1.56'};
+                    line-height: ${pageSize === 'a5' ? '1.52' : '1.6'};
                     word-break: normal;
                     overflow-wrap: break-word;
-                    -webkit-hyphens: none;
-                    hyphens: none;
+                    -webkit-hyphens: auto;
+                    hyphens: auto;
                 }
                 .book-body-content p {
                     margin-top: 0;
-                    margin-bottom: ${pageSize === 'a5' ? '0.32em' : '0.45em'};
+                    margin-bottom: ${pageSize === 'a5' ? '0.36em' : '0.48em'};
                 }
                 .book-body-content p.text-indent-book {
-                    text-indent: ${pageSize === 'a5' ? '1.35rem' : '1.75rem'};
+                    text-indent: ${pageSize === 'a5' ? '1.5rem' : '2rem'};
                 }
                 .book-body-content p:first-of-type {
                     text-indent: 0 !important;
