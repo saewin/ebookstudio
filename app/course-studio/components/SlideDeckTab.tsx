@@ -21,6 +21,10 @@ import {
   Minimize2,
   Eye,
   CheckCircle2,
+  Wand2,
+  Zap,
+  Loader2,
+  Square,
 } from 'lucide-react'
 import type {
   CourseProject,
@@ -41,12 +45,60 @@ interface SlideDeckTabProps {
 
 type ImportPlacementMode = 'map-from-current' | 'insert-after' | 'append-end'
 
+type AiSlideStyle =
+  | 'notebooklm-light'
+  | 'notebooklm-dark'
+  | 'modern-blueprint'
+  | 'warm-workshop'
+
 interface ImportProgressState {
   phase: 'rendering' | 'uploading'
   done: number
   total: number
   label: string
 }
+
+interface BatchProgressState {
+  running: boolean
+  currentSlideNo: number
+  done: number
+  total: number
+  succeeded: number
+  failed: number
+  lastError?: string
+}
+
+const AI_STYLE_OPTIONS: Array<{
+  id: AiSlideStyle
+  label: string
+  hint: string
+  swatch: string
+}> = [
+  {
+    id: 'notebooklm-light',
+    label: 'NotebookLM สว่าง',
+    hint: 'พื้นหลังครีมขาวสะอาด การ์ดอินโฟกราฟิกแบบ NotebookLM',
+    swatch: 'bg-gradient-to-br from-stone-50 via-blue-50 to-amber-100 border-blue-300',
+  },
+  {
+    id: 'notebooklm-dark',
+    label: 'Midnight Gold (หรูเข้ม)',
+    hint: 'พื้นหลังกรมท่ามืดตัดทองสว่าง เหมาะกับห้องสัมมนาใหญ่',
+    swatch: 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-500/40 border-amber-400',
+  },
+  {
+    id: 'modern-blueprint',
+    label: 'Tech Blueprint',
+    hint: 'แผนภาพโครงสร้างระบบ AI สีน้ำเงิน-เขียวคมชัด',
+    swatch: 'bg-gradient-to-br from-white via-indigo-50 to-emerald-100 border-indigo-300',
+  },
+  {
+    id: 'warm-workshop',
+    label: 'Warm Workshop',
+    hint: 'โทนอบอุ่นเล่าเรื่อง เหมาะกับสไลด์เวิร์กช็อปและเคสจริง',
+    swatch: 'bg-gradient-to-br from-amber-50 via-orange-50 to-stone-200 border-amber-400',
+  },
+]
 
 const THEME_STYLES: Record<
   SlideTheme,
@@ -115,7 +167,7 @@ export default function SlideDeckTab({
   const [aiLoading, setAiLoading] = useState(false)
   const [exportingPptx, setExportingPptx] = useState(false)
 
-  // Visual Slide / NotebookLM Import States
+  // Visual Slide / NotebookLM PDF Import States
   const [showImportModal, setShowImportModal] = useState(false)
   const [importMode, setImportMode] = useState<ImportPlacementMode>('map-from-current')
   const [importProgress, setImportProgress] = useState<ImportProgressState | null>(null)
@@ -124,6 +176,24 @@ export default function SlideDeckTab({
   const [singleUploadLoading, setSingleUploadLoading] = useState(false)
   const [previewTextInEditor, setPreviewTextInEditor] = useState(false)
 
+  // AI Slide Visual Designer (1-Click Per Slide & Batch 10)
+  const [aiSlideStyle, setAiSlideStyle] = useState<AiSlideStyle>('notebooklm-light')
+  const [aiSlideNote, setAiSlideNote] = useState('')
+  const [generatingSlideId, setGeneratingSlideId] = useState<string | null>(null)
+  const [showBatchAiModal, setShowBatchAiModal] = useState(false)
+  const [batchStartNo, setBatchStartNo] = useState(1)
+  const [batchCount, setBatchCount] = useState(10)
+  const [batchSkipExisting, setBatchSkipExisting] = useState(true)
+  const [batchProgress, setBatchProgress] = useState<BatchProgressState>({
+    running: false,
+    currentSlideNo: 0,
+    done: 0,
+    total: 0,
+    succeeded: 0,
+    failed: 0,
+  })
+
+  const batchAbortRef = useRef(false)
   const presenterContainerRef = useRef<HTMLDivElement | null>(null)
   const singleFileInputRef = useRef<HTMLInputElement | null>(null)
   const bulkFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -134,6 +204,7 @@ export default function SlideDeckTab({
   )
   const activeSlide = course.slides[selectedIndex] || course.slides[0]
   const visualSlideCount = course.slides.filter((s) => Boolean(s.visualImageUrl)).length
+  const isBusyGenerating = Boolean(generatingSlideId) || batchProgress.running
 
   // Reset editor text-preview flag when changing slides
   useEffect(() => {
@@ -205,7 +276,7 @@ export default function SlideDeckTab({
     setStatusBanner(message)
     setTimeout(() => {
       setStatusBanner((prev) => (prev === message ? null : prev))
-    }, 5000)
+    }, 6000)
   }
 
   function updateSlide(patch: Partial<CourseSlide>) {
@@ -276,6 +347,195 @@ export default function SlideDeckTab({
     setSelectedId(remaining[Math.max(0, selectedIndex - 1)]?.id || remaining[0].id)
   }
 
+  async function requestSlideVisualApi(
+    targetCourse: CourseProject,
+    slide: CourseSlide,
+    stylePreset: AiSlideStyle,
+    customInstruction?: string
+  ): Promise<{ url: string; visualSourceLabel: string; modelUsed: string }> {
+    const session = targetCourse.sessions.find((sec) => sec.id === slide.sessionId)
+    const res = await fetch('/api/course-studio/generate-slide-visual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        courseTitle: targetCourse.title,
+        courseSubtitle: targetCourse.subtitle,
+        instructor: targetCourse.instructor,
+        sessionTitle: session ? `${session.brainTag}: ${session.title}` : undefined,
+        slide,
+        stylePreset,
+        customInstruction,
+      }),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json?.success || !json?.url) {
+      throw new Error(json?.error || `สร้างภาพสไลด์ #${slide.slideNo} ไม่สำเร็จ (${res.status})`)
+    }
+    return {
+      url: json.url as string,
+      visualSourceLabel: (json.visualSourceLabel as string) || 'AI Slide',
+      modelUsed: (json.modelUsed as string) || 'gemini',
+    }
+  }
+
+  async function generateSingleVisualSlide(targetIdx: number) {
+    const slide = course.slides[targetIdx]
+    if (!slide || isBusyGenerating) return
+
+    setSelectedId(slide.id)
+    setGeneratingSlideId(slide.id)
+    try {
+      const result = await requestSlideVisualApi(
+        course,
+        slide,
+        aiSlideStyle,
+        aiSlideNote
+      )
+      const nextCourse: CourseProject = {
+        ...course,
+        slides: course.slides.map((s) =>
+          s.id === slide.id
+            ? {
+                ...s,
+                visualImageUrl: result.url,
+                visualSourceLabel: result.visualSourceLabel,
+              }
+            : s
+        ),
+      }
+      onChange(nextCourse)
+      setPreviewTextInEditor(false)
+      await onSaveBeforeExport(nextCourse)
+      showBriefStatus(
+        `แปลงสไลด์ #${slide.slideNo} เป็นภาพสวยเรียบร้อยแล้ว (${result.modelUsed})`
+      )
+    } catch (err: any) {
+      alert(err?.message || 'ไม่สามารถสร้างภาพสไลด์ด้วย AI ได้')
+    } finally {
+      setGeneratingSlideId(null)
+    }
+  }
+
+  async function runBatchGenerateSlides() {
+    if (isBusyGenerating) return
+
+    const startIdx = Math.max(0, Math.min(course.slides.length - 1, batchStartNo - 1))
+    const endIdx = Math.min(course.slides.length, startIdx + Math.max(1, batchCount))
+
+    const targetIndices: number[] = []
+    for (let i = startIdx; i < endIdx; i++) {
+      const s = course.slides[i]
+      if (batchSkipExisting && s.visualImageUrl) continue
+      targetIndices.push(i)
+    }
+
+    if (targetIndices.length === 0) {
+      showBriefStatus(
+        'ไม่มีหน้าที่ต้องสร้างใหม่ในช่วงที่เลือก (ทุกหน้ามีภาพสไลด์อยู่แล้ว — หากต้องการทับภาพเดิมให้เอาติ๊กถูก "ข้ามหน้าที่มีภาพแล้ว" ออก)'
+      )
+      setShowBatchAiModal(false)
+      return
+    }
+
+    batchAbortRef.current = false
+    setBatchProgress({
+      running: true,
+      currentSlideNo: course.slides[targetIndices[0]].slideNo,
+      done: 0,
+      total: targetIndices.length,
+      succeeded: 0,
+      failed: 0,
+    })
+
+    let workingCourse: CourseProject = {
+      ...course,
+      slides: [...course.slides],
+    }
+
+    let succeeded = 0
+    let failed = 0
+    let lastError: string | undefined
+
+    for (let step = 0; step < targetIndices.length; step++) {
+      if (batchAbortRef.current) break
+
+      const slideIdx = targetIndices[step]
+      const targetSlide = workingCourse.slides[slideIdx]
+      if (!targetSlide) continue
+
+      setGeneratingSlideId(targetSlide.id)
+      setSelectedId(targetSlide.id)
+      setBatchProgress({
+        running: true,
+        currentSlideNo: targetSlide.slideNo,
+        done: step,
+        total: targetIndices.length,
+        succeeded,
+        failed,
+        lastError,
+      })
+
+      try {
+        const result = await requestSlideVisualApi(
+          workingCourse,
+          targetSlide,
+          aiSlideStyle,
+          aiSlideNote
+        )
+
+        workingCourse = {
+          ...workingCourse,
+          slides: workingCourse.slides.map((s, idx) =>
+            idx === slideIdx
+              ? {
+                  ...s,
+                  visualImageUrl: result.url,
+                  visualSourceLabel: result.visualSourceLabel,
+                }
+              : s
+          ),
+        }
+
+        succeeded += 1
+        onChange(workingCourse)
+        setPreviewTextInEditor(false)
+        await onSaveBeforeExport(workingCourse)
+      } catch (err: any) {
+        failed += 1
+        lastError = `#${targetSlide.slideNo}: ${err?.message || 'ไม่สำเร็จ'}`
+      }
+
+      setBatchProgress({
+        running: true,
+        currentSlideNo: targetSlide.slideNo,
+        done: step + 1,
+        total: targetIndices.length,
+        succeeded,
+        failed,
+        lastError,
+      })
+    }
+
+    setGeneratingSlideId(null)
+    const stoppedByUser = batchAbortRef.current
+    setBatchProgress((prev) => ({
+      ...prev,
+      running: false,
+    }))
+
+    if (!stoppedByUser && failed === 0) {
+      setShowBatchAiModal(false)
+    }
+
+    showBriefStatus(
+      stoppedByUser
+        ? `หยุดชั่วคราวแล้ว — สร้างภาพสไลด์สำเร็จ ${succeeded} หน้า (บันทึกไว้เรียบร้อย)`
+        : failed > 0
+          ? `สร้างชุดภาพสไลด์เสร็จ: สำเร็จ ${succeeded} หน้า, ไม่สำเร็จ ${failed} หน้า (${lastError || ''})`
+          : `แปลงชุดภาพสไลด์สำเร็จครบ ${succeeded} หน้า และบันทึกเรียบร้อยแล้ว!`
+    )
+  }
+
   async function handleSingleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -343,7 +603,6 @@ export default function SlideDeckTab({
 
       const itemsToUpload: Array<{ blob: Blob; filename: string; sourceLabel: string }> = []
 
-      // 1. Convert PDF pages to high-res JPEG blobs
       for (const pdfFile of pdfFiles) {
         setImportProgress({
           phase: 'rendering',
@@ -369,7 +628,6 @@ export default function SlideDeckTab({
         }
       }
 
-      // 2. Append any standalone image files
       for (let i = 0; i < imageFiles.length; i++) {
         const img = imageFiles[i]
         itemsToUpload.push({
@@ -385,7 +643,6 @@ export default function SlideDeckTab({
         return
       }
 
-      // 3. Upload each rendered image to /api/upload
       const uploadedItems: Array<{ url: string; sourceLabel: string; fallbackTitle: string }> = []
       for (let i = 0; i < itemsToUpload.length; i++) {
         const item = itemsToUpload[i]
@@ -403,7 +660,6 @@ export default function SlideDeckTab({
         })
       }
 
-      // 4. Apply uploaded visual URLs into course.slides per placement mode
       let nextSlides: CourseSlide[] = [...course.slides]
       let firstTargetId = activeSlide?.id || nextSlides[0]?.id || ''
 
@@ -540,7 +796,9 @@ export default function SlideDeckTab({
   function renderSlideCanvas(slide: CourseSlide, large = false) {
     const showVisualImage =
       Boolean(slide.visualImageUrl) &&
-      !( !large && previewTextInEditor && slide.id === activeSlide?.id )
+      !(!large && previewTextInEditor && slide.id === activeSlide?.id)
+
+    const isGeneratingThis = !large && generatingSlideId === slide.id
 
     if (showVisualImage && slide.visualImageUrl) {
       return (
@@ -560,6 +818,14 @@ export default function SlideDeckTab({
           {!large && (
             <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full bg-slate-950/75 backdrop-blur-xs text-white text-[10px] font-semibold border border-white/15">
               {slide.slideNo} / {course.slides.length} · ภาพเต็มจอ
+            </div>
+          )}
+          {isGeneratingThis && (
+            <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center gap-2 text-white">
+              <Loader2 size={28} className="animate-spin text-amber-400" />
+              <span className="text-xs font-bold">
+                กำลังออกแบบภาพสไลด์สวยด้วย AI...
+              </span>
             </div>
           )}
         </div>
@@ -635,9 +901,7 @@ export default function SlideDeckTab({
                   ))}
                 </ul>
               </div>
-              <div
-                className={`rounded-lg border p-4 ${style.highlight}`}
-              >
+              <div className={`rounded-lg border p-4 ${style.highlight}`}>
                 <div
                   className={`font-bold mb-2 ${
                     large ? 'text-lg' : 'text-xs'
@@ -690,6 +954,15 @@ export default function SlideDeckTab({
           <span className="truncate">{course.title}</span>
           <span className="shrink-0">{course.instructor}</span>
         </div>
+
+        {isGeneratingThis && (
+          <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center gap-2 text-white">
+            <Loader2 size={28} className="animate-spin text-amber-400" />
+            <span className="text-xs font-bold">
+              กำลังออกแบบภาพสไลด์สวยด้วย AI สำหรับหน้า #{slide.slideNo}...
+            </span>
+          </div>
+        )}
       </div>
     )
   }
@@ -744,6 +1017,18 @@ export default function SlideDeckTab({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            disabled={isBusyGenerating}
+            onClick={() => {
+              setBatchStartNo(selectedIndex + 1)
+              setShowBatchAiModal(true)
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-60 text-white text-xs font-bold shadow-xs cursor-pointer"
+            title="สั่ง AI ออกแบบภาพสไลด์สวยสไตล์ NotebookLM ทีละชุด 10 หน้า"
+          >
+            <Zap size={14} /> แปลง AI ทีละ 10 หน้า
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setImportError(null)
               setShowImportModal(true)
@@ -751,7 +1036,7 @@ export default function SlideDeckTab({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 text-xs font-semibold text-violet-700 cursor-pointer"
             title="อัปโหลดไฟล์ PDF หรือภาพสไลด์ที่สร้างจาก NotebookLM"
           >
-            <FileUp size={14} /> นำเข้าสไลด์ NotebookLM (PDF / ภาพ)
+            <FileUp size={14} /> นำเข้าไฟล์ PDF / ภาพ
           </button>
           <button
             type="button"
@@ -792,13 +1077,17 @@ export default function SlideDeckTab({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left: Slide List */}
         <div className="lg:col-span-3 rounded-xl border border-slate-200 bg-white overflow-hidden flex flex-col max-h-[680px]">
-          <div className="px-3.5 py-2.5 border-b border-slate-100 text-xs font-bold text-slate-600 bg-slate-50">
-            ลำดับสไลด์ทั้งหมด
+          <div className="px-3.5 py-2.5 border-b border-slate-100 text-xs font-bold text-slate-600 bg-slate-50 flex items-center justify-between">
+            <span>ลำดับสไลด์ทั้งหมด</span>
+            <span className="text-[10px] font-medium text-slate-400">
+              กด ✨ แปลงทีละหน้าได้
+            </span>
           </div>
           <div className="overflow-y-auto p-2 space-y-1.5 flex-1">
             {course.slides.map((s, idx) => {
               const active = s.id === activeSlide?.id
               const session = course.sessions.find((sec) => sec.id === s.sessionId)
+              const isGeneratingRow = generatingSlideId === s.id
               return (
                 <div
                   key={s.id}
@@ -813,7 +1102,31 @@ export default function SlideDeckTab({
                     <span className="text-[10px] font-bold text-blue-600 truncate">
                       #{s.slideNo} · {session?.brainTag || s.layout}
                     </span>
-                    <div className="flex items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                    <div className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        disabled={isBusyGenerating}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          generateSingleVisualSlide(idx)
+                        }}
+                        className={`p-1 rounded transition-colors cursor-pointer disabled:opacity-35 ${
+                          s.visualImageUrl
+                            ? 'text-amber-600 hover:bg-amber-100'
+                            : 'text-violet-600 hover:bg-violet-100'
+                        }`}
+                        title={
+                          s.visualImageUrl
+                            ? 'ให้ AI ออกแบบภาพสไลด์หน้านี้ใหม่'
+                            : 'แปลงสไลด์หน้านี้เป็นภาพสวยด้วย AI (1 คลิก)'
+                        }
+                      >
+                        {isGeneratingRow ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Wand2 size={12} />
+                        )}
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -870,12 +1183,12 @@ export default function SlideDeckTab({
 
             {/* Editor Controls */}
             <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
-              {/* Visual Slide Image Strip */}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-violet-200/80 bg-violet-50/50 px-3.5 py-2.5">
+              {/* AI Visual Slide + Upload Strip */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200/90 bg-gradient-to-r from-violet-50/70 via-white to-amber-50/60 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <ImagePlus size={15} className="text-violet-600 shrink-0" />
+                  <Wand2 size={16} className="text-violet-600 shrink-0" />
                   <span className="font-bold text-slate-800">
-                    ภาพพื้นหลังสไลด์ (NotebookLM / Custom Visual):
+                    ภาพสไลด์ 16:9 หน้านี้:
                   </span>
                   {activeSlide.visualImageUrl ? (
                     <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 font-semibold text-[11px]">
@@ -883,24 +1196,55 @@ export default function SlideDeckTab({
                     </span>
                   ) : (
                     <span className="text-slate-500">
-                      ยังไม่มีภาพ (กำลังแสดงผลแบบสไลด์ข้อความ)
+                      ยังไม่มีภาพ (แสดงแบบข้อความ)
                     </span>
                   )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={aiSlideStyle}
+                    onChange={(e) => setAiSlideStyle(e.target.value as AiSlideStyle)}
+                    disabled={isBusyGenerating}
+                    className="px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium bg-white text-slate-700"
+                    title="เลือกสไตล์ภาพสไลด์ AI"
+                  >
+                    {AI_STYLE_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        สไตล์: {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={isBusyGenerating}
+                    onClick={() => generateSingleVisualSlide(selectedIndex)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-60 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    {generatingSlideId === activeSlide.id ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        กำลังออกแบบสไลด์ #{activeSlide.slideNo}...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={13} />
+                        {activeSlide.visualImageUrl
+                          ? 'เจนภาพสไลด์หน้านี้ใหม่ (AI)'
+                          : 'แปลงหน้านี้เป็นสไลด์สวย (AI)'}
+                      </>
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     disabled={singleUploadLoading}
                     onClick={() => singleFileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-xs font-semibold cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-violet-200 bg-white hover:bg-violet-50 disabled:opacity-60 text-violet-700 text-xs font-semibold cursor-pointer"
                   >
                     <ImagePlus size={13} />
-                    {singleUploadLoading
-                      ? 'กำลังอัปโหลด...'
-                      : activeSlide.visualImageUrl
-                        ? 'เปลี่ยนภาพสไลด์หน้านี้'
-                        : 'อัปโหลดภาพสไลด์หน้านี้'}
+                    {singleUploadLoading ? 'กำลังอัปโหลด...' : 'อัปโหลดภาพเอง'}
                   </button>
 
                   {activeSlide.visualImageUrl && (
@@ -915,7 +1259,7 @@ export default function SlideDeckTab({
                         }`}
                       >
                         <Eye size={13} />
-                        {previewTextInEditor ? 'กลับไปดูภาพสไลด์' : 'ดูโหมดข้อความ'}
+                        {previewTextInEditor ? 'ดูภาพสไลด์' : 'ดูข้อความ'}
                       </button>
                       <button
                         type="button"
@@ -1114,6 +1458,210 @@ export default function SlideDeckTab({
           </div>
         )}
       </div>
+
+      {/* Batch-10 AI Visual Slide Modal */}
+      {showBatchAiModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="แปลง AI ทีละ 10 หน้า"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Zap size={18} className="text-amber-500" />
+                  แปลงสไลด์สวยด้วย AI (ทีละชุด / ทีละ 10 หน้า)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  ออกแบบภาพสไลด์ 16:9 สไตล์อินโฟกราฟิกแบบ NotebookLM ลงแทนที่ทีละหน้าแบบ 1:1 โดยคงสคริปต์พูด (Speaker Notes) เดิมไว้ครบทั้งหมด
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={batchProgress.running}
+                onClick={() => setShowBatchAiModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  เริ่มจากสไลด์ที่
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={course.slides.length}
+                  disabled={batchProgress.running}
+                  value={batchStartNo}
+                  onChange={(e) =>
+                    setBatchStartNo(
+                      Math.max(1, Math.min(course.slides.length, Number(e.target.value) || 1))
+                    )
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  จำนวนหน้าต่อรอบ
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {[5, 10, 15].map((cnt) => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      disabled={batchProgress.running}
+                      onClick={() => setBatchCount(cnt)}
+                      className={`flex-1 py-2 rounded-lg border text-xs font-bold cursor-pointer ${
+                        batchCount === cnt
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cnt}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={batchProgress.running}
+                    onClick={() => setBatchCount(course.slides.length)}
+                    className={`px-2.5 py-2 rounded-lg border text-xs font-bold cursor-pointer ${
+                      batchCount >= course.slides.length
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    ทั้งหมด
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700">เลือกสไตล์สไลด์</div>
+              <div className="grid grid-cols-2 gap-2">
+                {AI_STYLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={batchProgress.running}
+                    onClick={() => setAiSlideStyle(opt.id)}
+                    className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left cursor-pointer transition-all ${
+                      aiSlideStyle === opt.id
+                        ? 'border-violet-500 bg-violet-50/70 ring-1 ring-violet-500/30'
+                        : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className={`w-6 h-6 rounded-md border shrink-0 mt-0.5 ${opt.swatch}`} />
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">{opt.label}</div>
+                      <div className="text-[10px] text-slate-500 leading-snug mt-0.5">
+                        {opt.hint}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                คำแนะนำเพิ่มเติมให้ AI (ไม่บังคับ)
+              </label>
+              <input
+                type="text"
+                disabled={batchProgress.running}
+                value={aiSlideNote}
+                onChange={(e) => setAiSlideNote(e.target.value)}
+                placeholder="เช่น เน้นแผนภาพเข้าใจง่าย ตัวหนังสือใหญ่ อ่านชัดบนโปรเจกเตอร์"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={batchProgress.running}
+                checked={batchSkipExisting}
+                onChange={(e) => setBatchSkipExisting(e.target.checked)}
+                className="accent-violet-600"
+              />
+              <span>ข้ามหน้าที่มีภาพสไลด์อยู่แล้ว (แนะนำเพื่อประหยัดเวลาและไม่ทับหน้าเดิม)</span>
+            </label>
+
+            {batchProgress.total > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-950">
+                  <span>
+                    {batchProgress.running
+                      ? `กำลังออกแบบสไลด์ #${batchProgress.currentSlideNo} (${batchProgress.done}/${batchProgress.total})`
+                      : `เสร็จสิ้น (${batchProgress.succeeded} สำเร็จ · ${batchProgress.failed} พลาด)`}
+                  </span>
+                  <span>
+                    {Math.round(
+                      (batchProgress.done / Math.max(1, batchProgress.total)) * 100
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-amber-200 overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 transition-all duration-300"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (batchProgress.done / Math.max(1, batchProgress.total)) * 100
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+                {batchProgress.lastError && (
+                  <p className="text-[11px] text-red-700">{batchProgress.lastError}</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              {batchProgress.running ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    batchAbortRef.current = true
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  <Square size={12} fill="currentColor" /> หยุดหลังจบรอบนี้
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchAiModal(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer"
+                  >
+                    ปิด
+                  </button>
+                  <button
+                    type="button"
+                    onClick={runBatchGenerateSlides}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold cursor-pointer"
+                  >
+                    <Zap size={14} /> เริ่มสร้างภาพชุดนี้
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NotebookLM PDF / Slide Image Bulk Import Modal */}
       {showImportModal && (
