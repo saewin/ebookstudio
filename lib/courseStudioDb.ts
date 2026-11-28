@@ -103,6 +103,33 @@ export async function getCourses(): Promise<CourseProject[]> {
             ...(needsStarterKitMigration ? { starterKitFiles: nextStarterKit } : {}),
           }
         }
+
+        // Idempotent schedule migration: shift legacy 09:00–17:30 Run-of-Show to 10:00–17:00 without overwriting user copy edits
+        const hasLegacyNineAmSchedule =
+          updatedCourse.durationLabel?.includes('09:00') ||
+          updatedCourse.sessions?.some(
+            (s) => s.id === 'sec-1' && s.timeRange.startsWith('09:00')
+          )
+        if (hasLegacyNineAmSchedule) {
+          const freshSchedule = createFlagshipPrototypeCourse()
+          const freshById = new Map(freshSchedule.sessions.map((s) => [s.id, s]))
+          migrated = true
+          updatedCourse = {
+            ...updatedCourse,
+            durationLabel: freshSchedule.durationLabel,
+            sessions: (updatedCourse.sessions || []).map((s) => {
+              const target = freshById.get(s.id)
+              if (!target) return s
+              return {
+                ...s,
+                timeRange: target.timeRange,
+                durationMinutes: target.durationMinutes,
+                teachingMinutes: target.teachingMinutes,
+                workshopMinutes: target.workshopMinutes,
+              }
+            }),
+          }
+        }
       }
 
       // Idempotent pen-name migration: replace any legacy real-name credits without overwriting user edits
@@ -197,7 +224,7 @@ export function createBlankCourse(params: {
     title,
     subtitle:
       format === 'workshop-1day'
-        ? 'Workshop สด 1 วัน (09:00 – 17:30 น.)'
+        ? 'Workshop สด 1 วัน (10:00 – 17:00 น.)'
         : format === 'workshop-2day'
           ? 'Workshop สด 2 วันเข้มข้น'
           : 'คอร์สออนไลน์ภาคปฏิบัติ',
@@ -205,7 +232,7 @@ export function createBlankCourse(params: {
     format,
     durationLabel:
       format === 'workshop-1day'
-        ? 'Workshop สด 1 วัน (09:00 – 17:30 น.)'
+        ? 'Workshop สด 1 วัน (10:00 – 17:00 น.)'
         : format === 'workshop-2day'
           ? 'Workshop สด 2 วัน'
           : 'คอร์สออนไลน์',

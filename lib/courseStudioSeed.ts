@@ -13,7 +13,7 @@ export function createFlagshipPrototypeCourse(): CourseProject {
     subtitle: 'Workshop สด 1 วัน — ระบบบริษัทคนเดียว 3 สมอง บน Google Antigravity',
     bigIdea: 'สร้างสมองที่ 2 และสมองที่ 3 เพื่อปลดปล่อยอิสรภาพให้สมองที่ 1',
     format: 'workshop-1day',
-    durationLabel: 'Workshop สด 1 วัน (09:00 – 17:30 น.)',
+    durationLabel: 'Workshop สด 1 วัน (10:00 – 17:00 น.)',
     instructor: 'เสวิญ (Saewin · OnePersonCEO)',
     targetAudience:
       'เจ้าของธุรกิจ SME, Solopreneur, ผู้ประกอบการอิสระ และผู้เชี่ยวชาญที่อยากสร้างธุรกิจที่เติบโตอย่างมั่งคั่ง มีเวลา และสุขภาพดี ด้วยทีม AI Agents บน Google Antigravity',
@@ -53,12 +53,12 @@ export function createFlagshipPrototypeCourse(): CourseProject {
     sessions: [
       {
         id: 'sec-1',
-        timeRange: '09:00 – 10:30',
+        timeRange: '10:00 – 11:00',
         title: 'Concept ผู้ประกอบการคนเดียว 2.0 — ปลดปล่อยอิสรภาพสมองที่ 1',
         brainTag: 'สมองที่ 1 (Founder)',
-        durationMinutes: 90,
-        teachingMinutes: 65,
-        workshopMinutes: 25,
+        durationMinutes: 60,
+        teachingMinutes: 40,
+        workshopMinutes: 20,
         summary:
           'ปูพื้นแนวคิดบริษัทคนเดียวตามแนวทางคอร์สแรกแต่ยกระดับสู่ปี 2026: ไม่เน้นรวยอย่างเดียวจนหมดแรง แต่สร้างธุรกิจที่มั่งคั่ง มีเวลา และสุขภาพดี พร้อมเห็นภาพใหญ่ของระบบ 3 สมอง',
         objectives: [
@@ -82,12 +82,12 @@ export function createFlagshipPrototypeCourse(): CourseProject {
       },
       {
         id: 'sec-2',
-        timeRange: '10:45 – 12:15',
+        timeRange: '11:00 – 12:15',
         title: 'ภาคปฏิบัติที่ 1 — บันทึกความรู้ & สร้าง BrainStudio / EbookStudio',
         brainTag: 'BrainStudio',
-        durationMinutes: 90,
-        teachingMinutes: 35,
-        workshopMinutes: 55,
+        durationMinutes: 75,
+        teachingMinutes: 25,
+        workshopMinutes: 50,
         summary:
           'เริ่มภาคปฏิบัติจริง: สอนวิธีถอดความรู้ ประสบการณ์ และมาตรฐานการทำงานในหัวเจ้าของออกมาเก็บเป็นคลังความรู้ที่ AI อ่านเข้าใจ 100% พร้อมโชว์เคสจริง Ebook Studio และพาสร้าง BrainStudio ของตัวเอง',
         objectives: [
@@ -111,12 +111,12 @@ export function createFlagshipPrototypeCourse(): CourseProject {
       },
       {
         id: 'sec-3',
-        timeRange: '13:15 – 15:00',
+        timeRange: '13:15 – 14:45',
         title: 'สมองที่ 2 — แตกสมองสร้างทีม "8 AI Agents" ประจำแผนก',
         brainTag: 'สมองที่ 2 (8 Agents)',
-        durationMinutes: 105,
-        teachingMinutes: 45,
-        workshopMinutes: 60,
+        durationMinutes: 90,
+        teachingMinutes: 35,
+        workshopMinutes: 55,
         summary:
           'เกริ่นที่มาที่ไปจาก Chatbot สู่ยุค AI Agent แล้วพาออกแบบผังองค์กรพนักงาน AI 8 แผนกที่ดึงความรู้จาก BrainStudio ไปทำงานแทนเจ้าของ พร้อมลงมือสร้างและทดสอบใช้งานจริงใน Google Antigravity',
         objectives: [
@@ -140,12 +140,12 @@ export function createFlagshipPrototypeCourse(): CourseProject {
       },
       {
         id: 'sec-4',
-        timeRange: '15:15 – 17:00',
+        timeRange: '15:00 – 16:30',
         title: 'สมองที่ 3 — "AI CEO" บน Google Antigravity (Orchestrator คุมทีม 8 Agents)',
         brainTag: 'สมองที่ 3 (AI CEO)',
-        durationMinutes: 105,
-        teachingMinutes: 50,
-        workshopMinutes: 55,
+        durationMinutes: 90,
+        teachingMinutes: 40,
+        workshopMinutes: 50,
         summary:
           'เกริ่นเรื่อง Orchestrator ให้เห็นภาพชัดว่าทำไมมี 8 Agents แล้วยังต้องมี "ผู้บริหาร AI" คอยคุมอีกที เปรียบเทียบกับระบบลากเส้นแบบเก่า (n8n) ที่ล้าสมัย แล้วลงมือสร้าง AI CEO บน Google Antigravity',
         objectives: [
@@ -169,7 +169,7 @@ export function createFlagshipPrototypeCourse(): CourseProject {
       },
       {
         id: 'sec-5',
-        timeRange: '17:00 – 17:30',
+        timeRange: '16:30 – 17:00',
         title: 'Wrap-Up — กฎ 80/20 ทีม Lean, แผน 30 วัน & Q&A',
         brainTag: 'Wrap-Up',
         durationMinutes: 30,
