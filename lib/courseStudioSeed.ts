@@ -30,7 +30,7 @@ export function createFlagshipPrototypeCourse(): CourseProject {
       },
       {
         id: 'pw-2',
-        text: 'ติดตั้งและลงชื่อเข้าใช้ Google Antigravity ล่วงหน้า (มีคู่มือวิดีโอสั้น 3 นาทีส่งให้ก่อนวันเรียน)',
+        text: 'ติดตั้งและลงชื่อเข้าใช้ Google Antigravity ล่วงหน้า (มี PDF ส่งก่อนวันเรียน)',
         required: true,
       },
       {

@@ -130,6 +130,28 @@ export async function getCourses(): Promise<CourseProject[]> {
             }),
           }
         }
+
+        // Idempotent pre-work wording sync: update pw-2 from legacy video note to PDF guide
+        if (
+          updatedCourse.preWorkChecklist?.some(
+            (pw) =>
+              pw.id === 'pw-2' &&
+              pw.text.includes('คู่มือวิดีโอสั้น 3 นาที')
+          )
+        ) {
+          migrated = true
+          updatedCourse = {
+            ...updatedCourse,
+            preWorkChecklist: updatedCourse.preWorkChecklist.map((pw) =>
+              pw.id === 'pw-2'
+                ? {
+                    ...pw,
+                    text: 'ติดตั้งและลงชื่อเข้าใช้ Google Antigravity ล่วงหน้า (มี PDF ส่งก่อนวันเรียน)',
+                  }
+                : pw
+            ),
+          }
+        }
       }
 
       // Idempotent pen-name migration: replace any legacy real-name credits without overwriting user edits
